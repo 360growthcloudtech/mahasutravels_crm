@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { RevenueChart } from "@/components/crm/revenue-chart";
 import { RouteProgress } from "@/components/crm/route-progress";
 import { LeadFormDialog } from "@/components/crm/lead-form-dialog";
-import { agents, sourceSplit } from "@/lib/data";
+import { agents, sourceSplit, makeLeadHistoryEvent } from "@/lib/data";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 
@@ -45,7 +45,17 @@ export default function DashboardPage() {
               </Button>
             }
             onSubmit={(data) => {
-              addLead(data);
+              addLead({
+                ...data,
+                history: [
+                  makeLeadHistoryEvent("created", "Lead created", {
+                    detail: `Source: ${data.source} · Dummy entry`,
+                  }),
+                  makeLeadHistoryEvent("assigned", `Assigned to ${data.agent}`, {
+                    detail: "Manual assignment on create",
+                  }),
+                ],
+              });
               toast({ variant: "success", title: "Lead added", description: `${data.name} was added to the pipeline.` });
             }}
           />

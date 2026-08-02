@@ -2,14 +2,15 @@
 
 import * as React from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+  SheetBody,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -90,22 +91,22 @@ export function LeadFormDialog({
   const rate = cabFleet.find((c) => c.name === form.cabType)?.ratePerDay;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{lead ? "Edit lead" : "Add new lead"}</DialogTitle>
-          <DialogDescription>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>{trigger}</SheetTrigger>
+      <SheetContent className="sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>{lead ? "Edit lead" : "Add new lead"}</SheetTitle>
+          <SheetDescription>
             {lead
               ? `Updating ${lead.id}`
               : "Fields match Plan Your Trip + booking enquiry on mahasutravels.com"}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className="space-y-5">
+        <SheetBody className="space-y-5">
           <section className="space-y-3">
             <p className="text-xs font-semibold tracking-wide text-slate uppercase">About yourself</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Name">
                 <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Ritika Sharma" />
               </Field>
@@ -128,8 +129,8 @@ export function LeadFormDialog({
 
           <section className="space-y-3">
             <p className="text-xs font-semibold tracking-wide text-slate uppercase">Your tour plan</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Destination" className="col-span-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Destination" className="sm:col-span-2">
                 <Input
                   value={form.destination}
                   onChange={(e) => set("destination", e.target.value)}
@@ -137,7 +138,7 @@ export function LeadFormDialog({
                 />
               </Field>
 
-              <Field label="Tour package" className="col-span-2">
+              <Field label="Tour package" className="sm:col-span-2">
                 <Select value={form.tourPackage} onValueChange={(v) => set("tourPackage", v)}>
                   <SelectTrigger><SelectValue placeholder="-- Tour Packages --" /></SelectTrigger>
                   <SelectContent>
@@ -201,7 +202,7 @@ export function LeadFormDialog({
                 />
               </Field>
 
-              <Field label="Select a cab" className="col-span-2 sm:col-span-1">
+              <Field label="Select a cab">
                 <Select value={form.cabType} onValueChange={(v) => set("cabType", v)}>
                   <SelectTrigger><SelectValue placeholder="--- Select Cab ---" /></SelectTrigger>
                   <SelectContent>
@@ -220,7 +221,7 @@ export function LeadFormDialog({
                 />
               </Field>
 
-              <Field label="Tour plan in brief" className="col-span-2">
+              <Field label="Tour plan in brief" className="sm:col-span-2">
                 <Textarea
                   value={form.tourPlan}
                   onChange={(e) => set("tourPlan", e.target.value)}
@@ -275,13 +276,13 @@ export function LeadFormDialog({
               </Field>
             </div>
           </section>
-        </div>
+        </SheetBody>
 
-        <DialogFooter>
+        <SheetFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button variant="marigold" onClick={submit}>{lead ? "Save changes" : "Add lead"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
