@@ -885,6 +885,184 @@ export const sourceSplit = [
   { source: "Manual", value: 13, color: "var(--slate-soft)" },
 ];
 
+export type PermissionAction = "view" | "create" | "edit" | "delete" | "assign" | "export";
+
+export type SystemPermission = {
+  id: string;
+  key: string;
+  module: string;
+  action: PermissionAction;
+  label: string;
+  description?: string;
+};
+
+export type MemberRole = "Super Admin" | "Admin" | "Employee";
+export type MemberStatus = "Active" | "Inactive";
+
+export type Member = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  department: string;
+  role: MemberRole;
+  status: MemberStatus;
+  permissionKeys: string[];
+};
+
+const permissionDefs: Array<{
+  module: string;
+  actions: Array<{ action: PermissionAction; label: string; description?: string }>;
+}> = [
+  {
+    module: "Dashboard",
+    actions: [
+      { action: "view", label: "View Dashboard", description: "See CRM overview and KPIs" },
+      { action: "export", label: "Export Dashboard", description: "Download reports from dashboard" },
+    ],
+  },
+  {
+    module: "Leads",
+    actions: [
+      { action: "view", label: "View Leads" },
+      { action: "create", label: "Create Lead" },
+      { action: "edit", label: "Edit Lead" },
+      { action: "delete", label: "Delete Lead" },
+      { action: "assign", label: "Assign Lead", description: "Assign leads to agents" },
+    ],
+  },
+  {
+    module: "Bookings",
+    actions: [
+      { action: "view", label: "View Bookings" },
+      { action: "create", label: "Create Booking" },
+      { action: "edit", label: "Edit Booking" },
+      { action: "delete", label: "Delete Booking" },
+    ],
+  },
+  {
+    module: "Booking & Drivers",
+    actions: [
+      { action: "view", label: "View Assignments", description: "See booking–driver mapping" },
+      { action: "assign", label: "Assign Driver", description: "Assign or reassign drivers to bookings" },
+    ],
+  },
+  {
+    module: "Itineraries",
+    actions: [
+      { action: "view", label: "View Itineraries" },
+      { action: "create", label: "Create Itinerary" },
+      { action: "edit", label: "Edit Itinerary" },
+      { action: "delete", label: "Delete Itinerary" },
+    ],
+  },
+  {
+    module: "Hotels",
+    actions: [
+      { action: "view", label: "View Hotels" },
+      { action: "create", label: "Create Hotel Template" },
+      { action: "edit", label: "Edit Hotel Template" },
+      { action: "delete", label: "Delete Hotel Template" },
+    ],
+  },
+  {
+    module: "Drivers & Vehicles",
+    actions: [
+      { action: "view", label: "View Drivers" },
+      { action: "create", label: "Create Driver" },
+      { action: "edit", label: "Edit Driver" },
+      { action: "delete", label: "Delete Driver" },
+    ],
+  },
+  {
+    module: "Roles & Permissions",
+    actions: [
+      { action: "view", label: "View Roles", description: "See members and system permissions" },
+      { action: "create", label: "Invite Member" },
+      { action: "edit", label: "Edit Member & Permissions" },
+      { action: "delete", label: "Remove Member" },
+    ],
+  },
+];
+
+function slugModule(module: string) {
+  return module
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.|\.$/g, "");
+}
+
+export const systemPermissions: SystemPermission[] = permissionDefs.flatMap((mod, mi) =>
+  mod.actions.map((a, ai) => ({
+    id: `SP-${mi + 1}${ai + 1}`,
+    key: `${slugModule(mod.module)}.${a.action}`,
+    module: mod.module,
+    action: a.action,
+    label: a.label,
+    description: a.description,
+  }))
+);
+
+export const permissionModules = [...new Set(systemPermissions.map((p) => p.module))];
+
+export const allPermissionKeys = systemPermissions.map((p) => p.key);
+
+const adminDefaultKeys = systemPermissions
+  .filter((p) => !(p.module === "Roles & Permissions" && p.action === "delete"))
+  .map((p) => p.key);
+
+const employeeDefaultKeys = systemPermissions
+  .filter((p) =>
+    ["leads.view", "leads.create", "leads.edit", "bookings.view", "bookings.create", "booking.and.drivers.view", "itineraries.view", "hotels.view", "drivers.and.vehicles.view", "dashboard.view"].includes(
+      p.key
+    )
+  )
+  .map((p) => p.key);
+
+export function defaultPermissionsForRole(role: MemberRole): string[] {
+  if (role === "Super Admin") return [...allPermissionKeys];
+  if (role === "Admin") return [...adminDefaultKeys];
+  return [...employeeDefaultKeys];
+}
+
+export const members: Member[] = [
+  {
+    id: "MB-001",
+    name: "Priya Anand",
+    email: "priya@mahasutravels.com",
+    phone: "+91 98170 11001",
+    password: "Priya@123",
+    department: "Operations",
+    role: "Super Admin",
+    status: "Active",
+    permissionKeys: defaultPermissionsForRole("Super Admin"),
+  },
+  {
+    id: "MB-002",
+    name: "Aman Verma",
+    email: "aman@mahasutravels.com",
+    phone: "+91 98170 11002",
+    password: "Aman@123",
+    department: "Sales",
+    role: "Admin",
+    status: "Active",
+    permissionKeys: defaultPermissionsForRole("Admin"),
+  },
+  {
+    id: "MB-003",
+    name: "Sana Kapoor",
+    email: "sana@mahasutravels.com",
+    phone: "+91 98170 11003",
+    password: "Sana@123",
+    department: "Sales",
+    role: "Employee",
+    status: "Active",
+    permissionKeys: defaultPermissionsForRole("Employee"),
+  },
+];
+
 export type RoleModulePerm = {
   module: string;
   superAdmin: string;
@@ -892,13 +1070,13 @@ export type RoleModulePerm = {
   user: string;
 };
 
-export const rolePermissions: RoleModulePerm[] = [
-  { module: "Leads", superAdmin: "Full access", admin: "Assign, view all", user: "View assigned only" },
-  { module: "Quotes", superAdmin: "Full access", admin: "Create, edit, send", user: "Create, send own" },
-  { module: "Bookings", superAdmin: "Full access", admin: "Create, edit, cancel", user: "View, edit own" },
-  { module: "Drivers & Vehicles", superAdmin: "Full access", admin: "Add, assign", user: "View only" },
-  { module: "Reports & Dashboards", superAdmin: "Full access", admin: "Team dashboard", user: "Own performance" },
-];
+/** @deprecated Prefer systemPermissions + members */
+export const rolePermissions: RoleModulePerm[] = permissionModules.map((module) => ({
+  module,
+  superAdmin: "Full access",
+  admin: module === "Roles & Permissions" ? "View, edit" : "Full access",
+  user: "View assigned only",
+}));
 
 export const statusColor: Record<string, string> = {
   New: "secondary",
@@ -921,6 +1099,7 @@ export const statusColor: Record<string, string> = {
   Deactivated: "outline",
   Draft: "outline",
   Active: "teal",
+  Inactive: "outline",
   Archived: "outline",
   Sent: "violet",
   Viewed: "marigold",

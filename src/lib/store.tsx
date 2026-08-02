@@ -10,12 +10,16 @@ import {
   HotelTemplate,
   ItineraryTemplate,
   LeadCustomItinerary,
+  Member,
+  SystemPermission,
   leads as seedLeads,
   bookings as seedBookings,
   drivers as seedDrivers,
   quotes as seedQuotes,
   itineraries as seedItineraries,
   hotelTemplates as seedHotelTemplates,
+  members as seedMembers,
+  systemPermissions as seedSystemPermissions,
   genId,
   makeLeadHistoryEvent,
 } from "@/lib/data";
@@ -27,9 +31,11 @@ type State = {
   quotes: Quote[];
   itineraries: ItineraryTemplate[];
   hotelTemplates: HotelTemplate[];
+  members: Member[];
+  systemPermissions: SystemPermission[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v15";
+const STORAGE_KEY = "mahasu-crm-state-v16";
 
 function loadInitial(): State {
   return {
@@ -39,6 +45,8 @@ function loadInitial(): State {
     quotes: seedQuotes,
     itineraries: seedItineraries,
     hotelTemplates: seedHotelTemplates,
+    members: seedMembers,
+    systemPermissions: seedSystemPermissions,
   };
 }
 
@@ -69,6 +77,12 @@ type Ctx = {
   updateHotelTemplate: (id: string, patch: Partial<HotelTemplate>) => void;
   deleteHotelTemplate: (id: string) => void;
   duplicateHotelTemplate: (id: string) => void;
+  addMember: (m: Omit<Member, "id">) => void;
+  updateMember: (id: string, patch: Partial<Member>) => void;
+  deleteMember: (id: string) => void;
+  addSystemPermission: (p: Omit<SystemPermission, "id">) => void;
+  updateSystemPermission: (id: string, patch: Partial<SystemPermission>) => void;
+  deleteSystemPermission: (id: string) => void;
   resetDemoData: () => void;
 };
 
@@ -90,6 +104,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           hotelTemplates: parsed.hotelTemplates?.length
             ? parsed.hotelTemplates
             : seedHotelTemplates,
+          members: (parsed.members?.length ? parsed.members : seedMembers).map((m) => ({
+            ...m,
+            password: m.password ?? "",
+          })),
+          systemPermissions: parsed.systemPermissions?.length
+            ? parsed.systemPermissions
+            : seedSystemPermissions,
         });
       }
     } catch {
@@ -294,6 +315,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           };
           return { ...s, hotelTemplates: [copy, ...s.hotelTemplates] };
         }),
+
+      addMember: (m) =>
+        setState((s) => ({ ...s, members: [{ ...m, id: genId("MB") }, ...s.members] })),
+      updateMember: (id, patch) =>
+        setState((s) => ({
+          ...s,
+          members: s.members.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+        })),
+      deleteMember: (id) =>
+        setState((s) => ({ ...s, members: s.members.filter((x) => x.id !== id) })),
+
+      addSystemPermission: (p) =>
+        setState((s) => ({
+          ...s,
+          systemPermissions: [{ ...p, id: genId("SP") }, ...s.systemPermissions],
+        })),
+      updateSystemPermission: (id, patch) =>
+        setState((s) => ({
+          ...s,
+          systemPermissions: s.systemPermissions.map((x) =>
+            x.id === id ? { ...x, ...patch } : x
+          ),
+        })),
+      deleteSystemPermission: (id) =>
+        setState((s) => ({
+          ...s,
+          systemPermissions: s.systemPermissions.filter((x) => x.id !== id),
+        })),
 
       resetDemoData: () => setState(loadInitial()),
     }),
