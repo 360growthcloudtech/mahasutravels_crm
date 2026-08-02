@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
+import { DatePicker } from "@/components/crm/date-picker";
 import {
   Lead,
   LeadStatus,
@@ -38,7 +39,6 @@ const empty: FormState = {
   phone: "",
   source: "Website",
   tourPackage: "Custom / Plan your trip",
-  destination: "",
   pickup: "",
   dropoff: "",
   travelDate: "",
@@ -130,14 +130,6 @@ export function LeadFormDialog({
           <section className="space-y-3">
             <p className="text-xs font-semibold tracking-wide text-slate uppercase">Your tour plan</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Destination" className="sm:col-span-2">
-                <Input
-                  value={form.destination}
-                  onChange={(e) => set("destination", e.target.value)}
-                  placeholder="Shimla / Manali"
-                />
-              </Field>
-
               <Field label="Tour package" className="sm:col-span-2">
                 <Select value={form.tourPackage} onValueChange={(v) => set("tourPackage", v)}>
                   <SelectTrigger><SelectValue placeholder="-- Tour Packages --" /></SelectTrigger>
@@ -150,17 +142,17 @@ export function LeadFormDialog({
               </Field>
 
               <Field label="Date of travel">
-                <Input
+                <DatePicker
                   value={form.travelDate}
-                  onChange={(e) => set("travelDate", e.target.value)}
-                  placeholder="12 Aug 2026"
+                  onChange={(v) => set("travelDate", v)}
+                  placeholder="Select travel date"
                 />
               </Field>
               <Field label="Date of return">
-                <Input
+                <DatePicker
                   value={form.returnDate}
-                  onChange={(e) => set("returnDate", e.target.value)}
-                  placeholder="17 Aug 2026"
+                  onChange={(v) => set("returnDate", v)}
+                  placeholder="Select return date"
                 />
               </Field>
 
@@ -181,7 +173,7 @@ export function LeadFormDialog({
                 <Input
                   value={form.dropoff}
                   onChange={(e) => set("dropoff", e.target.value)}
-                  placeholder="Same as pickup / destination"
+                  placeholder="Same as pickup"
                 />
               </Field>
 

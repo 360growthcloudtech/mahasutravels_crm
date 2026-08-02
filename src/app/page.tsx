@@ -191,7 +191,7 @@ export default function DashboardPage() {
                       <span className="font-mono-data text-[11px] text-slate-soft">{l.id}</span>
                     </div>
                     <p className="mb-2.5 text-xs text-muted-foreground">
-                      {l.destination || l.tourPackage} · {l.pickup}
+                      {l.tourPackage} · {l.pickup}{l.dropoff ? ` → ${l.dropoff}` : ""}
                     </p>
                     <RouteProgress stages={pipelineStages} current={current} />
                   </div>

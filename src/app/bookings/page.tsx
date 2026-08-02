@@ -1,12 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { MoreHorizontal, Plus, Pencil, Trash2, BedDouble, X } from "lucide-react";
+import {
+  BedDouble,
+  ChevronDown,
+  Filter,
+  History,
+  MoreHorizontal,
+  MessageCircle,
+  Plus,
+  Pencil,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableHeader,
@@ -20,19 +34,148 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { BookingFormDialog } from "@/components/crm/booking-form-dialog";
+import { BookingCommentsDrawer } from "@/components/crm/booking-comments-drawer";
+import { BookingHistoryDrawer } from "@/components/crm/booking-history-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { Booking } from "@/lib/data";
+import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent } from "@/lib/data";
+import { formatDisplayDate } from "@/components/crm/date-picker";
+
+const statuses: BookingStatus[] = [
+  "Advance Pending",
+  "Advance Received",
+  "Balance Pending",
+  "Fully Paid",
+  "Cancelled",
+  "Refunded",
+];
+
+const stickyActionHead =
+  "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-card";
+const stickyActionCell =
+  "relative sticky right-0 z-20 min-w-[8.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+
+function toggleValue<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
+function MultiFilter<T extends string>({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: readonly T[];
+  selected: T[];
+  onChange: (next: T[]) => void;
+}) {
+  const count = selected.length;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 font-normal">
+          <Filter className="size-3.5 text-slate-soft" />
+          {label}
+          {count > 0 ? (
+            <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 justify-center px-1.5">
+              {count}
+            </Badge>
+          ) : (
+            <ChevronDown className="size-3.5 text-slate-soft" />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-[11rem]">
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {options.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option}
+            checked={selected.includes(option)}
+            onCheckedChange={() => onChange(toggleValue(selected, option))}
+            onSelect={(e) => e.preventDefault()}
+          >
+            {option}
+          </DropdownMenuCheckboxItem>
+        ))}
+        {count > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-slate" onSelect={() => onChange([])}>
+              Clear {label.toLowerCase()}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export default function BookingsPage() {
-  const { state, addBooking, updateBooking, deleteBooking, removeHotel } = useData();
+  const { state, addBooking, updateBooking, deleteBooking } = useData();
   const { toast } = useToast();
+  const [query, setQuery] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<BookingStatus[]>([]);
+  const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
+  const [hotelFilter, setHotelFilter] = React.useState<Array<"With hotel" | "No hotel">>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<Booking | null>(null);
-  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [commentBookingId, setCommentBookingId] = React.useState<string | null>(null);
+  const [historyBookingId, setHistoryBookingId] = React.useState<string | null>(null);
+
+  const driverNames = React.useMemo(
+    () => [...new Set(state.bookings.map((b) => b.driver).filter(Boolean))].sort(),
+    [state.bookings]
+  );
+
+  const commentBooking = commentBookingId
+    ? state.bookings.find((b) => b.id === commentBookingId) ?? null
+    : null;
+  const historyBooking = historyBookingId
+    ? state.bookings.find((b) => b.id === historyBookingId) ?? null
+    : null;
+
+  function track(
+    booking: Booking,
+    action: Parameters<typeof makeLeadHistoryEvent>[0],
+    label: string,
+    detail?: string
+  ) {
+    return [...(booking.history ?? []), makeLeadHistoryEvent(action, label, { detail })];
+  }
+
+  const hasFilters =
+    query.trim().length > 0 ||
+    statusFilter.length > 0 ||
+    driverFilter.length > 0 ||
+    hotelFilter.length > 0;
+
+  const visible = state.bookings.filter((b) => {
+    const q = query.trim().toLowerCase();
+    if (q) {
+      const matchesCustomer = b.customer.toLowerCase().includes(q);
+      const matchesEmail = b.email.toLowerCase().includes(q);
+      const matchesPhone = (b.phone ?? "").toLowerCase().includes(q);
+      const matchesId = b.id.toLowerCase().includes(q);
+      if (!matchesCustomer && !matchesEmail && !matchesPhone && !matchesId) return false;
+    }
+    if (statusFilter.length > 0 && !statusFilter.includes(b.status)) return false;
+    if (driverFilter.length > 0 && !driverFilter.includes(b.driver)) return false;
+    if (hotelFilter.length > 0) {
+      const withHotel = !!b.hotel;
+      const ok =
+        (hotelFilter.includes("With hotel") && withHotel) ||
+        (hotelFilter.includes("No hotel") && !withHotel);
+      if (!ok) return false;
+    }
+    return true;
+  });
 
   const totalRevenue = state.bookings
     .filter((b) => b.status !== "Cancelled" && b.status !== "Refunded")
@@ -54,15 +197,33 @@ export default function BookingsPage() {
             }
             drivers={state.drivers}
             onSubmit={(data) => {
-              addBooking(data);
-              toast({ variant: "success", title: "Booking created", description: `${data.customer}'s trip is on the books.` });
+              addBooking({
+                ...data,
+                history: [
+                  makeLeadHistoryEvent("created", "Booking created", {
+                    detail: `Dummy · ${bookingRoute(data)}`,
+                  }),
+                  ...(data.driver
+                    ? [
+                        makeLeadHistoryEvent("assigned", "Driver assigned", {
+                          detail: `${data.driver} · ${data.vehicle}`,
+                        }),
+                      ]
+                    : []),
+                ],
+              });
+              toast({
+                variant: "success",
+                title: "Booking created",
+                description: `${data.customer}'s trip is on the books.`,
+              });
             }}
           />
         }
       />
 
-      <main className="px-6 py-6 lg:px-8">
-        <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <main className="flex h-[calc(100dvh-4.75rem)] flex-col overflow-hidden px-6 py-6 lg:px-8">
+        <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">Active bookings</p>
@@ -93,178 +254,263 @@ export default function BookingsPage() {
           </Card>
         </div>
 
-        <Card>
-          <Table>
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-border-soft bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-full sm:w-64">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-slate-soft" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search by name, email, phone or ID…"
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <MultiFilter
+                label="Status"
+                options={statuses}
+                selected={statusFilter}
+                onChange={setStatusFilter}
+              />
+              <MultiFilter
+                label="Driver"
+                options={driverNames}
+                selected={driverFilter}
+                onChange={setDriverFilter}
+              />
+              <MultiFilter
+                label="Hotel"
+                options={["With hotel", "No hotel"] as const}
+                selected={hotelFilter}
+                onChange={setHotelFilter}
+              />
+              {hasFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1 text-slate"
+                  onClick={() => {
+                    setQuery("");
+                    setStatusFilter([]);
+                    setDriverFilter([]);
+                    setHotelFilter([]);
+                  }}
+                >
+                  <X className="size-3.5" /> Clear filters
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <Table containerClassName="min-h-0 flex-1 overflow-auto">
             <TableHeader>
-              <TableRow>
-                <TableHead>Booking</TableHead>
-                <TableHead>Route</TableHead>
-                <TableHead>Travel date</TableHead>
-                <TableHead>Driver / Vehicle</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Advance</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+              <TableRow className="group hover:bg-transparent">
+                <TableHead className="sticky top-0 z-20 bg-card">Booking</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Tour package / Route</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Cab / pax / days</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Driver / Vehicle</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Total</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Advance</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Balance</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
+                <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {state.bookings.map((b) => {
-                const saveBooking = (data: Parameters<typeof updateBooking>[1]) => {
-                  updateBooking(b.id, data);
-                  toast({ variant: "success", title: "Booking updated", description: `${b.id} saved successfully.` });
-                };
-                const dropHotel = () => {
-                  removeHotel(b.id);
-                  toast({ variant: "info", title: "Hotel removed", description: `Hotel detached from ${b.id}.` });
-                };
-                return (
-                <React.Fragment key={b.id}>
-                  <TableRow className={expanded === b.id ? "bg-secondary/40" : ""}>
-                    <TableCell>
-                      <button
-                        className="text-left"
-                        onClick={() => setExpanded(expanded === b.id ? null : b.id)}
+              {visible.map((b) => (
+                <TableRow key={b.id} className="group">
+                  <TableCell>
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-sm font-medium text-ink-text">
+                        <span className="truncate">{b.customer}</span>
+                        {b.hotel && <BedDouble className="size-3.5 shrink-0 text-marigold-ink" />}
+                      </p>
+                      <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell className="min-w-0">
+                    <p className="truncate text-sm text-ink-text">{b.tourPackage}</p>
+                    <p className="truncate text-[11px] text-slate-soft">{bookingRoute(b)}</p>
+                  </TableCell>
+                  <TableCell className="text-sm text-slate">
+                    <p>{formatDisplayDate(b.travelDate)}</p>
+                    {b.returnDate ? (
+                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(b.returnDate)}</p>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-sm text-slate">
+                    {b.cabType}{" "}
+                    <span className="text-slate-soft">
+                      · {b.adults}A{b.kids > 0 ? `+${b.kids}K` : ""} · {b.days}d
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <p className="text-sm text-ink-text">{b.driver || "—"}</p>
+                    <p className="font-mono-data text-[11px] text-slate-soft">{b.vehicle || "—"}</p>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text">
+                    ₹{b.total.toLocaleString("en-IN")}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-mono-data text-sm text-teal">
+                    ₹{b.advance.toLocaleString("en-IN")}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap pr-6 text-right font-mono-data text-sm text-signal">
+                    {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
+                          aria-label={`Change status for ${b.customer}`}
+                        >
+                          <StatusBadge status={b.status} />
+                          <ChevronDown className="size-3.5 text-slate-soft" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {statuses.map((s) => (
+                          <DropdownMenuItem
+                            key={s}
+                            disabled={s === b.status}
+                            onSelect={() => {
+                              updateBooking(b.id, {
+                                status: s,
+                                history: track(
+                                  b,
+                                  "status_changed",
+                                  `Status changed to ${s}`,
+                                  `${b.status} → ${s} · Dummy tracking`
+                                ),
+                              });
+                              toast({
+                                variant: "success",
+                                title: "Status updated",
+                                description: `${b.id} moved to ${s}.`,
+                              });
+                            }}
+                          >
+                            <StatusBadge status={s} />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                  <TableCell className={stickyActionCell}>
+                    <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        aria-label={`Tracking history for ${b.customer}`}
+                        onClick={() => setHistoryBookingId(b.id)}
                       >
-                        <p className="flex items-center gap-1.5 text-sm font-medium text-ink-text">
-                          {b.customer}
-                          {b.hotel && <BedDouble className="size-3.5 text-marigold-ink" />}
-                        </p>
-                        <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-sm text-ink-text">{b.route}</TableCell>
-                    <TableCell className="text-sm text-slate">{b.travelDate}</TableCell>
-                    <TableCell>
-                      <p className="text-sm text-ink-text">{b.driver || "—"}</p>
-                      <p className="font-mono-data text-[11px] text-slate-soft">{b.vehicle}</p>
-                    </TableCell>
-                    <TableCell className="text-right font-mono-data text-sm text-ink-text">
-                      ₹{b.total.toLocaleString("en-IN")}
-                    </TableCell>
-                    <TableCell className="text-right font-mono-data text-sm text-teal">
-                      ₹{b.advance.toLocaleString("en-IN")}
-                    </TableCell>
-                    <TableCell className="text-right font-mono-data text-sm text-signal">
-                      {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={b.status} />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" className="size-8">
-                              <MoreHorizontal className="size-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <BookingFormDialog
-                              booking={b}
-                              drivers={state.drivers}
-                              trigger={
-                                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                  <Pencil className="size-3.5" /> Edit booking
-                                </DropdownMenuItem>
-                              }
-                              onSubmit={saveBooking}
-                            />
-                            <DropdownMenuItem onSelect={() => setExpanded(b.id)}>
-                              <BedDouble className="size-3.5" /> {b.hotel ? "View hotel" : "Assign hotel"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-signal focus:bg-signal-soft"
-                              onSelect={(e) => {
-                                e.preventDefault();
-                                setDeleteTarget(b);
-                              }}
-                            >
-                              <Trash2 className="size-3.5" /> Delete booking
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-
-                  {expanded === b.id && (
-                    <TableRow>
-                      <TableCell colSpan={9} className="bg-secondary/30 py-4">
-                        {b.hotel ? (
-                          <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="grid flex-1 grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
-                              <div>
-                                <p className="text-slate-soft">Hotel</p>
-                                <p className="font-medium text-ink-text">{b.hotel.hotelName}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-soft">Room</p>
-                                <p className="text-ink-text">{b.hotel.roomType} · {b.hotel.roomCount} room(s)</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-soft">Stay</p>
-                                <p className="font-mono-data text-ink-text">{b.hotel.checkIn} → {b.hotel.checkOut}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-soft">Amount</p>
-                                <p className="font-mono-data text-ink-text">₹{b.hotel.amount.toLocaleString("en-IN")}</p>
-                              </div>
-                              <div className="col-span-2">
-                                <p className="text-slate-soft">Address</p>
-                                <p className="text-ink-text">{b.hotel.address}</p>
-                              </div>
-                              <div>
-                                <p className="text-slate-soft">Reference</p>
-                                <p className="font-mono-data text-ink-text">{b.hotel.referenceNumber}</p>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <BookingFormDialog
-                                booking={b}
-                                drivers={state.drivers}
-                                trigger={<Button size="sm" variant="outline"><Pencil className="size-3.5" /> Edit</Button>}
-                                onSubmit={saveBooking}
-                              />
-                              <Button size="sm" variant="outline" onClick={dropHotel}>
-                                <X className="size-3.5" /> Remove
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-card p-4">
-                            <div>
-                              <p className="text-sm font-medium text-ink-text">No hotel assigned</p>
-                              <p className="text-xs text-muted-foreground">
-                                Optional — add once availability is confirmed with the hotel directly.
-                              </p>
-                            </div>
-                            <BookingFormDialog
-                              booking={b}
-                              drivers={state.drivers}
-                              trigger={<Button size="sm" variant="marigold"><BedDouble className="size-3.5" /> Assign hotel</Button>}
-                              onSubmit={saveBooking}
-                            />
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </React.Fragment>
-                );
-              })}
-              {state.bookings.length === 0 && (
+                        <History className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        aria-label={`Comments for ${b.customer}`}
+                        onClick={() => setCommentBookingId(b.id)}
+                      >
+                        <MessageCircle className="size-3.5" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="size-8">
+                            <MoreHorizontal className="size-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <BookingFormDialog
+                            booking={b}
+                            drivers={state.drivers}
+                            trigger={
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                <Pencil className="size-3.5" /> Edit booking
+                              </DropdownMenuItem>
+                            }
+                            onSubmit={(data) => {
+                              updateBooking(b.id, {
+                                ...data,
+                                history: track(
+                                  b,
+                                  "updated",
+                                  "Booking details updated",
+                                  data.hotel
+                                    ? `Dummy · hotel ${data.hotel.hotelName || "assigned"}`
+                                    : "Dummy · edited by Priya"
+                                ),
+                              });
+                              toast({
+                                variant: "success",
+                                title: "Booking updated",
+                                description: `${b.id} saved successfully.`,
+                              });
+                            }}
+                          />
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-signal focus:bg-signal-soft"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              setDeleteTarget(b);
+                            }}
+                          >
+                            <Trash2 className="size-3.5" /> Delete booking
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {visible.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
-                    No bookings yet — create one from a confirmed lead.
+                  <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+                    No bookings match these filters.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-5 py-3 text-xs text-muted-foreground">
+            <span>
+              Showing {visible.length} of {state.bookings.length} bookings
+            </span>
+          </div>
         </Card>
       </main>
+
+      <BookingCommentsDrawer
+        booking={commentBooking}
+        open={!!commentBookingId}
+        onOpenChange={(v) => !v && setCommentBookingId(null)}
+        onAddComment={(bookingId, comment) => {
+          const current = state.bookings.find((b) => b.id === bookingId);
+          if (!current) return;
+          updateBooking(bookingId, {
+            comments: [...(current.comments ?? []), comment],
+            history: track(current, "comment_added", "Comment added", comment.text),
+          });
+          toast({
+            variant: "success",
+            title: "Comment added",
+            description: `Note saved on ${current.customer}.`,
+          });
+        }}
+      />
+
+      <BookingHistoryDrawer
+        booking={historyBooking}
+        open={!!historyBookingId}
+        onOpenChange={(v) => !v && setHistoryBookingId(null)}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}
@@ -274,7 +520,11 @@ export default function BookingsPage() {
         onConfirm={() => {
           if (deleteTarget) {
             deleteBooking(deleteTarget.id);
-            toast({ variant: "info", title: "Booking deleted", description: `${deleteTarget.id} was removed.` });
+            toast({
+              variant: "info",
+              title: "Booking deleted",
+              description: `${deleteTarget.id} was removed.`,
+            });
           }
         }}
       />

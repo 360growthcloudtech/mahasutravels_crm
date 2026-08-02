@@ -45,6 +45,7 @@ import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { agents, Lead, LeadStatus, makeLeadHistoryEvent } from "@/lib/data";
+import { formatDisplayDate } from "@/components/crm/date-picker";
 
 const statuses: LeadStatus[] = ["New", "Contacted", "Quoted", "Follow-up", "Confirmed", "Lost"];
 const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
@@ -275,7 +276,7 @@ export default function LeadsPage() {
             <TableHeader>
               <TableRow className="group hover:bg-transparent">
                 <TableHead className="sticky top-0 z-20 bg-card">Lead</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Destination / Route</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Tour package / Route</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Cab / pax / days</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Source</TableHead>
@@ -307,15 +308,15 @@ export default function LeadsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="min-w-0">
-                    <p className="truncate text-sm text-ink-text">{l.destination || l.tourPackage}</p>
-                    <p className="text-[11px] text-slate-soft">
+                    <p className="truncate text-sm text-ink-text">{l.tourPackage}</p>
+                    <p className="truncate text-[11px] text-slate-soft">
                       {l.pickup}{l.dropoff ? ` → ${l.dropoff}` : ""}
                     </p>
                   </TableCell>
                   <TableCell className="text-sm text-slate">
-                    <p>{l.travelDate}</p>
+                    <p>{formatDisplayDate(l.travelDate)}</p>
                     {l.returnDate ? (
-                      <p className="text-[11px] text-slate-soft">to {l.returnDate}</p>
+                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(l.returnDate)}</p>
                     ) : null}
                   </TableCell>
                   <TableCell className="text-sm text-slate">

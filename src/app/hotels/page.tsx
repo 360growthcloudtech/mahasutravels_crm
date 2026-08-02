@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { BookingFormDialog } from "@/components/crm/booking-form-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
+import { bookingRoute } from "@/lib/data";
+import { formatDisplayDate } from "@/components/crm/date-picker";
 
 export default function HotelsPage() {
   const { state, updateBooking, removeHotel } = useData();
@@ -139,7 +141,7 @@ export default function HotelsPage() {
                   >
                     <div>
                       <p className="text-sm font-medium text-ink-text">{b.customer}</p>
-                      <p className="text-xs text-muted-foreground">{b.route} · {b.travelDate}</p>
+                      <p className="text-xs text-muted-foreground">{bookingRoute(b)} · {formatDisplayDate(b.travelDate)}</p>
                     </div>
                     <BookingFormDialog
                       booking={b}

@@ -44,7 +44,6 @@ export type Lead = {
   phone: string;
   source: "Website" | "Google Ads" | "Meta Ads" | "Manual";
   tourPackage: string;
-  destination: string;
   pickup: string;
   dropoff: string;
   travelDate: string;
@@ -177,14 +176,14 @@ const dummyHistory: Record<string, LeadHistoryEvent[]> = {
 };
 
 const leadSeed: Omit<Lead, "history">[] = [
-  { id: "LD-2401", name: "Ritika Sharma", email: "ritika.sharma@gmail.com", city: "Delhi", phone: "+91 98170 22314", source: "Google Ads", tourPackage: "5N/6D Shimla Manali Taxi Tour", destination: "Shimla / Manali", pickup: "Delhi", dropoff: "Delhi", travelDate: "12 Aug", returnDate: "17 Aug", cabType: "Innova CRYSTA (7+1)", adults: 4, kids: 2, days: 6, tourPlan: "Family trip covering Shimla mall road and Manali local sightseeing.", status: "New", agent: "Aman", budget: 24000, lastActivity: "6m ago", comments: [{ id: "CM-1", text: "Called once — asked for Innova Crysta quote with hotel options.", author: "Aman", createdAt: "Today, 11:40 AM" }] },
-  { id: "LD-2400", name: "Karan Bhandari", email: "karan.b@outlook.com", city: "Chandigarh", phone: "+91 90158 77021", source: "Meta Ads", tourPackage: "9N/10D Complete Himachal Taxi Tour", destination: "Himachal complete", pickup: "Chandigarh", dropoff: "Chandigarh", travelDate: "15 Aug", returnDate: "24 Aug", cabType: "Tempo Traveller (12+1)", adults: 10, kids: 2, days: 10, tourPlan: "Group tour — Shimla, Manali, Dharamshala, Dalhousie.", status: "Contacted", agent: "Priya", budget: 42000, lastActivity: "22m ago", comments: [{ id: "CM-2", text: "WhatsApp intro sent. Waiting on final pax count.", author: "Priya", createdAt: "Today, 10:55 AM" }, { id: "CM-3", text: "Group is 10 adults + 2 kids confirmed.", author: "Priya", createdAt: "Today, 11:18 AM" }] },
-  { id: "LD-2399", name: "Neha Kapoor", email: "neha.kapoor@yahoo.com", city: "Noida", phone: "+91 99889 10234", source: "Website", tourPackage: "Cab rental only", destination: "Mussoorie", pickup: "Delhi", dropoff: "Delhi", travelDate: "9 Aug", returnDate: "10 Aug", cabType: "Maruti Dezire (4+1)", adults: 3, kids: 1, days: 2, tourPlan: "Weekend cab for Mussoorie day trip.", status: "Quoted", agent: "Aman", budget: 4200, lastActivity: "1h ago" },
-  { id: "LD-2398", name: "Vivek Thakur", email: "vivek.thakur@gmail.com", city: "Shimla", phone: "+91 88170 44521", source: "Manual", tourPackage: "9N/10D Kinnaur Spiti Taxi Tour", destination: "Kinnaur Spiti", pickup: "Delhi", dropoff: "Delhi", travelDate: "10 Aug", returnDate: "11 Aug", cabType: "Ertiga (6+1)", adults: 3, kids: 0, days: 2, tourPlan: "Short enquiry for Spiti dates — want Ertiga quote.", status: "Follow-up", agent: "Sana", budget: 5600, lastActivity: "2h ago", comments: [{ id: "CM-4", text: "Follow-up due tomorrow morning if no reply.", author: "Sana", createdAt: "Yesterday, 4:20 PM" }] },
-  { id: "LD-2397", name: "Ananya Rao", email: "ananya.rao@gmail.com", city: "Chandigarh", phone: "+91 98765 22109", source: "Google Ads", tourPackage: "5N/6D Shimla Manali Taxi Tour", destination: "Shimla / Manali", pickup: "Chandigarh", dropoff: "Chandigarh", travelDate: "18 Aug", returnDate: "23 Aug", cabType: "Innova CRYSTA (7+1)", adults: 5, kids: 2, days: 6, tourPlan: "Honeymoon + parents travelling together.", status: "Confirmed", agent: "Priya", budget: 24000, lastActivity: "3h ago" },
-  { id: "LD-2396", name: "Rohan Malhotra", email: "rohan.m@gmail.com", city: "Gurugram", phone: "+91 97190 33452", source: "Meta Ads", tourPackage: "8N/9D Leh & Ladakh Taxi Tour", destination: "Leh Ladakh", pickup: "Delhi", dropoff: "Delhi", travelDate: "22 Aug", returnDate: "30 Aug", cabType: "Tempo Traveller (17+1)", adults: 12, kids: 2, days: 9, tourPlan: "Corporate team outing to Ladakh.", status: "Lost", agent: "Sana", budget: 46800, lastActivity: "5h ago" },
-  { id: "LD-2395", name: "Divya Negi", email: "divya.negi@gmail.com", city: "Solan", phone: "+91 96543 88012", source: "Website", tourPackage: "Custom / Plan your trip", destination: "Narkanda", pickup: "Kalka", dropoff: "Kalka", travelDate: "11 Aug", returnDate: "12 Aug", cabType: "Maruti Dezire (4+1)", adults: 2, kids: 1, days: 2, tourPlan: "Apple orchard visit near Narkanda.", status: "New", agent: "Aman", budget: 4200, lastActivity: "6h ago", duplicate: true },
-  { id: "LD-2394", name: "Sameer Chauhan", email: "sameer.c@gmail.com", city: "Pathankot", phone: "+91 90200 11987", source: "Google Ads", tourPackage: "4N/5D Pathankot Dharamshala Dalhousie Taxi Tour", destination: "Dharamshala / Dalhousie", pickup: "Pathankot", dropoff: "Pathankot", travelDate: "25 Aug", returnDate: "29 Aug", cabType: "Toyota Innova (7+1)", adults: 5, kids: 1, days: 5, tourPlan: "Family trip with McLeod Ganj and Khajjiar.", status: "Quoted", agent: "Priya", budget: 16000, lastActivity: "8h ago" },
+  { id: "LD-2401", name: "Ritika Sharma", email: "ritika.sharma@gmail.com", city: "Delhi", phone: "+91 98170 22314", source: "Google Ads", tourPackage: "5N/6D Shimla Manali Taxi Tour", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-12", returnDate: "2026-08-17", cabType: "Innova CRYSTA (7+1)", adults: 4, kids: 2, days: 6, tourPlan: "Family trip covering Shimla mall road and Manali local sightseeing.", status: "New", agent: "Aman", budget: 24000, lastActivity: "6m ago", comments: [{ id: "CM-1", text: "Called once — asked for Innova Crysta quote with hotel options.", author: "Aman", createdAt: "Today, 11:40 AM" }] },
+  { id: "LD-2400", name: "Karan Bhandari", email: "karan.b@outlook.com", city: "Chandigarh", phone: "+91 90158 77021", source: "Meta Ads", tourPackage: "9N/10D Complete Himachal Taxi Tour", pickup: "Chandigarh", dropoff: "Chandigarh", travelDate: "2026-08-15", returnDate: "2026-08-24", cabType: "Tempo Traveller (12+1)", adults: 10, kids: 2, days: 10, tourPlan: "Group tour — Shimla, Manali, Dharamshala, Dalhousie.", status: "Contacted", agent: "Priya", budget: 42000, lastActivity: "22m ago", comments: [{ id: "CM-2", text: "WhatsApp intro sent. Waiting on final pax count.", author: "Priya", createdAt: "Today, 10:55 AM" }, { id: "CM-3", text: "Group is 10 adults + 2 kids confirmed.", author: "Priya", createdAt: "Today, 11:18 AM" }] },
+  { id: "LD-2399", name: "Neha Kapoor", email: "neha.kapoor@yahoo.com", city: "Noida", phone: "+91 99889 10234", source: "Website", tourPackage: "Cab rental only", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-09", returnDate: "2026-08-10", cabType: "Maruti Dezire (4+1)", adults: 3, kids: 1, days: 2, tourPlan: "Weekend cab for Mussoorie day trip.", status: "Quoted", agent: "Aman", budget: 4200, lastActivity: "1h ago" },
+  { id: "LD-2398", name: "Vivek Thakur", email: "vivek.thakur@gmail.com", city: "Shimla", phone: "+91 88170 44521", source: "Manual", tourPackage: "9N/10D Kinnaur Spiti Taxi Tour", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-10", returnDate: "2026-08-11", cabType: "Ertiga (6+1)", adults: 3, kids: 0, days: 2, tourPlan: "Short enquiry for Spiti dates — want Ertiga quote.", status: "Follow-up", agent: "Sana", budget: 5600, lastActivity: "2h ago", comments: [{ id: "CM-4", text: "Follow-up due tomorrow morning if no reply.", author: "Sana", createdAt: "Yesterday, 4:20 PM" }] },
+  { id: "LD-2397", name: "Ananya Rao", email: "ananya.rao@gmail.com", city: "Chandigarh", phone: "+91 98765 22109", source: "Google Ads", tourPackage: "5N/6D Shimla Manali Taxi Tour", pickup: "Chandigarh", dropoff: "Chandigarh", travelDate: "2026-08-18", returnDate: "2026-08-23", cabType: "Innova CRYSTA (7+1)", adults: 5, kids: 2, days: 6, tourPlan: "Honeymoon + parents travelling together.", status: "Confirmed", agent: "Priya", budget: 24000, lastActivity: "3h ago" },
+  { id: "LD-2396", name: "Rohan Malhotra", email: "rohan.m@gmail.com", city: "Gurugram", phone: "+91 97190 33452", source: "Meta Ads", tourPackage: "8N/9D Leh & Ladakh Taxi Tour", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-22", returnDate: "2026-08-30", cabType: "Tempo Traveller (17+1)", adults: 12, kids: 2, days: 9, tourPlan: "Corporate team outing to Ladakh.", status: "Lost", agent: "Sana", budget: 46800, lastActivity: "5h ago" },
+  { id: "LD-2395", name: "Divya Negi", email: "divya.negi@gmail.com", city: "Solan", phone: "+91 96543 88012", source: "Website", tourPackage: "Custom / Plan your trip", pickup: "Kalka", dropoff: "Kalka", travelDate: "2026-08-11", returnDate: "2026-08-12", cabType: "Maruti Dezire (4+1)", adults: 2, kids: 1, days: 2, tourPlan: "Apple orchard visit near Narkanda.", status: "New", agent: "Aman", budget: 4200, lastActivity: "6h ago", duplicate: true },
+  { id: "LD-2394", name: "Sameer Chauhan", email: "sameer.c@gmail.com", city: "Pathankot", phone: "+91 90200 11987", source: "Google Ads", tourPackage: "4N/5D Pathankot Dharamshala Dalhousie Taxi Tour", pickup: "Pathankot", dropoff: "Pathankot", travelDate: "2026-08-25", returnDate: "2026-08-29", cabType: "Toyota Innova (7+1)", adults: 5, kids: 1, days: 5, tourPlan: "Family trip with McLeod Ganj and Khajjiar.", status: "Quoted", agent: "Priya", budget: 16000, lastActivity: "8h ago" },
 ];
 
 export const leads: Lead[] = leadSeed.map((l) => ({
@@ -225,10 +224,21 @@ export type Hotel = {
 export type Booking = {
   id: string;
   customer: string;
+  email: string;
+  city: string;
   phone?: string;
-  route: string;
+  source: Lead["source"];
+  tourPackage: string;
+  pickup: string;
+  dropoff: string;
   travelDate: string;
+  returnDate: string;
   cabType: string;
+  adults: number;
+  kids: number;
+  days: number;
+  tourPlan: string;
+  agent: string;
   driver: string;
   vehicle: string;
   total: number;
@@ -236,16 +246,245 @@ export type Booking = {
   balance: number;
   status: BookingStatus;
   hotel?: Hotel;
+  comments?: LeadComment[];
+  history?: LeadHistoryEvent[];
 };
 
-export const bookings: Booking[] = [
-  { id: "BK-1182", customer: "Ananya Rao", phone: "+91 98765 22109", route: "Chandigarh → Shimla", travelDate: "18 Aug", cabType: "Innova Crysta", driver: "Suresh Thakur", vehicle: "HP-01-4521", total: 11000, advance: 5000, balance: 6000, status: "Advance Received", hotel: { hotelName: "Hotel Willow Banks", address: "The Mall, Shimla, HP", checkIn: "2026-08-18", checkOut: "2026-08-20", roomType: "Deluxe Mountain View", roomCount: 2, amount: 7200, referenceNumber: "WB-RES-4471", contactNumber: "+91 94185 22011" } },
-  { id: "BK-1181", customer: "Manish Verma", phone: "+91 91125 66098", route: "Delhi → Shimla → Delhi", travelDate: "5 Aug", cabType: "Ertiga", driver: "Vinod Kumar", vehicle: "HR-26-9981", total: 15200, advance: 15200, balance: 0, status: "Fully Paid" },
-  { id: "BK-1180", customer: "Pooja Rawat", phone: "+91 99015 43201", route: "Shimla → Kasauli", travelDate: "3 Aug", cabType: "Swift Dzire", driver: "Rakesh Negi", vehicle: "HP-08-2210", total: 4800, advance: 0, balance: 4800, status: "Balance Pending" },
-  { id: "BK-1179", customer: "Arjun Sethi", phone: "+91 98221 30044", route: "Delhi → Manali", travelDate: "1 Aug", cabType: "Tempo Traveller", driver: "Deepak Chand", vehicle: "HP-64-1187", total: 34000, advance: 10000, balance: 24000, status: "Advance Received", hotel: { hotelName: "Snow Valley Resorts", address: "Log Huts Rd, Manali, HP", checkIn: "2026-08-01", checkOut: "2026-08-05", roomType: "Family Suite", roomCount: 3, amount: 21000, referenceNumber: "SVR-8890" } },
-  { id: "BK-1178", customer: "Kabir Anand", phone: "+91 90563 77021", route: "Chandigarh → Manali", travelDate: "29 Jul", cabType: "Innova Crysta", driver: "Suresh Thakur", vehicle: "HP-01-4521", total: 13500, advance: 13500, balance: 0, status: "Cancelled" },
-  { id: "BK-1177", customer: "Ishita Bose", phone: "+91 88991 20567", route: "Delhi → Mussoorie", travelDate: "27 Jul", cabType: "Swift Dzire", driver: "Rakesh Negi", vehicle: "HP-08-2210", total: 8200, advance: 8200, balance: 0, status: "Fully Paid" },
+export function bookingRoute(b: Pick<Booking, "pickup" | "dropoff" | "tourPackage">) {
+  if (b.pickup && b.dropoff) return `${b.pickup} → ${b.dropoff}`;
+  if (b.tourPackage) return b.tourPackage;
+  return "—";
+}
+
+const bookingDummyHistory: Record<string, LeadHistoryEvent[]> = {
+  "BK-1182": [
+    { id: "BEV-101", action: "created", label: "Booking created", detail: "Converted from confirmed lead LD-2397", actor: "Priya", createdAt: "3 days ago" },
+    { id: "BEV-102", action: "assigned", label: "Driver assigned", detail: "Suresh Thakur · HP-01-4521", actor: "Priya", createdAt: "3 days ago" },
+    { id: "BEV-103", action: "note", label: "Hotel assigned", detail: "Hotel Willow Banks · 2 rooms", actor: "Priya", createdAt: "2 days ago" },
+    { id: "BEV-104", action: "status_changed", label: "Status changed to Advance Received", detail: "Advance Pending → Advance Received · ₹5,000", actor: "Priya", createdAt: "Yesterday" },
+  ],
+  "BK-1181": [
+    { id: "BEV-201", action: "created", label: "Booking created", detail: "Dummy · Delhi → Shimla round trip", actor: "Aman", createdAt: "1 week ago" },
+    { id: "BEV-202", action: "status_changed", label: "Status changed to Fully Paid", detail: "Full payment ₹15,200 received", actor: "Aman", createdAt: "5 days ago" },
+  ],
+  "BK-1180": [
+    { id: "BEV-301", action: "created", label: "Booking created", detail: "Shimla → Kasauli day trip", actor: "Sana", createdAt: "4 days ago" },
+    { id: "BEV-302", action: "status_changed", label: "Status changed to Balance Pending", detail: "No advance collected yet", actor: "Sana", createdAt: "4 days ago" },
+    { id: "BEV-303", action: "comment_added", label: "Comment added", detail: "Customer will pay on pickup.", actor: "Sana", createdAt: "Yesterday" },
+  ],
+  "BK-1179": [
+    { id: "BEV-401", action: "created", label: "Booking created", detail: "Delhi → Manali · Tempo Traveller", actor: "Priya", createdAt: "1 week ago" },
+    { id: "BEV-402", action: "note", label: "Hotel assigned", detail: "Snow Valley Resorts · 3 family suites", actor: "Priya", createdAt: "6 days ago" },
+    { id: "BEV-403", action: "status_changed", label: "Status changed to Advance Received", detail: "₹10,000 advance · Dummy", actor: "Priya", createdAt: "5 days ago" },
+  ],
+  "BK-1178": [
+    { id: "BEV-501", action: "created", label: "Booking created", actor: "Aman", createdAt: "2 weeks ago" },
+    { id: "BEV-502", action: "status_changed", label: "Status changed to Cancelled", detail: "Customer postponed trip · Dummy", actor: "Aman", createdAt: "10 days ago" },
+  ],
+  "BK-1177": [
+    { id: "BEV-601", action: "created", label: "Booking created", detail: "Delhi → Mussoorie", actor: "Sana", createdAt: "2 weeks ago" },
+    { id: "BEV-602", action: "status_changed", label: "Status changed to Fully Paid", detail: "₹8,200 settled", actor: "Sana", createdAt: "12 days ago" },
+  ],
+};
+
+const bookingSeed: Omit<Booking, "history">[] = [
+  {
+    id: "BK-1182",
+    customer: "Ananya Rao",
+    email: "ananya.rao@gmail.com",
+    city: "Chandigarh",
+    phone: "+91 98765 22109",
+    source: "Google Ads",
+    tourPackage: "5N/6D Shimla Manali Taxi Tour",
+    pickup: "Chandigarh",
+    dropoff: "Chandigarh",
+    travelDate: "2026-08-18",
+    returnDate: "2026-08-23",
+    cabType: "Innova CRYSTA (7+1)",
+    adults: 5,
+    kids: 2,
+    days: 6,
+    tourPlan: "Honeymoon + parents travelling together.",
+    agent: "Priya",
+    driver: "Suresh Thakur",
+    vehicle: "HP-01-4521",
+    total: 11000,
+    advance: 5000,
+    balance: 6000,
+    status: "Advance Received",
+    hotel: {
+      hotelName: "Hotel Willow Banks",
+      address: "The Mall, Shimla, HP",
+      checkIn: "2026-08-18",
+      checkOut: "2026-08-20",
+      roomType: "Deluxe Mountain View",
+      roomCount: 2,
+      amount: 7200,
+      referenceNumber: "WB-RES-4471",
+      contactNumber: "+91 94185 22011",
+    },
+    comments: [
+      {
+        id: "BCM-1",
+        text: "Hotel confirmation shared with customer on WhatsApp.",
+        author: "Priya",
+        createdAt: "Yesterday, 2:10 PM",
+      },
+    ],
+  },
+  {
+    id: "BK-1181",
+    customer: "Manish Verma",
+    email: "manish.verma@gmail.com",
+    city: "Delhi",
+    phone: "+91 91125 66098",
+    source: "Website",
+    tourPackage: "Custom / Plan your trip",
+    pickup: "Delhi",
+    dropoff: "Delhi",
+    travelDate: "2026-08-05",
+    returnDate: "2026-08-08",
+    cabType: "Ertiga (6+1)",
+    adults: 4,
+    kids: 1,
+    days: 4,
+    tourPlan: "Family sightseeing in Shimla.",
+    agent: "Aman",
+    driver: "Vinod Kumar",
+    vehicle: "HR-26-9981",
+    total: 15200,
+    advance: 15200,
+    balance: 0,
+    status: "Fully Paid",
+  },
+  {
+    id: "BK-1180",
+    customer: "Pooja Rawat",
+    email: "pooja.rawat@gmail.com",
+    city: "Shimla",
+    phone: "+91 99015 43201",
+    source: "Manual",
+    tourPackage: "Cab rental only",
+    pickup: "Shimla",
+    dropoff: "Kasauli",
+    travelDate: "2026-08-03",
+    returnDate: "2026-08-03",
+    cabType: "Maruti Dezire (4+1)",
+    adults: 2,
+    kids: 0,
+    days: 1,
+    tourPlan: "Day trip to Kasauli.",
+    agent: "Sana",
+    driver: "Rakesh Negi",
+    vehicle: "HP-08-2210",
+    total: 4800,
+    advance: 0,
+    balance: 4800,
+    status: "Balance Pending",
+    comments: [
+      { id: "BCM-2", text: "Customer will pay on pickup.", author: "Sana", createdAt: "Yesterday" },
+    ],
+  },
+  {
+    id: "BK-1179",
+    customer: "Arjun Sethi",
+    email: "arjun.sethi@gmail.com",
+    city: "Delhi",
+    phone: "+91 98221 30044",
+    source: "Meta Ads",
+    tourPackage: "Custom / Plan your trip",
+    pickup: "Delhi",
+    dropoff: "Manali",
+    travelDate: "2026-08-01",
+    returnDate: "2026-08-05",
+    cabType: "Tempo Traveller (12+1)",
+    adults: 10,
+    kids: 2,
+    days: 5,
+    tourPlan: "Group tour with hotel stay in Manali.",
+    agent: "Priya",
+    driver: "Deepak Chand",
+    vehicle: "HP-64-1187",
+    total: 34000,
+    advance: 10000,
+    balance: 24000,
+    status: "Advance Received",
+    hotel: {
+      hotelName: "Snow Valley Resorts",
+      address: "Log Huts Rd, Manali, HP",
+      checkIn: "2026-08-01",
+      checkOut: "2026-08-05",
+      roomType: "Family Suite",
+      roomCount: 3,
+      amount: 21000,
+      referenceNumber: "SVR-8890",
+    },
+  },
+  {
+    id: "BK-1178",
+    customer: "Kabir Anand",
+    email: "kabir.anand@gmail.com",
+    city: "Chandigarh",
+    phone: "+91 90563 77021",
+    source: "Google Ads",
+    tourPackage: "5N/6D Shimla Manali Taxi Tour",
+    pickup: "Chandigarh",
+    dropoff: "Chandigarh",
+    travelDate: "2026-07-29",
+    returnDate: "2026-08-03",
+    cabType: "Innova CRYSTA (7+1)",
+    adults: 6,
+    kids: 0,
+    days: 6,
+    tourPlan: "Cancelled after advance — postponed.",
+    agent: "Aman",
+    driver: "Suresh Thakur",
+    vehicle: "HP-01-4521",
+    total: 13500,
+    advance: 13500,
+    balance: 0,
+    status: "Cancelled",
+  },
+  {
+    id: "BK-1177",
+    customer: "Ishita Bose",
+    email: "ishita.bose@gmail.com",
+    city: "Delhi",
+    phone: "+91 88991 20567",
+    source: "Website",
+    tourPackage: "Cab rental only",
+    pickup: "Delhi",
+    dropoff: "Delhi",
+    travelDate: "2026-07-27",
+    returnDate: "2026-07-28",
+    cabType: "Maruti Dezire (4+1)",
+    adults: 3,
+    kids: 1,
+    days: 2,
+    tourPlan: "Weekend Mussoorie cab.",
+    agent: "Sana",
+    driver: "Rakesh Negi",
+    vehicle: "HP-08-2210",
+    total: 8200,
+    advance: 8200,
+    balance: 0,
+    status: "Fully Paid",
+  },
 ];
+
+export const bookings: Booking[] = bookingSeed.map((b) => ({
+  ...b,
+  history: bookingDummyHistory[b.id] ?? [
+    {
+      id: `BEV-${b.id}`,
+      action: "created",
+      label: "Booking created",
+      detail: `Dummy · ${bookingRoute(b)}`,
+      actor: "System",
+      createdAt: "Earlier",
+    },
+  ],
+}));
 
 export type Driver = {
   id: string;

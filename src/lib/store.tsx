@@ -24,7 +24,7 @@ type State = {
   rules: AutomationRule[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v5";
+const STORAGE_KEY = "mahasu-crm-state-v10";
 
 function loadInitial(): State {
   return { leads: seedLeads, bookings: seedBookings, drivers: seedDrivers, quotes: seedQuotes, rules: seedRules };
