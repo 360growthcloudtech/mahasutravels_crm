@@ -8,12 +8,16 @@ import {
   Quote,
   Hotel,
   AutomationRule,
+  ItineraryTemplate,
+  LeadCustomItinerary,
   leads as seedLeads,
   bookings as seedBookings,
   drivers as seedDrivers,
   quotes as seedQuotes,
   automationRules as seedRules,
+  itineraries as seedItineraries,
   genId,
+  makeLeadHistoryEvent,
 } from "@/lib/data";
 
 type State = {
@@ -22,12 +26,20 @@ type State = {
   drivers: Driver[];
   quotes: Quote[];
   rules: AutomationRule[];
+  itineraries: ItineraryTemplate[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v11";
+const STORAGE_KEY = "mahasu-crm-state-v12";
 
 function loadInitial(): State {
-  return { leads: seedLeads, bookings: seedBookings, drivers: seedDrivers, quotes: seedQuotes, rules: seedRules };
+  return {
+    leads: seedLeads,
+    bookings: seedBookings,
+    drivers: seedDrivers,
+    quotes: seedQuotes,
+    rules: seedRules,
+    itineraries: seedItineraries,
+  };
 }
 
 type Ctx = {
@@ -47,6 +59,13 @@ type Ctx = {
   updateQuote: (id: string, patch: Partial<Quote>) => void;
   deleteQuote: (id: string) => void;
   toggleRule: (id: string) => void;
+  addItinerary: (t: Omit<ItineraryTemplate, "id" | "updatedAt">) => void;
+  updateItinerary: (id: string, patch: Partial<ItineraryTemplate>) => void;
+  deleteItinerary: (id: string) => void;
+  duplicateItinerary: (id: string) => void;
+  assignLeadItinerary: (leadId: string, templateId: string) => void;
+  updateLeadCustomItinerary: (leadId: string, custom: LeadCustomItinerary) => void;
+  resetLeadItinerary: (leadId: string) => void;
   resetDemoData: () => void;
 };
 
@@ -59,7 +78,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setState(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<State>;
+        setState({
+          ...loadInitial(),
+          ...parsed,
+          itineraries: parsed.itineraries?.length ? parsed.itineraries : seedItineraries,
+        });
+      }
     } catch {
       // ignore corrupt storage
     }
@@ -112,6 +138,96 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           rules: s.rules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)),
+        })),
+
+      addItinerary: (t) =>
+        setState((s) => ({
+          ...s,
+          itineraries: [{ ...t, id: genId("IT"), updatedAt: "Just now" }, ...s.itineraries],
+        })),
+      updateItinerary: (id, patch) =>
+        setState((s) => ({
+          ...s,
+          itineraries: s.itineraries.map((x) =>
+            x.id === id ? { ...x, ...patch, updatedAt: "Just now" } : x
+          ),
+        })),
+      deleteItinerary: (id) =>
+        setState((s) => ({ ...s, itineraries: s.itineraries.filter((x) => x.id !== id) })),
+      duplicateItinerary: (id) =>
+        setState((s) => {
+          const source = s.itineraries.find((x) => x.id === id);
+          if (!source) return s;
+          const copy: ItineraryTemplate = {
+            ...source,
+            id: genId("IT"),
+            name: `${source.name} (Copy)`,
+            status: "Draft",
+            updatedAt: "Just now",
+            inclusions: [...source.inclusions],
+            daysPlan: source.daysPlan.map((d) => ({ ...d })),
+          };
+          return { ...s, itineraries: [copy, ...s.itineraries] };
+        }),
+
+      assignLeadItinerary: (leadId, templateId) =>
+        setState((s) => ({
+          ...s,
+          leads: s.leads.map((lead) => {
+            if (lead.id !== leadId) return lead;
+            const template = s.itineraries.find((t) => t.id === templateId);
+            return {
+              ...lead,
+              itineraryTemplateId: templateId,
+              customItinerary: undefined,
+              lastActivity: "Just now",
+              history: [
+                makeLeadHistoryEvent("updated", "Itinerary template assigned", {
+                  detail: template ? `${template.name} · master template` : templateId,
+                }),
+                ...(lead.history ?? []),
+              ],
+            };
+          }),
+        })),
+
+      updateLeadCustomItinerary: (leadId, custom) =>
+        setState((s) => ({
+          ...s,
+          leads: s.leads.map((lead) => {
+            if (lead.id !== leadId) return lead;
+            return {
+              ...lead,
+              itineraryTemplateId: custom.templateId || lead.itineraryTemplateId,
+              customItinerary: custom,
+              lastActivity: "Just now",
+              history: [
+                makeLeadHistoryEvent("updated", "Itinerary customized for guest", {
+                  detail: `${custom.title} · original template unchanged`,
+                }),
+                ...(lead.history ?? []),
+              ],
+            };
+          }),
+        })),
+
+      resetLeadItinerary: (leadId) =>
+        setState((s) => ({
+          ...s,
+          leads: s.leads.map((lead) => {
+            if (lead.id !== leadId) return lead;
+            return {
+              ...lead,
+              customItinerary: undefined,
+              lastActivity: "Just now",
+              history: [
+                makeLeadHistoryEvent("updated", "Itinerary reset to template", {
+                  detail: "Guest copy cleared · master template restored",
+                }),
+                ...(lead.history ?? []),
+              ],
+            };
+          }),
         })),
 
       resetDemoData: () => setState(loadInitial()),

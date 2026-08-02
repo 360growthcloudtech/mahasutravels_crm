@@ -119,7 +119,7 @@ function MultiFilter<T extends string>({
 }
 
 export default function LeadsPage() {
-  const { state, addLead, updateLead, deleteLead, addQuote } = useData();
+  const { state, addLead, updateLead, deleteLead, addQuote, assignLeadItinerary, updateLeadCustomItinerary, resetLeadItinerary } = useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<LeadStatus[]>([]);
@@ -503,8 +503,36 @@ export default function LeadsPage() {
       <LeadQuoteDrawer
         lead={quoteLead}
         quotes={state.quotes}
+        itineraries={state.itineraries}
         open={!!quoteLeadId}
         onOpenChange={(v) => !v && setQuoteLeadId(null)}
+        onAssignItinerary={(templateId) => {
+          if (!quoteLead) return;
+          assignLeadItinerary(quoteLead.id, templateId);
+          toast({
+            variant: "success",
+            title: "Template assigned",
+            description: "Master itinerary linked. Guest copy cleared if any.",
+          });
+        }}
+        onSaveCustomItinerary={(custom) => {
+          if (!quoteLead) return;
+          updateLeadCustomItinerary(quoteLead.id, custom);
+          toast({
+            variant: "success",
+            title: "Guest itinerary saved",
+            description: "Master template was not changed.",
+          });
+        }}
+        onResetItinerary={() => {
+          if (!quoteLead) return;
+          resetLeadItinerary(quoteLead.id);
+          toast({
+            variant: "info",
+            title: "Reset to template",
+            description: "Guest copy cleared.",
+          });
+        }}
         onSend={({ amount, note, sentVia, saveAsDraft }) => {
           if (!quoteLead) return;
           const route =

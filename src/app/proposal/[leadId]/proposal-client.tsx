@@ -58,7 +58,11 @@ export default function ProposalPage() {
     );
   }
 
-  const proposal = buildProposalForLead(lead, Number.isFinite(amount) ? amount : undefined);
+  const proposal = buildProposalForLead(
+    lead,
+    Number.isFinite(amount) ? amount : undefined,
+    state.itineraries
+  );
   const travelWindow = proposal.returnDate
     ? `${formatDisplayDate(proposal.travelDate)} to ${formatDisplayDate(proposal.returnDate)}`
     : formatDisplayDate(proposal.travelDate);
@@ -181,11 +185,13 @@ export default function ProposalPage() {
           <div className="mb-4">
             <h2 className="font-display text-lg font-semibold text-ink-text">Day-wise itinerary</h2>
             <p className="mt-1 text-xs text-slate-soft">
-              Detailed dummy itinerary for this proposal
+              {proposal.isCustomized
+                ? "Customized for this guest · master template unchanged"
+                : "From reusable itinerary template"}
             </p>
           </div>
           <div className="space-y-3">
-            {proposal.itinerary.slice(0, proposal.days).map((stop) => (
+            {proposal.itinerary.map((stop) => (
               <div
                 key={stop.day}
                 className="rounded-md border border-border bg-white px-4 py-3"

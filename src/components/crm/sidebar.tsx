@@ -20,6 +20,7 @@ const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/bookings", label: "Bookings", icon: ClipboardList },
+  { href: "/itineraries", label: "Itineraries", icon: Route },
   { href: "/hotels", label: "Hotels", icon: BedDouble },
   { href: "/drivers", label: "Drivers & Vehicles", icon: Car },
   { href: "/calendar", label: "Trip Calendar", icon: CalendarDays },
