@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Copy,
   Filter,
+  FileText,
   History,
   MoreHorizontal,
   MessageCircle,
@@ -41,6 +42,7 @@ import {
 import { LeadFormDialog } from "@/components/crm/lead-form-dialog";
 import { LeadCommentsDrawer } from "@/components/crm/lead-comments-drawer";
 import { LeadHistoryDrawer } from "@/components/crm/lead-history-drawer";
+import { LeadQuoteDrawer } from "@/components/crm/lead-quote-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
@@ -52,9 +54,9 @@ const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"
 const agentNames = agents.map((a) => a.name);
 
 const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-card";
+  "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-card";
 const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[8.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+  "relative sticky right-0 z-20 min-w-[10.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -117,7 +119,7 @@ function MultiFilter<T extends string>({
 }
 
 export default function LeadsPage() {
-  const { state, addLead, updateLead, deleteLead } = useData();
+  const { state, addLead, updateLead, deleteLead, addQuote } = useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<LeadStatus[]>([]);
@@ -126,12 +128,16 @@ export default function LeadsPage() {
   const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null);
   const [commentLeadId, setCommentLeadId] = React.useState<string | null>(null);
   const [historyLeadId, setHistoryLeadId] = React.useState<string | null>(null);
+  const [quoteLeadId, setQuoteLeadId] = React.useState<string | null>(null);
 
   const commentLead = commentLeadId
     ? state.leads.find((l) => l.id === commentLeadId) ?? null
     : null;
   const historyLead = historyLeadId
     ? state.leads.find((l) => l.id === historyLeadId) ?? null
+    : null;
+  const quoteLead = quoteLeadId
+    ? state.leads.find((l) => l.id === quoteLeadId) ?? null
     : null;
 
   function track(
@@ -395,6 +401,15 @@ export default function LeadsPage() {
                       >
                         <MessageCircle className="size-3.5" />
                       </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        aria-label={`Send quote for ${l.name}`}
+                        onClick={() => setQuoteLeadId(l.id)}
+                      >
+                        <FileText className="size-3.5" />
+                      </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost" className="size-8">
@@ -483,6 +498,52 @@ export default function LeadsPage() {
         lead={historyLead}
         open={!!historyLeadId}
         onOpenChange={(v) => !v && setHistoryLeadId(null)}
+      />
+
+      <LeadQuoteDrawer
+        lead={quoteLead}
+        quotes={state.quotes}
+        open={!!quoteLeadId}
+        onOpenChange={(v) => !v && setQuoteLeadId(null)}
+        onSend={({ amount, note, sentVia, saveAsDraft }) => {
+          if (!quoteLead) return;
+          const route =
+            quoteLead.pickup && quoteLead.dropoff
+              ? `${quoteLead.pickup} → ${quoteLead.dropoff}`
+              : quoteLead.tourPackage;
+          addQuote({
+            leadId: quoteLead.id,
+            customer: quoteLead.name,
+            route,
+            days: quoteLead.days,
+            cabType: quoteLead.cabType,
+            amount,
+            stage: saveAsDraft ? "Draft" : "Sent",
+            sentVia,
+            note: note || undefined,
+          });
+          updateLead(quoteLead.id, {
+            status: saveAsDraft ? quoteLead.status : "Quoted",
+            budget: amount,
+            lastActivity: "Just now",
+            history: track(
+              quoteLead,
+              "quoted",
+              saveAsDraft ? "Quote draft saved" : "Quote sent",
+              saveAsDraft
+                ? `Dummy · ₹${amount.toLocaleString("en-IN")} draft`
+                : `Dummy · ₹${amount.toLocaleString("en-IN")} via ${sentVia.join(", ")}`
+            ),
+          });
+          setQuoteLeadId(null);
+          toast({
+            variant: "success",
+            title: saveAsDraft ? "Quote draft saved" : "Quote sent",
+            description: saveAsDraft
+              ? `Draft quote linked to ${quoteLead.name}.`
+              : `Quote for ${quoteLead.name} sent via ${sentVia.join(", ")}.`,
+          });
+        }}
       />
 
       <ConfirmDialog

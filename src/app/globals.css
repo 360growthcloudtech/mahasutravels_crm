@@ -154,3 +154,9 @@
     width: 2px;
   }
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+}
