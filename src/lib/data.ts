@@ -409,6 +409,7 @@ export type BookingStatus =
   | "Refunded";
 
 export type Hotel = {
+  hotelTemplateId?: string;
   hotelName: string;
   address: string;
   checkIn: string;
@@ -419,6 +420,22 @@ export type Hotel = {
   referenceNumber: string;
   contactNumber?: string;
   notes?: string;
+};
+
+export type HotelTemplateStatus = "Active" | "Draft" | "Archived";
+
+/** Reusable hotel master — booking stays clone details; masters stay unchanged. */
+export type HotelTemplate = {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  contactNumber: string;
+  defaultRoomType: string;
+  typicalRate: number;
+  notes: string;
+  status: HotelTemplateStatus;
+  updatedAt: string;
 };
 
 export type Booking = {
@@ -450,11 +467,81 @@ export type Booking = {
   history?: LeadHistoryEvent[];
 };
 
+export function cloneStayFromHotelTemplate(
+  template: HotelTemplate,
+  booking?: Pick<Booking, "travelDate" | "returnDate"> | null
+): Hotel {
+  return {
+    hotelTemplateId: template.id,
+    hotelName: template.name,
+    address: template.address,
+    checkIn: booking?.travelDate || "",
+    checkOut: booking?.returnDate || "",
+    roomType: template.defaultRoomType,
+    roomCount: 1,
+    amount: template.typicalRate,
+    referenceNumber: "",
+    contactNumber: template.contactNumber,
+    notes: "",
+  };
+}
+
 export function bookingRoute(b: Pick<Booking, "pickup" | "dropoff" | "tourPackage">) {
   if (b.pickup && b.dropoff) return `${b.pickup} → ${b.dropoff}`;
   if (b.tourPackage) return b.tourPackage;
   return "—";
 }
+
+export const hotelTemplates: HotelTemplate[] = [
+  {
+    id: "HT-1001",
+    name: "Hotel Willow Banks",
+    city: "Shimla",
+    address: "The Mall, Shimla, HP",
+    contactNumber: "+91 94185 22011",
+    defaultRoomType: "Deluxe Mountain View",
+    typicalRate: 3600,
+    notes: "Preferred Shimla property · ask for Mall-facing rooms",
+    status: "Active",
+    updatedAt: "Today",
+  },
+  {
+    id: "HT-1002",
+    name: "Snow Valley Resorts",
+    city: "Manali",
+    address: "Log Huts Rd, Manali, HP",
+    contactNumber: "+91 98160 44521",
+    defaultRoomType: "Family Suite",
+    typicalRate: 7000,
+    notes: "Good for groups · MAP available",
+    status: "Active",
+    updatedAt: "Yesterday",
+  },
+  {
+    id: "HT-1003",
+    name: "Hotel Mount View",
+    city: "Dharamshala",
+    address: "McLeod Ganj Road, Dharamshala, HP",
+    contactNumber: "+91 1892 221098",
+    defaultRoomType: "Standard Twin",
+    typicalRate: 2800,
+    notes: "Near Dalai Lama temple · walkable market",
+    status: "Active",
+    updatedAt: "3 days ago",
+  },
+  {
+    id: "HT-1004",
+    name: "Khajjiar Lake Resort",
+    city: "Dalhousie",
+    address: "Khajjiar Meadows, Dist. Chamba, HP",
+    contactNumber: "+91 98170 88012",
+    defaultRoomType: "Cottage",
+    typicalRate: 4500,
+    notes: "Seasonal rates · confirm meadow view",
+    status: "Draft",
+    updatedAt: "1 week ago",
+  },
+];
 
 const bookingDummyHistory: Record<string, LeadHistoryEvent[]> = {
   "BK-1182": [
@@ -513,6 +600,7 @@ const bookingSeed: Omit<Booking, "history">[] = [
     balance: 6000,
     status: "Advance Received",
     hotel: {
+      hotelTemplateId: "HT-1001",
       hotelName: "Hotel Willow Banks",
       address: "The Mall, Shimla, HP",
       checkIn: "2026-08-18",
@@ -522,6 +610,7 @@ const bookingSeed: Omit<Booking, "history">[] = [
       amount: 7200,
       referenceNumber: "WB-RES-4471",
       contactNumber: "+91 94185 22011",
+      notes: "Confirmed on phone · MAP breakfast · early check-in if ready",
     },
     comments: [
       {
@@ -610,6 +699,7 @@ const bookingSeed: Omit<Booking, "history">[] = [
     balance: 24000,
     status: "Advance Received",
     hotel: {
+      hotelTemplateId: "HT-1002",
       hotelName: "Snow Valley Resorts",
       address: "Log Huts Rd, Manali, HP",
       checkIn: "2026-08-01",
@@ -618,6 +708,7 @@ const bookingSeed: Omit<Booking, "history">[] = [
       roomCount: 3,
       amount: 21000,
       referenceNumber: "SVR-8890",
+      notes: "3 family suites blocked · dinner MAP",
     },
   },
   {
@@ -700,7 +791,7 @@ export type Driver = {
   rcNumber?: string;
   insuranceExpiry?: string;
   commission?: number;
-  status: "Available" | "On Trip" | "Off Duty";
+  status: "Approved" | "Rejected" | "Deactivated";
   rating: number;
   trips: number;
   vendor?: boolean;
@@ -709,12 +800,12 @@ export type Driver = {
 };
 
 export const drivers: Driver[] = [
-  { id: "DR-011", name: "Suresh Thakur", phone: "+91 94180 22110", address: "Sanjauli, Shimla, HP", vehicle: "HP-01-4521", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "HP0120210004521", licenseExpiry: "2028-04-12", rcNumber: "HP01AB4521", insuranceExpiry: "2027-01-15", commission: 12, status: "On Trip", rating: 4.8, trips: 214, documentsVerified: true },
-  { id: "DR-012", name: "Vinod Kumar", phone: "+91 98051 34210", address: "Sector 22, Chandigarh", vehicle: "HR-26-9981", vehicleType: "Ertiga", vehicleCapacity: 6, fuelType: "Petrol", licenseNumber: "HR2620190009981", licenseExpiry: "2026-11-02", rcNumber: "HR26CD9981", insuranceExpiry: "2026-09-30", commission: 10, status: "Available", rating: 4.6, trips: 152, documentsVerified: true },
-  { id: "DR-013", name: "Rakesh Negi", phone: "+91 90154 88231", address: "Kasauli Road, Solan, HP", vehicle: "HP-08-2210", vehicleType: "Swift Dzire", vehicleCapacity: 4, fuelType: "Diesel", licenseNumber: "HP0820180002210", licenseExpiry: "2027-06-18", rcNumber: "HP08EF2210", insuranceExpiry: "2026-12-05", commission: 10, status: "Available", rating: 4.9, trips: 301, documentsVerified: true },
-  { id: "DR-014", name: "Deepak Chand", phone: "+91 88172 09441", address: "Kullu, HP", vehicle: "HP-64-1187", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP6420170001187", licenseExpiry: "2025-08-21", rcNumber: "HP64GH1187", insuranceExpiry: "2026-03-11", commission: 14, status: "On Trip", rating: 4.7, trips: 98, documentsVerified: true },
-  { id: "DR-015", name: "Mohit Sharma", phone: "+91 97290 11023", address: "Vendor fleet · Zirakpur, PB", vehicle: "PB-65-7712", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "PB6520190007712", licenseExpiry: "2027-02-14", rcNumber: "PB65JK7712", insuranceExpiry: "2026-07-20", commission: 18, status: "Off Duty", rating: 4.5, trips: 76, vendor: true, documentsVerified: false, notes: "Pending updated insurance copy" },
-  { id: "DR-016", name: "Ajay Bisht", phone: "+91 96201 44982", address: "Vendor fleet · Kalka, HR", vehicle: "HP-33-5510", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP3320180005510", licenseExpiry: "2028-01-09", rcNumber: "HP33LM5510", insuranceExpiry: "2027-05-17", commission: 16, status: "Available", rating: 4.8, trips: 189, vendor: true, documentsVerified: true },
+  { id: "DR-011", name: "Suresh Thakur", phone: "+91 94180 22110", address: "Sanjauli, Shimla, HP", vehicle: "HP-01-4521", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "HP0120210004521", licenseExpiry: "2028-04-12", rcNumber: "HP01AB4521", insuranceExpiry: "2027-01-15", commission: 12, status: "Approved", rating: 4.8, trips: 214, documentsVerified: true },
+  { id: "DR-012", name: "Vinod Kumar", phone: "+91 98051 34210", address: "Sector 22, Chandigarh", vehicle: "HR-26-9981", vehicleType: "Ertiga", vehicleCapacity: 6, fuelType: "Petrol", licenseNumber: "HR2620190009981", licenseExpiry: "2026-11-02", rcNumber: "HR26CD9981", insuranceExpiry: "2026-09-30", commission: 10, status: "Approved", rating: 4.6, trips: 152, documentsVerified: true },
+  { id: "DR-013", name: "Rakesh Negi", phone: "+91 90154 88231", address: "Kasauli Road, Solan, HP", vehicle: "HP-08-2210", vehicleType: "Swift Dzire", vehicleCapacity: 4, fuelType: "Diesel", licenseNumber: "HP0820180002210", licenseExpiry: "2027-06-18", rcNumber: "HP08EF2210", insuranceExpiry: "2026-12-05", commission: 10, status: "Approved", rating: 4.9, trips: 301, documentsVerified: true },
+  { id: "DR-014", name: "Deepak Chand", phone: "+91 88172 09441", address: "Kullu, HP", vehicle: "HP-64-1187", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP6420170001187", licenseExpiry: "2025-08-21", rcNumber: "HP64GH1187", insuranceExpiry: "2026-03-11", commission: 14, status: "Approved", rating: 4.7, trips: 98, documentsVerified: true },
+  { id: "DR-015", name: "Mohit Sharma", phone: "+91 97290 11023", address: "Vendor fleet · Zirakpur, PB", vehicle: "PB-65-7712", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "PB6520190007712", licenseExpiry: "2027-02-14", rcNumber: "PB65JK7712", insuranceExpiry: "2026-07-20", commission: 18, status: "Rejected", rating: 4.5, trips: 76, vendor: true, documentsVerified: false, notes: "Pending updated insurance copy" },
+  { id: "DR-016", name: "Ajay Bisht", phone: "+91 96201 44982", address: "Vendor fleet · Kalka, HR", vehicle: "HP-33-5510", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP3320180005510", licenseExpiry: "2028-01-09", rcNumber: "HP33LM5510", insuranceExpiry: "2027-05-17", commission: 16, status: "Deactivated", rating: 4.8, trips: 189, vendor: true, documentsVerified: true },
 ];
 
 export type QuoteStage = "Draft" | "Sent" | "Viewed" | "Accepted" | "Expired";
@@ -812,26 +903,6 @@ export const automationRules: AutomationRule[] = [
   { id: "AR-06", trigger: "Booking balance pending after trip completion", action: "Send balance due reminder every 2 days", category: "Payment", enabled: false, firedToday: 0 },
 ];
 
-export type CallLog = {
-  id: string;
-  direction: "Inbound" | "Outbound";
-  customer: string;
-  phone: string;
-  agent: string;
-  duration: string;
-  time: string;
-  status: "Answered" | "Missed" | "Voicemail";
-  recorded: boolean;
-};
-
-export const callLogs: CallLog[] = [
-  { id: "CL-8821", direction: "Inbound", customer: "Ritika Sharma", phone: "+91 98170 22314", agent: "Aman", duration: "4m 12s", time: "Today, 11:42 AM", status: "Answered", recorded: true },
-  { id: "CL-8820", direction: "Outbound", customer: "Karan Bhandari", phone: "+91 90158 77021", agent: "Priya", duration: "2m 05s", time: "Today, 11:10 AM", status: "Answered", recorded: true },
-  { id: "CL-8819", direction: "Inbound", customer: "Unknown caller", phone: "+91 88170 44521", agent: "—", duration: "0s", time: "Today, 10:52 AM", status: "Missed", recorded: false },
-  { id: "CL-8818", direction: "Outbound", customer: "Neha Kapoor", phone: "+91 99889 10234", agent: "Aman", duration: "6m 40s", time: "Today, 10:18 AM", status: "Answered", recorded: true },
-  { id: "CL-8817", direction: "Inbound", customer: "Vivek Thakur", phone: "+91 88170 44521", agent: "Sana", duration: "1m 02s", time: "Today, 09:47 AM", status: "Voicemail", recorded: true },
-];
-
 export type RoleModulePerm = {
   module: string;
   superAdmin: string;
@@ -864,6 +935,9 @@ export const statusColor: Record<string, string> = {
   Available: "teal",
   "On Trip": "marigold",
   "Off Duty": "outline",
+  Approved: "teal",
+  Rejected: "signal",
+  Deactivated: "outline",
   Draft: "outline",
   Active: "teal",
   Archived: "outline",
@@ -875,7 +949,4 @@ export const statusColor: Record<string, string> = {
   "In Progress": "marigold",
   Completed: "teal",
   "Payment Pending": "signal",
-  Answered: "teal",
-  Missed: "signal",
-  Voicemail: "violet",
 };

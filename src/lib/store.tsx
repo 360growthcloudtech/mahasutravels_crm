@@ -7,6 +7,7 @@ import {
   Driver,
   Quote,
   Hotel,
+  HotelTemplate,
   AutomationRule,
   ItineraryTemplate,
   LeadCustomItinerary,
@@ -16,6 +17,7 @@ import {
   quotes as seedQuotes,
   automationRules as seedRules,
   itineraries as seedItineraries,
+  hotelTemplates as seedHotelTemplates,
   genId,
   makeLeadHistoryEvent,
 } from "@/lib/data";
@@ -27,9 +29,10 @@ type State = {
   quotes: Quote[];
   rules: AutomationRule[];
   itineraries: ItineraryTemplate[];
+  hotelTemplates: HotelTemplate[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v12";
+const STORAGE_KEY = "mahasu-crm-state-v14";
 
 function loadInitial(): State {
   return {
@@ -39,6 +42,7 @@ function loadInitial(): State {
     quotes: seedQuotes,
     rules: seedRules,
     itineraries: seedItineraries,
+    hotelTemplates: seedHotelTemplates,
   };
 }
 
@@ -66,6 +70,10 @@ type Ctx = {
   assignLeadItinerary: (leadId: string, templateId: string) => void;
   updateLeadCustomItinerary: (leadId: string, custom: LeadCustomItinerary) => void;
   resetLeadItinerary: (leadId: string) => void;
+  addHotelTemplate: (t: Omit<HotelTemplate, "id" | "updatedAt">) => void;
+  updateHotelTemplate: (id: string, patch: Partial<HotelTemplate>) => void;
+  deleteHotelTemplate: (id: string) => void;
+  duplicateHotelTemplate: (id: string) => void;
   resetDemoData: () => void;
 };
 
@@ -84,6 +92,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ...loadInitial(),
           ...parsed,
           itineraries: parsed.itineraries?.length ? parsed.itineraries : seedItineraries,
+          hotelTemplates: parsed.hotelTemplates?.length
+            ? parsed.hotelTemplates
+            : seedHotelTemplates,
         });
       }
     } catch {
@@ -116,12 +127,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       assignHotel: (bookingId, hotel) =>
         setState((s) => ({
           ...s,
-          bookings: s.bookings.map((x) => (x.id === bookingId ? { ...x, hotel } : x)),
+          bookings: s.bookings.map((x) => {
+            if (x.id !== bookingId) return x;
+            const wasAssigned = Boolean(x.hotel);
+            return {
+              ...x,
+              hotel,
+              history: [
+                makeLeadHistoryEvent(
+                  "note",
+                  wasAssigned ? "Hotel stay updated" : "Hotel assigned",
+                  {
+                    detail: `${hotel.hotelName} · ${hotel.roomCount} room(s)${
+                      hotel.referenceNumber ? ` · ${hotel.referenceNumber}` : ""
+                    }`,
+                  }
+                ),
+                ...(x.history ?? []),
+              ],
+            };
+          }),
         })),
       removeHotel: (bookingId) =>
         setState((s) => ({
           ...s,
-          bookings: s.bookings.map((x) => (x.id === bookingId ? { ...x, hotel: undefined } : x)),
+          bookings: s.bookings.map((x) => {
+            if (x.id !== bookingId) return x;
+            const name = x.hotel?.hotelName;
+            return {
+              ...x,
+              hotel: undefined,
+              history: [
+                makeLeadHistoryEvent("note", "Hotel removed", {
+                  detail: name
+                    ? `${name} detached from booking · optional stay cleared`
+                    : "Hotel detached from booking",
+                }),
+                ...(x.history ?? []),
+              ],
+            };
+          }),
         })),
 
       addDriver: (d) => setState((s) => ({ ...s, drivers: [{ ...d, id: genId("DR") }, ...s.drivers] })),
@@ -229,6 +274,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             };
           }),
         })),
+
+      addHotelTemplate: (t) =>
+        setState((s) => ({
+          ...s,
+          hotelTemplates: [{ ...t, id: genId("HT"), updatedAt: "Just now" }, ...s.hotelTemplates],
+        })),
+      updateHotelTemplate: (id, patch) =>
+        setState((s) => ({
+          ...s,
+          hotelTemplates: s.hotelTemplates.map((x) =>
+            x.id === id ? { ...x, ...patch, updatedAt: "Just now" } : x
+          ),
+        })),
+      deleteHotelTemplate: (id) =>
+        setState((s) => ({
+          ...s,
+          hotelTemplates: s.hotelTemplates.filter((x) => x.id !== id),
+        })),
+      duplicateHotelTemplate: (id) =>
+        setState((s) => {
+          const source = s.hotelTemplates.find((x) => x.id === id);
+          if (!source) return s;
+          const copy: HotelTemplate = {
+            ...source,
+            id: genId("HT"),
+            name: `${source.name} (Copy)`,
+            status: "Draft",
+            updatedAt: "Just now",
+          };
+          return { ...s, hotelTemplates: [copy, ...s.hotelTemplates] };
+        }),
 
       resetDemoData: () => setState(loadInitial()),
     }),

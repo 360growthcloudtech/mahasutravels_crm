@@ -452,6 +452,14 @@ export function BookingFormDialog({
                   onChange={(e) => setHotelField("contactNumber", e.target.value)}
                 />
               </Field>
+              <Field label="Ops notes" className="sm:col-span-2">
+                <Textarea
+                  rows={2}
+                  value={hotel.notes ?? ""}
+                  onChange={(e) => setHotelField("notes", e.target.value)}
+                  placeholder="Confirmation call notes, meal plan…"
+                />
+              </Field>
             </div>
           )}
         </SheetBody>

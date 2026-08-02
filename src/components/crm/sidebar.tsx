@@ -5,12 +5,10 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  CalendarDays,
   Car,
   ClipboardList,
   Route,
   Settings,
-  Phone,
   Compass,
   BedDouble,
 } from "lucide-react";
@@ -23,8 +21,6 @@ const nav = [
   { href: "/itineraries", label: "Itineraries", icon: Route },
   { href: "/hotels", label: "Hotels", icon: BedDouble },
   { href: "/drivers", label: "Drivers & Vehicles", icon: Car },
-  { href: "/calendar", label: "Trip Calendar", icon: CalendarDays },
-  { href: "/calls", label: "Calls", icon: Phone },
 ];
 
 export function Sidebar() {

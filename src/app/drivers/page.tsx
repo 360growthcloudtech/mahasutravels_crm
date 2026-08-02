@@ -52,25 +52,25 @@ export default function DriversPage() {
         <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Available now</p>
+              <p className="text-xs text-muted-foreground">Approved</p>
               <p className="mt-1 font-display text-xl font-semibold text-teal">
-                {drivers.filter((d) => d.status === "Available").length}
+                {drivers.filter((d) => d.status === "Approved").length}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">On trip</p>
-              <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
-                {drivers.filter((d) => d.status === "On Trip").length}
+              <p className="text-xs text-muted-foreground">Rejected</p>
+              <p className="mt-1 font-display text-xl font-semibold text-signal">
+                {drivers.filter((d) => d.status === "Rejected").length}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Vendor vehicles</p>
-              <p className="mt-1 font-display text-xl font-semibold">
-                {drivers.filter((d) => d.vendor).length}
+              <p className="text-xs text-muted-foreground">Deactivated</p>
+              <p className="mt-1 font-display text-xl font-semibold text-slate-soft">
+                {drivers.filter((d) => d.status === "Deactivated").length}
               </p>
             </CardContent>
           </Card>
@@ -193,12 +193,16 @@ export default function DriversPage() {
                     size="sm"
                     className="flex-1"
                     onClick={() => {
-                      const next = d.status === "Available" ? "On Trip" : "Available";
+                      const next = d.status === "Approved" ? "Deactivated" : "Approved";
                       updateDriver(d.id, { status: next });
-                      toast({ variant: "info", title: "Status updated", description: `${d.name} marked as ${next}.` });
+                      toast({
+                        variant: "info",
+                        title: "Status updated",
+                        description: `${d.name} marked as ${next}.`,
+                      });
                     }}
                   >
-                    {d.status === "Available" ? "Mark on trip" : "Mark available"}
+                    {d.status === "Approved" ? "Deactivate" : "Approve"}
                   </Button>
                 </div>
               </CardContent>
