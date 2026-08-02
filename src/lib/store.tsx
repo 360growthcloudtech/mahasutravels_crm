@@ -35,7 +35,7 @@ type State = {
   systemPermissions: SystemPermission[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v16";
+const STORAGE_KEY = "mahasu-crm-state-v17";
 
 function loadInitial(): State {
   return {

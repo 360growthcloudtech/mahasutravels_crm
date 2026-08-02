@@ -1,6 +1,16 @@
 "use client";
 
-import { Users, FileText, ClipboardCheck, IndianRupee, ArrowUpRight, Phone, Plus } from "lucide-react";
+import * as React from "react";
+import Link from "next/link";
+import {
+  Users,
+  FileText,
+  ClipboardCheck,
+  IndianRupee,
+  ArrowUpRight,
+  Phone,
+  Plus,
+} from "lucide-react";
 import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -10,25 +20,137 @@ import { Progress } from "@/components/ui/progress";
 import { RevenueChart } from "@/components/crm/revenue-chart";
 import { RouteProgress } from "@/components/crm/route-progress";
 import { LeadFormDialog } from "@/components/crm/lead-form-dialog";
-import { agents, sourceSplit, makeLeadHistoryEvent } from "@/lib/data";
+import { StatusBadge } from "@/components/crm/status-badge";
+import {
+  DateRangeFilter,
+  DashboardDateRange,
+  bookingOverlapsRange,
+  isoInRange,
+} from "@/components/crm/date-range-filter";
+import { agents, sourceSplit, makeLeadHistoryEvent, bookingRoute, Booking } from "@/lib/data";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 
 const pipelineStages = ["New", "Contacted", "Quoted", "Confirmed"];
 
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isLiveBooking(b: Booking) {
+  return b.status !== "Cancelled" && b.status !== "Refunded";
+}
+
+function formatTripDate(iso: string) {
+  const d = new Date(`${iso}T12:00:00`);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function BookingListCard({
+  title,
+  description,
+  badge,
+  badgeVariant,
+  items,
+  emptyLabel,
+}: {
+  title: string;
+  description: string;
+  badge: string;
+  badgeVariant: "teal" | "marigold" | "violet" | "signal" | "secondary";
+  items: Booking[];
+  emptyLabel: string;
+}) {
+  return (
+    <Card className="flex min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          <Badge variant={badgeVariant}>{badge}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-0 p-0">
+        <div className="max-h-[28rem] overflow-y-auto px-5 pb-4">
+          {items.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+          ) : (
+            <ul className="divide-y divide-border-soft">
+              {items.map((b) => (
+                <li key={b.id} className="flex items-start gap-3 py-3 first:pt-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium text-ink-text">{b.customer}</p>
+                      <span className="shrink-0 font-mono-data text-[11px] text-slate-soft">
+                        {b.id}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {bookingRoute(b)}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className="font-mono-data text-[11px] text-slate">
+                        {formatTripDate(b.travelDate)}
+                        {b.returnDate !== b.travelDate
+                          ? ` – ${formatTripDate(b.returnDate)}`
+                          : ""}
+                      </span>
+                      <StatusBadge status={b.status} />
+                      {b.driver ? (
+                        <span className="truncate text-[11px] text-slate-soft">{b.driver}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="border-t border-border-soft px-5 py-3">
+          <Button asChild variant="outline" size="sm" className="w-full">
+            <Link href="/bookings">View all bookings</Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
   const { state, addLead } = useData();
   const { toast } = useToast();
   const { leads, bookings, quotes } = state;
+  const today = todayISO();
+  const [dateRange, setDateRange] = React.useState<DashboardDateRange>(null);
 
-  const confirmedRevenue = bookings
+  const rangedLeads = leads.filter((l) => isoInRange(l.travelDate, dateRange));
+  const rangedBookings = bookings.filter((b) => bookingOverlapsRange(b, dateRange));
+
+  const confirmedRevenue = rangedBookings
     .filter((b) => b.status !== "Cancelled" && b.status !== "Refunded")
     .reduce((s, b) => s + b.total, 0);
 
+  const ongoingBookings = rangedBookings
+    .filter(
+      (b) =>
+        isLiveBooking(b) && b.travelDate <= today && b.returnDate >= today
+    )
+    .sort((a, b) => a.returnDate.localeCompare(b.returnDate) || a.id.localeCompare(b.id));
+
+  const upcomingBookings = rangedBookings
+    .filter((b) => isLiveBooking(b) && b.travelDate > today)
+    .sort((a, b) => a.travelDate.localeCompare(b.travelDate) || a.id.localeCompare(b.id));
+
   const stats = [
-    { label: "Total leads", value: String(leads.length), delta: "+12%", icon: Users, accent: "marigold" },
+    { label: "Total leads", value: String(rangedLeads.length), delta: "+12%", icon: Users, accent: "marigold" },
     { label: "Quotes sent", value: String(quotes.filter((q) => q.stage !== "Draft").length), delta: "+8%", icon: FileText, accent: "violet" },
-    { label: "Bookings confirmed", value: String(bookings.length), delta: "+5%", icon: ClipboardCheck, accent: "teal" },
+    { label: "Bookings confirmed", value: String(rangedBookings.length), delta: "+5%", icon: ClipboardCheck, accent: "teal" },
     { label: "Revenue on record", value: `₹${confirmedRevenue.toLocaleString("en-IN")}`, delta: "+18%", icon: IndianRupee, accent: "signal" },
   ];
 
@@ -38,27 +160,34 @@ export default function DashboardPage() {
         eyebrow="Overview · Live demo data"
         title="Dashboard"
         action={
-          <LeadFormDialog
-            trigger={
-              <Button variant="marigold">
-                <Plus className="size-4" /> New Lead
-              </Button>
-            }
-            onSubmit={(data) => {
-              addLead({
-                ...data,
-                history: [
-                  makeLeadHistoryEvent("created", "Lead created", {
-                    detail: `Source: ${data.source} · Dummy entry`,
-                  }),
-                  makeLeadHistoryEvent("assigned", `Assigned to ${data.agent}`, {
-                    detail: "Manual assignment on create",
-                  }),
-                ],
-              });
-              toast({ variant: "success", title: "Lead added", description: `${data.name} was added to the pipeline.` });
-            }}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
+            <LeadFormDialog
+              trigger={
+                <Button variant="marigold">
+                  <Plus className="size-4" /> New Lead
+                </Button>
+              }
+              onSubmit={(data) => {
+                addLead({
+                  ...data,
+                  history: [
+                    makeLeadHistoryEvent("created", "Lead created", {
+                      detail: `Source: ${data.source} · Dummy entry`,
+                    }),
+                    makeLeadHistoryEvent("assigned", `Assigned to ${data.agent}`, {
+                      detail: "Manual assignment on create",
+                    }),
+                  ],
+                });
+                toast({
+                  variant: "success",
+                  title: "Lead added",
+                  description: `${data.name} was added to the pipeline.`,
+                });
+              }}
+            />
+          </div>
         }
       />
 
@@ -181,7 +310,7 @@ export default function DashboardPage() {
               <CardDescription>Recent leads moving through the route</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              {leads.slice(0, 3).map((l) => {
+              {rangedLeads.slice(0, 3).map((l) => {
                 const idx = Math.min(pipelineStages.indexOf(l.status), 3);
                 const current = idx === -1 ? 0 : idx;
                 return (
@@ -199,6 +328,25 @@ export default function DashboardPage() {
               })}
             </CardContent>
           </Card>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <BookingListCard
+            title="Ongoing bookings"
+            description="Trips in progress today"
+            badge={`${ongoingBookings.length} active`}
+            badgeVariant="teal"
+            items={ongoingBookings}
+            emptyLabel="No trips are ongoing right now."
+          />
+          <BookingListCard
+            title="Upcoming bookings"
+            description="Departures scheduled after today"
+            badge={`${upcomingBookings.length} upcoming`}
+            badgeVariant="marigold"
+            items={upcomingBookings}
+            emptyLabel="No upcoming bookings on the calendar."
+          />
         </div>
       </main>
     </Shell>
