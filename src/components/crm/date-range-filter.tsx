@@ -15,6 +15,12 @@ import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toStoredDate } from "@/components/crm/date-picker";
 
@@ -112,6 +118,11 @@ export function bookingOverlapsRange(
   return booking.travelDate <= bounds.to && booking.returnDate >= bounds.from;
 }
 
+function presetHoverLabel(id: Exclude<DateRangePresetId, "custom">) {
+  if (id === "all") return "Show every record — no date filter";
+  return formatRangeLabel(rangeForPreset(id));
+}
+
 export function DateRangeFilter({
   value,
   onChange,
@@ -176,55 +187,79 @@ export function DateRangeFilter({
         align={align}
         className="w-auto overflow-hidden p-0 sm:min-w-[28rem]"
       >
-        <div className="flex flex-col sm:flex-row">
-          <div className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-border-soft p-2 sm:w-36 sm:flex-col sm:overflow-visible sm:border-r sm:border-b-0 sm:p-3">
-            {presets.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => applyPreset(p.id)}
-                className={cn(
-                  "whitespace-nowrap rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
-                  activePreset === p.id
-                    ? "bg-secondary font-medium text-ink-text"
-                    : "text-slate hover:bg-secondary/70 hover:text-ink-text"
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+        <TooltipProvider delayDuration={150}>
+          <div className="flex flex-col sm:flex-row">
+            <div className="flex shrink-0 flex-row gap-1 overflow-x-auto border-b border-border-soft p-2 sm:w-36 sm:flex-col sm:overflow-visible sm:border-r sm:border-b-0 sm:p-3">
+              {presets.map((p) => (
+                <Tooltip key={p.id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => applyPreset(p.id)}
+                      className={cn(
+                        "whitespace-nowrap rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+                        activePreset === p.id
+                          ? "bg-secondary font-medium text-ink-text"
+                          : "text-slate hover:bg-secondary/70 hover:text-ink-text"
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="font-mono-data">
+                    {presetHoverLabel(p.id)}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
 
-          <div className="p-2">
-            <Calendar
-              mode="range"
-              numberOfMonths={1}
-              captionLayout="label"
-              weekStartsOn={1}
-              month={month}
-              onMonthChange={setMonth}
-              selected={selected}
-              onSelect={onSelect}
-              modifiers={{
-                weekend: { dayOfWeek: [0, 6] },
-              }}
-              modifiersClassNames={{
-                weekend: "[&>button]:text-signal",
-              }}
-              classNames={{
-                weekday:
-                  "w-8 text-[0.7rem] font-medium text-muted-foreground [&:nth-child(6)]:text-signal [&:nth-child(7)]:text-signal",
-                range_start:
-                  "[&>button]:bg-ink [&>button]:text-white [&>button]:rounded-md",
-                range_end:
-                  "[&>button]:bg-ink [&>button]:text-white [&>button]:rounded-md",
-                range_middle: "[&>button]:bg-secondary [&>button]:rounded-none",
-                selected:
-                  "[&>button]:bg-secondary [&>button]:text-ink-text [&>button]:hover:bg-secondary",
-              }}
-            />
+            <div className="p-2">
+              <Calendar
+                mode="range"
+                numberOfMonths={1}
+                captionLayout="label"
+                weekStartsOn={1}
+                month={month}
+                onMonthChange={setMonth}
+                selected={selected}
+                onSelect={onSelect}
+                modifiers={{
+                  weekend: { dayOfWeek: [0, 6] },
+                }}
+                modifiersClassNames={{
+                  weekend: "[&>button]:text-signal",
+                }}
+                classNames={{
+                  weekday:
+                    "w-8 text-[0.7rem] font-medium text-muted-foreground [&:nth-child(6)]:text-signal [&:nth-child(7)]:text-signal",
+                  range_start:
+                    "[&>button]:bg-ink [&>button]:text-white [&>button]:rounded-md",
+                  range_end:
+                    "[&>button]:bg-ink [&>button]:text-white [&>button]:rounded-md",
+                  range_middle: "[&>button]:bg-secondary [&>button]:rounded-none",
+                  selected:
+                    "[&>button]:bg-secondary [&>button]:text-ink-text [&>button]:hover:bg-secondary",
+                }}
+                components={{
+                  DayButton: ({ day, ...buttonProps }) => (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          {...buttonProps}
+                          className={cn(buttonProps.className)}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {format(day.date, "EEEE, d MMMM yyyy")}
+                      </TooltipContent>
+                    </Tooltip>
+                  ),
+                }}
+              />
+            </div>
           </div>
-        </div>
+        </TooltipProvider>
       </PopoverContent>
     </Popover>
   );

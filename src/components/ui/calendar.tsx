@@ -11,6 +11,7 @@ import "react-day-picker/style.css";
 function Calendar({
   className,
   classNames,
+  components,
   showOutsideDays = true,
   captionLayout = "dropdown",
   startMonth,
@@ -71,6 +72,7 @@ function Calendar({
           const Icon = orientation === "left" ? ChevronLeft : ChevronRight;
           return <Icon className={cn("size-4", chevronClass)} {...chevronProps} />;
         },
+        ...components,
       }}
       {...props}
     />
