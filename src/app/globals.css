@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Mahasu Travels CRM — "Dispatch" design system */
+  --ink: #12172b;
+  --ink-soft: #1b2138;
+  --ink-line: #2a3150;
+  --paper: #f5f6f9;
+  --card: #ffffff;
+  --border: #e3e6ee;
+  --border-soft: #edeff4;
+
+  --ink-text: #12172b;
+  --slate: #5b6478;
+  --slate-soft: #8991a3;
+
+  --marigold: #f5a524;
+  --marigold-ink: #7a4c05;
+  --marigold-soft: #fdf1da;
+  --teal: #0c8f8f;
+  --teal-soft: #e0f5f3;
+  --signal: #e0522f;
+  --signal-soft: #fbe6df;
+  --violet: #6a5acd;
+  --violet-soft: #ecebfb;
+
+  --radius: 0.65rem;
+
+  --background: var(--paper);
+  --foreground: var(--ink-text);
+  --card-foreground: var(--ink-text);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink-text);
+  --primary: var(--ink);
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f4;
+  --secondary-foreground: var(--ink-text);
+  --muted: #eef0f4;
+  --muted-foreground: var(--slate);
+  --accent: var(--marigold-soft);
+  --accent-foreground: var(--marigold-ink);
+  --destructive: var(--signal);
+  --destructive-foreground: #ffffff;
+  --input: var(--border);
+  --ring: var(--marigold);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-line: var(--ink-line);
+  --color-paper: var(--paper);
+  --color-slate: var(--slate);
+  --color-slate-soft: var(--slate-soft);
+  --color-marigold: var(--marigold);
+  --color-marigold-ink: var(--marigold-ink);
+  --color-marigold-soft: var(--marigold-soft);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3, h4 {
+    @apply font-display;
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: var(--marigold-soft);
+    color: var(--marigold-ink);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .font-mono-data {
+    font-family: var(--font-mono);
+  }
+
+  /* Signature motif: the dashed "route line" that threads through status
+     trackers, sidebar rail, and section dividers — a nod to route-based
+     quoting and trip tracking that is the spine of this CRM. */
+  .route-line {
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--border) 0px,
+      var(--border) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+    height: 2px;
+  }
+  .route-line-v {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--ink-line) 0px,
+      var(--ink-line) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+    width: 2px;
+  }
+}
