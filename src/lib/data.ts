@@ -885,24 +885,6 @@ export const sourceSplit = [
   { source: "Manual", value: 13, color: "var(--slate-soft)" },
 ];
 
-export type AutomationRule = {
-  id: string;
-  trigger: string;
-  action: string;
-  category: "Follow-up" | "Trip" | "Payment";
-  enabled: boolean;
-  firedToday: number;
-};
-
-export const automationRules: AutomationRule[] = [
-  { id: "AR-01", trigger: "Quote sent to customer", action: "Create follow-up task for agent, due in 24h", category: "Follow-up", enabled: true, firedToday: 12 },
-  { id: "AR-02", trigger: "No response from lead in 24h", action: "Send WhatsApp reminder + notify agent", category: "Follow-up", enabled: true, firedToday: 7 },
-  { id: "AR-03", trigger: "Travel date is tomorrow", action: "Remind ops team to confirm driver & vehicle details", category: "Trip", enabled: true, firedToday: 3 },
-  { id: "AR-04", trigger: "Advance payment pending 48h before trip", action: "Send payment reminder to customer", category: "Payment", enabled: true, firedToday: 2 },
-  { id: "AR-05", trigger: "Missed inbound call", action: "Create urgent callback task, assign to duty agent", category: "Follow-up", enabled: true, firedToday: 5 },
-  { id: "AR-06", trigger: "Booking balance pending after trip completion", action: "Send balance due reminder every 2 days", category: "Payment", enabled: false, firedToday: 0 },
-];
-
 export type RoleModulePerm = {
   module: string;
   superAdmin: string;
@@ -916,7 +898,6 @@ export const rolePermissions: RoleModulePerm[] = [
   { module: "Bookings", superAdmin: "Full access", admin: "Create, edit, cancel", user: "View, edit own" },
   { module: "Drivers & Vehicles", superAdmin: "Full access", admin: "Add, assign", user: "View only" },
   { module: "Reports & Dashboards", superAdmin: "Full access", admin: "Team dashboard", user: "Own performance" },
-  { module: "Automation Rules", superAdmin: "Full access", admin: "View only", user: "No access" },
 ];
 
 export const statusColor: Record<string, string> = {

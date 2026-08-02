@@ -11,6 +11,7 @@ import {
   Settings,
   Compass,
   BedDouble,
+  UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/bookings", label: "Bookings", icon: ClipboardList },
+  { href: "/assignments", label: "Booking & Drivers", icon: UserRound },
   { href: "/itineraries", label: "Itineraries", icon: Route },
   { href: "/hotels", label: "Hotels", icon: BedDouble },
   { href: "/drivers", label: "Drivers & Vehicles", icon: Car },
@@ -72,16 +74,6 @@ export function Sidebar() {
 
       <div className="px-3 pb-3">
         <div className="route-line mb-3 opacity-20" />
-        <Link
-          href="/automation"
-          className={cn(
-            "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white",
-            pathname === "/automation" && "bg-white/[0.08] text-white"
-          )}
-        >
-          <Route className="size-4" strokeWidth={2} />
-          Automation Rules
-        </Link>
         <Link
           href="/settings"
           className={cn(

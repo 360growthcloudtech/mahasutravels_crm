@@ -45,7 +45,7 @@ import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent } from "@/lib/data";
-import { formatDisplayDate } from "@/components/crm/date-picker";
+import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
 
 const statuses: BookingStatus[] = [
   "Advance Pending",
@@ -125,6 +125,8 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = React.useState<BookingStatus[]>([]);
   const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
   const [hotelFilter, setHotelFilter] = React.useState<Array<"With hotel" | "No hotel">>([]);
+  const [travelFrom, setTravelFrom] = React.useState("");
+  const [travelTo, setTravelTo] = React.useState("");
   const [deleteTarget, setDeleteTarget] = React.useState<Booking | null>(null);
   const [commentBookingId, setCommentBookingId] = React.useState<string | null>(null);
   const [historyBookingId, setHistoryBookingId] = React.useState<string | null>(null);
@@ -154,7 +156,9 @@ export default function BookingsPage() {
     query.trim().length > 0 ||
     statusFilter.length > 0 ||
     driverFilter.length > 0 ||
-    hotelFilter.length > 0;
+    hotelFilter.length > 0 ||
+    travelFrom.length > 0 ||
+    travelTo.length > 0;
 
   const visible = state.bookings.filter((b) => {
     const q = query.trim().toLowerCase();
@@ -173,6 +177,18 @@ export default function BookingsPage() {
         (hotelFilter.includes("With hotel") && withHotel) ||
         (hotelFilter.includes("No hotel") && !withHotel);
       if (!ok) return false;
+    }
+    if (travelFrom || travelTo) {
+      const travel = parseStoredDate(b.travelDate);
+      if (!travel) return false;
+      if (travelFrom) {
+        const from = parseStoredDate(travelFrom);
+        if (from && travel < from) return false;
+      }
+      if (travelTo) {
+        const to = parseStoredDate(travelTo);
+        if (to && travel > to) return false;
+      }
     }
     return true;
   });
@@ -267,7 +283,7 @@ export default function BookingsPage() {
                 />
               </div>
               <MultiFilter
-                label="Status"
+                label="Payment status"
                 options={statuses}
                 selected={statusFilter}
                 onChange={setStatusFilter}
@@ -284,6 +300,22 @@ export default function BookingsPage() {
                 selected={hotelFilter}
                 onChange={setHotelFilter}
               />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-slate-soft">Travel</span>
+                <DatePicker
+                  value={travelFrom}
+                  onChange={setTravelFrom}
+                  placeholder="From"
+                  className="h-8 w-[8.5rem] text-xs"
+                />
+                <span className="text-[11px] text-slate-soft">to</span>
+                <DatePicker
+                  value={travelTo}
+                  onChange={setTravelTo}
+                  placeholder="To"
+                  className="h-8 w-[8.5rem] text-xs"
+                />
+              </div>
               {hasFilters && (
                 <Button
                   variant="ghost"
@@ -294,6 +326,8 @@ export default function BookingsPage() {
                     setStatusFilter([]);
                     setDriverFilter([]);
                     setHotelFilter([]);
+                    setTravelFrom("");
+                    setTravelTo("");
                   }}
                 >
                   <X className="size-3.5" /> Clear filters
@@ -313,7 +347,7 @@ export default function BookingsPage() {
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Total</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Advance</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Balance</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Payment status</TableHead>
                 <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -364,14 +398,14 @@ export default function BookingsPage() {
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
-                          aria-label={`Change status for ${b.customer}`}
+                          aria-label={`Change payment status for ${b.customer}`}
                         >
                           <StatusBadge status={b.status} />
                           <ChevronDown className="size-3.5 text-slate-soft" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                        <DropdownMenuLabel>Set payment status</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {statuses.map((s) => (
                           <DropdownMenuItem
@@ -383,13 +417,13 @@ export default function BookingsPage() {
                                 history: track(
                                   b,
                                   "status_changed",
-                                  `Status changed to ${s}`,
+                                  `Payment status changed to ${s}`,
                                   `${b.status} → ${s} · Dummy tracking`
                                 ),
                               });
                               toast({
                                 variant: "success",
-                                title: "Status updated",
+                                title: "Payment status updated",
                                 description: `${b.id} moved to ${s}.`,
                               });
                             }}

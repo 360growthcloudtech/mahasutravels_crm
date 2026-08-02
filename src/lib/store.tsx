@@ -8,14 +8,12 @@ import {
   Quote,
   Hotel,
   HotelTemplate,
-  AutomationRule,
   ItineraryTemplate,
   LeadCustomItinerary,
   leads as seedLeads,
   bookings as seedBookings,
   drivers as seedDrivers,
   quotes as seedQuotes,
-  automationRules as seedRules,
   itineraries as seedItineraries,
   hotelTemplates as seedHotelTemplates,
   genId,
@@ -27,12 +25,11 @@ type State = {
   bookings: Booking[];
   drivers: Driver[];
   quotes: Quote[];
-  rules: AutomationRule[];
   itineraries: ItineraryTemplate[];
   hotelTemplates: HotelTemplate[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v14";
+const STORAGE_KEY = "mahasu-crm-state-v15";
 
 function loadInitial(): State {
   return {
@@ -40,7 +37,6 @@ function loadInitial(): State {
     bookings: seedBookings,
     drivers: seedDrivers,
     quotes: seedQuotes,
-    rules: seedRules,
     itineraries: seedItineraries,
     hotelTemplates: seedHotelTemplates,
   };
@@ -62,7 +58,6 @@ type Ctx = {
   addQuote: (q: Omit<Quote, "id">) => void;
   updateQuote: (id: string, patch: Partial<Quote>) => void;
   deleteQuote: (id: string) => void;
-  toggleRule: (id: string) => void;
   addItinerary: (t: Omit<ItineraryTemplate, "id" | "updatedAt">) => void;
   updateItinerary: (id: string, patch: Partial<ItineraryTemplate>) => void;
   deleteItinerary: (id: string) => void;
@@ -178,12 +173,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateQuote: (id, patch) =>
         setState((s) => ({ ...s, quotes: s.quotes.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
       deleteQuote: (id) => setState((s) => ({ ...s, quotes: s.quotes.filter((x) => x.id !== id) })),
-
-      toggleRule: (id) =>
-        setState((s) => ({
-          ...s,
-          rules: s.rules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)),
-        })),
 
       addItinerary: (t) =>
         setState((s) => ({

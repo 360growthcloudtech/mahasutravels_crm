@@ -46,7 +46,12 @@ export function DatePicker({
   className?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [month, setMonth] = React.useState<Date>(() => selectedOrNow(value));
   const selected = parseStoredDate(value);
+
+  React.useEffect(() => {
+    if (open) setMonth(selectedOrNow(value));
+  }, [open, value]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -67,6 +72,9 @@ export function DatePicker({
       <PopoverContent align="start" className="w-auto p-0">
         <Calendar
           mode="single"
+          captionLayout="dropdown"
+          month={month}
+          onMonthChange={setMonth}
           selected={selected}
           onSelect={(date) => {
             if (!date) {
@@ -76,9 +84,12 @@ export function DatePicker({
             onChange(toStoredDate(date));
             setOpen(false);
           }}
-          defaultMonth={selected}
         />
       </PopoverContent>
     </Popover>
   );
+}
+
+function selectedOrNow(value?: string) {
+  return parseStoredDate(value) ?? new Date();
 }
