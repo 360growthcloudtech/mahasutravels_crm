@@ -112,6 +112,14 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
   }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
   h1, h2, h3, h4 {
     @apply font-display;
     letter-spacing: -0.02em;
