@@ -1531,10 +1531,10 @@ export function defaultPermissionsForRole(role: MemberRole): string[] {
 export const members: Member[] = [
   {
     id: "MB-001",
-    name: "Priya Anand",
-    email: "priya@mahasutravels.com",
+    name: "Admin",
+    email: "admin@mahasutravels.com",
     phone: "+91 98170 11001",
-    password: "Priya@123",
+    password: "Admin@123",
     department: "Operations",
     role: "Super Admin",
     status: "Active",

@@ -191,17 +191,6 @@ export default function LoginPage() {
                 {loading ? "Signing in…" : "Sign in to dispatch"}
               </Button>
             </form>
-
-            <div className="mt-6 rounded-xl border border-dashed border-border bg-wash px-4 py-3">
-              <p className="font-mono-data text-[10px] tracking-[0.14em] text-slate-soft uppercase">
-                Demo access
-              </p>
-              <p className="mt-1 text-sm text-ink-text">
-                priya@mahasutravels.com
-                <span className="mx-1.5 text-slate-soft">·</span>
-                Priya@123
-              </p>
-            </div>
           </div>
         </div>
       </main>

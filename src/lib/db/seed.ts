@@ -3,9 +3,9 @@ import { getPool } from "@/lib/db";
 
 const DEMO_USERS = [
   {
-    name: "Priya Anand",
-    email: "priya@mahasutravels.com",
-    password: "Priya@123",
+    name: "Admin",
+    email: "admin@mahasutravels.com",
+    password: "Admin@123",
     phone: "+91 98170 11001",
     department: "Operations",
     role: "Super Admin",
