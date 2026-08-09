@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-ink text-white hover:bg-ink-soft",
-        marigold: "bg-marigold text-marigold-ink hover:brightness-95 shadow-sm shadow-marigold/20",
+        marigold: "bg-marigold text-ink hover:brightness-95 shadow-sm shadow-marigold/20",
         destructive: "bg-signal text-white hover:brightness-95",
         outline: "border border-border bg-card hover:bg-secondary text-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70",

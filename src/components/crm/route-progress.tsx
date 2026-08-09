@@ -21,7 +21,7 @@ export function RouteProgress({
                 className={cn(
                   "flex size-5 items-center justify-center rounded-full border-2 text-[9px] font-semibold",
                   done && "border-teal bg-teal text-white",
-                  active && "border-marigold bg-marigold text-marigold-ink",
+                  active && "border-marigold bg-marigold text-ink",
                   !done && !active && "border-border bg-card text-slate-soft"
                 )}
               >

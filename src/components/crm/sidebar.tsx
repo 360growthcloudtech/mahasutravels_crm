@@ -232,7 +232,7 @@ export function Sidebar({
                 collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
               )}
             >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-marigold-ink">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-ink">
                 {initials}
               </div>
               {!collapsed ? (
@@ -336,7 +336,7 @@ export function MobileNav({
             Roles & Permissions
           </Link>
           <div className="mt-3 flex items-center gap-3 rounded-md bg-white/[0.05] px-3 py-2.5">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-marigold-ink">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-ink">
               {initials}
             </div>
             <div className="min-w-0">
