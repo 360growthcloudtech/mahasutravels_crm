@@ -45,6 +45,7 @@ import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { ItineraryStatus, ItineraryTemplate } from "@/lib/data";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 const statuses: ItineraryStatus[] = ["Active", "Draft", "Archived"];
 
@@ -105,7 +106,6 @@ export default function ItinerariesPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Itinerary library · Master templates"
         title="Itineraries"
         action={
           <Button variant="marigold" size="sm" onClick={openCreate}>
@@ -114,7 +114,7 @@ export default function ItinerariesPage() {
         }
       />
 
-      <main className="flex min-h-0 flex-1 flex-col px-6 py-6 lg:px-8">
+      <main className="page-pad flex min-h-0 flex-1 flex-col">
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -154,7 +154,7 @@ export default function ItinerariesPage() {
           </CardContent>
         </Card>
 
-        <div className="sticky top-0 z-10 -mx-6 mb-3 border-b border-border-soft bg-paper px-6 py-3 lg:-mx-8 lg:px-8">
+        <div className="sticky top-0 z-10 -mx-4 mb-3 border-b border-border-soft bg-paper px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
               <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-slate-soft" />
@@ -209,7 +209,7 @@ export default function ItinerariesPage() {
         </div>
 
         <Card className="min-h-0 flex-1 overflow-hidden">
-          <div className="h-full overflow-auto">
+          <div className="hidden h-full overflow-auto md:block">
             <Table containerClassName="min-w-[52rem]">
               <TableHeader>
                 <TableRow>
@@ -324,6 +324,55 @@ export default function ItinerariesPage() {
                 )}
               </TableBody>
             </Table>
+          </div>
+
+          <div className="space-y-3 p-3 md:hidden">
+            {filtered.length === 0 ? (
+              <p className="py-10 text-center text-sm text-slate-soft">
+                No itinerary templates match your filters.
+              </p>
+            ) : (
+              filtered.map((t) => (
+                <RecordCard key={t.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold break-words text-ink-text">{t.name}</p>
+                      <p className="font-mono-data text-[11px] text-slate-soft">{t.id}</p>
+                      {t.subtitle ? <p className="mt-0.5 text-xs text-slate">{t.subtitle}</p> : null}
+                    </div>
+                    <StatusBadge status={t.status} />
+                  </div>
+                  <InfoGrid>
+                    <InfoItem label="Package" className="sm:col-span-2">
+                      {t.tourPackage}
+                    </InfoItem>
+                    <InfoItem label="Duration">
+                      {t.nights}N / {t.days}D
+                    </InfoItem>
+                    <InfoItem label="From">₹{t.startingFrom.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Updated">{t.updatedAt}</InfoItem>
+                  </InfoGrid>
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    <Button size="sm" variant="outline" onClick={() => openEdit(t)}>
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        duplicateItinerary(t.id);
+                        toast({ variant: "success", title: "Template duplicated", description: `${t.name} (Copy)` });
+                      }}
+                    >
+                      <Copy className="size-3.5" /> Duplicate
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(t)}>
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                  </div>
+                </RecordCard>
+              ))
+            )}
           </div>
         </Card>
       </main>

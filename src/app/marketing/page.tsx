@@ -41,6 +41,7 @@ import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { AdPlatform, AdSpendEntry, trackedWebsites } from "@/lib/data";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 const platformsList: AdPlatform[] = [
   "Google Ads",
@@ -157,7 +158,6 @@ export default function MarketingPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Campaign Tracking & Ad Budgets"
         title="Ad Spend & Marketing"
         action={
           <AdSpendDialog
@@ -178,7 +178,7 @@ export default function MarketingPage() {
         }
       />
 
-      <main className="flex h-[calc(100dvh-4.75rem)] flex-col overflow-hidden px-6 py-6 lg:px-8">
+      <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -262,6 +262,7 @@ export default function MarketingPage() {
             </div>
           </div>
 
+          <div className="hidden min-h-0 flex-1 md:block">
           <Table containerClassName="min-h-0 flex-1 overflow-auto">
             <TableHeader>
               <TableRow className="group hover:bg-transparent">
@@ -357,6 +358,67 @@ export default function MarketingPage() {
               )}
             </TableBody>
           </Table>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
+            {visibleSpends.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No ad spend records match the current filters.
+              </p>
+            ) : (
+              visibleSpends.map((s) => (
+                <RecordCard key={s.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-base font-semibold break-words text-ink-text">
+                      {s.campaignName || "General Marketing Budget"}
+                    </p>
+                    <Badge
+                      variant={
+                        s.platform === "Google Ads"
+                          ? "marigold"
+                          : s.platform === "Meta Ads"
+                            ? "violet"
+                            : "teal"
+                      }
+                    >
+                      {s.platform}
+                    </Badge>
+                  </div>
+                  <InfoGrid>
+                    <InfoItem label="Website">{s.website || "—"}</InfoItem>
+                    <InfoItem label="Date">{s.date}</InfoItem>
+                    <InfoItem label="Amount">₹{s.amount.toLocaleString("en-IN")}</InfoItem>
+                    {s.notes ? (
+                      <InfoItem label="Notes" className="sm:col-span-2">
+                        {s.notes}
+                      </InfoItem>
+                    ) : null}
+                  </InfoGrid>
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    <AdSpendDialog
+                      spend={s}
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Pencil className="size-3.5" /> Edit
+                        </Button>
+                      }
+                      onSubmit={(data) => {
+                        updateAdSpend(s.id, data);
+                        toast({
+                          variant: "success",
+                          title: "Ad Spend Updated",
+                          description: `Updated entry for ${data.platform}.`,
+                        });
+                      }}
+                    />
+                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(s)}>
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                  </div>
+                </RecordCard>
+              ))
+            )}
+          </div>
         </Card>
       </main>
 

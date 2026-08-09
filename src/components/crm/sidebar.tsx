@@ -16,7 +16,9 @@ import {
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from "lucide-react";
+import { getSession, logout, type AuthSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -24,8 +26,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetBody,
+} from "@/components/ui/sheet";
 
-const nav = [
+export const crmNav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/bookings", label: "Bookings", icon: ClipboardList },
@@ -93,6 +102,20 @@ export function Sidebar({
   animate?: boolean;
 }) {
   const pathname = usePathname();
+  const [session, setSession] = React.useState<AuthSession | null>(null);
+
+  React.useEffect(() => {
+    setSession(getSession());
+  }, []);
+
+  const displayName = session?.name ?? "Priya Anand";
+  const displayRole = session?.role ?? "Super Admin";
+  const initials = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -132,7 +155,7 @@ export function Sidebar({
             collapsed ? "px-2" : "px-3"
           )}
         >
-          {nav.map((item) => {
+          {crmNav.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
             return (
@@ -202,7 +225,7 @@ export function Sidebar({
             </button>
           </NavLabel>
 
-          <NavLabel collapsed={collapsed} label="Priya Anand · Super Admin">
+          <NavLabel collapsed={collapsed} label={`${displayName} · ${displayRole}`}>
             <div
               className={cn(
                 "mt-3 flex items-center rounded-md bg-white/[0.05]",
@@ -210,19 +233,128 @@ export function Sidebar({
               )}
             >
               <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-marigold-ink">
-                PA
+                {initials}
               </div>
               {!collapsed ? (
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium text-white">Priya Anand</p>
-                  <p className="truncate text-[11px] text-white/40">Super Admin</p>
+                  <p className="truncate text-xs font-medium text-white">{displayName}</p>
+                  <p className="truncate text-[11px] text-white/40">{displayRole}</p>
                 </div>
               ) : null}
             </div>
           </NavLabel>
+
+          <NavLabel collapsed={collapsed} label="Logout">
+            <button
+              type="button"
+              onClick={logout}
+              className={cn(
+                "mt-1 flex w-full items-center rounded-md py-2.5 text-sm font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white",
+                collapsed ? "justify-center px-0" : "gap-3 px-3"
+              )}
+            >
+              <LogOut className="size-4 shrink-0" strokeWidth={2} />
+              {!collapsed ? <span>Logout</span> : null}
+            </button>
+          </NavLabel>
         </div>
       </aside>
     </TooltipProvider>
+  );
+}
+
+export function MobileNav({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const pathname = usePathname();
+  const [session, setSession] = React.useState<AuthSession | null>(null);
+
+  React.useEffect(() => {
+    setSession(getSession());
+  }, []);
+
+  const displayName = session?.name ?? "Priya Anand";
+  const displayRole = session?.role ?? "Super Admin";
+  const initials = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="left" className="w-[min(20rem,100%)] bg-ink p-0 text-white sm:max-w-xs">
+        <SheetHeader className="border-white/10 px-4 py-5 pr-12">
+          <SheetTitle className="flex items-center gap-2.5 text-white">
+            <span className="flex size-9 items-center justify-center rounded-md bg-marigold text-ink">
+              <Compass className="size-5" strokeWidth={2.25} />
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="block font-display text-[15px] font-semibold leading-tight">
+                Mahasu Travels
+              </span>
+              <span className="block font-mono-data text-[11px] font-normal tracking-[0.16em] text-white/40 uppercase">
+                Dispatch CRM
+              </span>
+            </span>
+          </SheetTitle>
+        </SheetHeader>
+        <SheetBody className="flex flex-col gap-0.5 px-3 py-3">
+          {crmNav.map((item) => {
+            const active = pathname === item.href;
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => onOpenChange(false)}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white",
+                  active && "bg-white/[0.1] text-white"
+                )}
+              >
+                <Icon className="size-4 shrink-0" strokeWidth={2} />
+                <span className="break-words">{item.label}</span>
+              </Link>
+            );
+          })}
+          <div className="route-line my-3 opacity-20" />
+          <Link
+            href="/settings"
+            onClick={() => onOpenChange(false)}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white",
+              pathname === "/settings" && "bg-white/[0.1] text-white"
+            )}
+          >
+            <Settings className="size-4 shrink-0" strokeWidth={2} />
+            Roles & Permissions
+          </Link>
+          <div className="mt-3 flex items-center gap-3 rounded-md bg-white/[0.05] px-3 py-2.5">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-marigold-ink">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium text-white">{displayName}</p>
+              <p className="truncate text-[11px] text-white/40">{displayRole}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={logout}
+            className="mt-2 flex w-full items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <LogOut className="size-4 shrink-0" strokeWidth={2} />
+            Logout
+          </button>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 

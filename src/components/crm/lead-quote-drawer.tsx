@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, FileText, Mail, MessageCircle, Pencil, RotateCcw, Send } from "lucide-react";
+import { FileText, MessageCircle, Pencil, RotateCcw, Send } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -29,14 +29,6 @@ import {
   cloneItineraryFromTemplate,
   matchItineraryTemplate,
 } from "@/lib/data";
-import { cn } from "@/lib/utils";
-
-const channels = [
-  { id: "WhatsApp" as const, label: "WhatsApp", icon: MessageCircle },
-  { id: "PDF" as const, label: "PDF", icon: FileText },
-  { id: "Email" as const, label: "Email", icon: Mail },
-];
-
 function leadRoute(lead: Lead) {
   if (lead.pickup && lead.dropoff) return `${lead.pickup} → ${lead.dropoff}`;
   return lead.tourPackage;
@@ -70,7 +62,6 @@ export function LeadQuoteDrawer({
 }) {
   const [amount, setAmount] = React.useState(0);
   const [note, setNote] = React.useState("");
-  const [sentVia, setSentVia] = React.useState<Quote["sentVia"]>(["WhatsApp"]);
   const [customizeOpen, setCustomizeOpen] = React.useState(false);
   const [customizeDraft, setCustomizeDraft] = React.useState<LeadCustomItinerary | null>(null);
 
@@ -79,7 +70,6 @@ export function LeadQuoteDrawer({
     const estimated = estimateCabPrice(lead.cabType, lead.days) || lead.budget;
     setAmount(estimated);
     setNote(lead.tourPlan || "");
-    setSentVia(["WhatsApp"]);
   }, [open, lead]);
 
   const leadQuotes = lead
@@ -99,28 +89,12 @@ export function LeadQuoteDrawer({
   const isCustomized = Boolean(lead?.customItinerary);
   const dayCount = lead?.customItinerary?.daysPlan.length ?? matchedTemplate?.daysPlan.length ?? 0;
 
-  function toggleChannel(channel: Quote["sentVia"][number]) {
-    setSentVia((prev) =>
-      prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel]
-    );
-  }
-
-  function openProposal() {
-    if (!lead) return;
-    const url = `/proposal/${lead.id}?amount=${encodeURIComponent(String(amount || lead.budget))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
   function submit(saveAsDraft: boolean) {
     if (!lead || amount <= 0) return;
-    if (!saveAsDraft && sentVia.length === 0) return;
-    if (!saveAsDraft && sentVia.includes("PDF")) {
-      openProposal();
-    }
     onSend({
       amount,
       note: note.trim(),
-      sentVia: saveAsDraft ? [] : sentVia,
+      sentVia: saveAsDraft ? [] : ["WhatsApp"],
       saveAsDraft,
     });
   }
@@ -157,7 +131,7 @@ export function LeadQuoteDrawer({
                   <StatusBadge status={lead.status} />
                 </div>
                 <SheetDescription>
-                  {lead.id} · Prefills from this lead — preview PDF with template or guest copy
+                  {lead.id} · Prefills from this lead — send quote on WhatsApp
                 </SheetDescription>
               </>
             )}
@@ -258,35 +232,10 @@ export function LeadQuoteDrawer({
                 />
               </Field>
 
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-ink-text">Send via</p>
-                <div className="flex flex-wrap gap-2">
-                  {channels.map((c) => {
-                    const active = sentVia.includes(c.id);
-                    const Icon = c.icon;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => toggleChannel(c.id)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors",
-                          active
-                            ? "border-marigold bg-marigold-soft text-marigold-ink"
-                            : "border-border bg-card text-slate hover:bg-secondary"
-                        )}
-                      >
-                        <Icon className="size-3.5" />
-                        {c.label}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="flex items-center gap-2 rounded-md border border-marigold bg-marigold-soft px-3 py-2 text-sm text-marigold-ink">
+                <MessageCircle className="size-4 shrink-0" />
+                Send via WhatsApp
               </div>
-
-              <Button type="button" variant="outline" className="w-full" onClick={openProposal}>
-                <ExternalLink className="size-3.5" /> Preview PDF proposal
-              </Button>
             </div>
 
             {leadQuotes.length > 0 && (
@@ -306,7 +255,7 @@ export function LeadQuoteDrawer({
                           ₹{q.amount.toLocaleString("en-IN")}
                         </p>
                         {q.sentVia.length > 0 ? (
-                          <p className="text-[11px] text-slate-soft">{q.sentVia.join(" · ")}</p>
+                          <p className="text-[11px] text-slate-soft">WhatsApp</p>
                         ) : (
                           <p className="text-[11px] text-slate-soft">Not sent</p>
                         )}
@@ -325,7 +274,7 @@ export function LeadQuoteDrawer({
             </Button>
             <Button
               variant="marigold"
-              disabled={amount <= 0 || sentVia.length === 0}
+              disabled={amount <= 0}
               onClick={() => submit(false)}
             >
               <Send className="size-3.5" /> Send quote

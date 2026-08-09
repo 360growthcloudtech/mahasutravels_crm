@@ -89,13 +89,13 @@ function BookingListCard({
               {items.map((b) => (
                 <li key={b.id} className="flex items-start gap-3 py-3 first:pt-0">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-medium text-ink-text">{b.customer}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium break-words text-ink-text">{b.customer}</p>
                       <span className="shrink-0 font-mono-data text-[11px] text-slate-soft">
                         {b.id}
                       </span>
                     </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    <p className="mt-0.5 text-xs break-words text-muted-foreground">
                       {bookingRoute(b)}
                     </p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -213,7 +213,6 @@ export default function DashboardPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow={selectedWebsite ? `Filtered by ${selectedWebsite}` : "Overview · All 5 Web Portals"}
         title="Dashboard"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -249,7 +248,7 @@ export default function DashboardPage() {
         }
       />
 
-      <main className="px-6 py-6 lg:px-8">
+      <main className="page-pad">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((s) => (
             <Card key={s.label} className="overflow-hidden">

@@ -46,6 +46,7 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 const websiteNames = trackedWebsites.map((w) => w.name);
 
@@ -207,7 +208,6 @@ export default function BookingsPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Module 9 & 12 · Bookings, payments & hotel add-on"
         title="Bookings"
         action={
           <BookingFormDialog
@@ -243,7 +243,7 @@ export default function BookingsPage() {
         }
       />
 
-      <main className="flex h-[calc(100dvh-4.75rem)] flex-col overflow-hidden px-6 py-6 lg:px-8">
+      <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -348,6 +348,7 @@ export default function BookingsPage() {
             </div>
           </div>
 
+          <div className="hidden min-h-0 flex-1 md:block">
           <Table containerClassName="min-h-0 flex-1 overflow-auto">
             <TableHeader>
               <TableRow className="group hover:bg-transparent">
@@ -525,7 +526,131 @@ export default function BookingsPage() {
               )}
             </TableBody>
           </Table>
-          <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-5 py-3 text-xs text-muted-foreground">
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
+            {visible.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No bookings match these filters.
+              </p>
+            ) : (
+              visible.map((b) => (
+                <RecordCard key={b.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-base font-semibold break-words text-ink-text">
+                        {b.customer}
+                        {b.hotel ? <BedDouble className="size-3.5 shrink-0 text-marigold-ink" /> : null}
+                      </p>
+                      <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="inline-flex items-center gap-1">
+                          <StatusBadge status={b.status} />
+                          <ChevronDown className="size-3.5 text-slate-soft" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Set payment status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {statuses.map((s) => (
+                          <DropdownMenuItem
+                            key={s}
+                            disabled={s === b.status}
+                            onSelect={() => {
+                              updateBooking(b.id, {
+                                status: s,
+                                history: track(
+                                  b,
+                                  "status_changed",
+                                  `Payment status changed to ${s}`,
+                                  `${b.status} → ${s} · Dummy tracking`
+                                ),
+                              });
+                              toast({
+                                variant: "success",
+                                title: "Payment status updated",
+                                description: `${b.id} moved to ${s}.`,
+                              });
+                            }}
+                          >
+                            <StatusBadge status={s} />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <InfoGrid>
+                    <InfoItem label="Tour package" className="sm:col-span-2">
+                      {b.tourPackage}
+                    </InfoItem>
+                    <InfoItem label="Route" className="sm:col-span-2">
+                      {bookingRoute(b)}
+                    </InfoItem>
+                    <InfoItem label="Travel dates">
+                      {formatDisplayDate(b.travelDate)}
+                      {b.returnDate ? ` → ${formatDisplayDate(b.returnDate)}` : ""}
+                    </InfoItem>
+                    <InfoItem label="Cab / pax / days">
+                      {b.cabType} · {b.adults}A{b.kids > 0 ? `+${b.kids}K` : ""} · {b.days}d
+                    </InfoItem>
+                    <InfoItem label="Driver">{b.driver || "—"}</InfoItem>
+                    <InfoItem label="Vehicle">{b.vehicle || "—"}</InfoItem>
+                    <InfoItem label="Total">₹{b.total.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Advance">₹{b.advance.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Balance">
+                      {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
+                    </InfoItem>
+                    {b.hotel ? (
+                      <InfoItem label="Hotel" className="sm:col-span-2">
+                        {b.hotel.hotelName}
+                      </InfoItem>
+                    ) : null}
+                  </InfoGrid>
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    <Button size="sm" variant="outline" onClick={() => setHistoryBookingId(b.id)}>
+                      <History className="size-3.5" /> History
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setCommentBookingId(b.id)}>
+                      <MessageCircle className="size-3.5" /> Comments
+                    </Button>
+                    <BookingFormDialog
+                      booking={b}
+                      drivers={state.drivers}
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Pencil className="size-3.5" /> Edit
+                        </Button>
+                      }
+                      onSubmit={(data) => {
+                        updateBooking(b.id, {
+                          ...data,
+                          history: track(
+                            b,
+                            "updated",
+                            "Booking details updated",
+                            data.hotel
+                              ? `Dummy · hotel ${data.hotel.hotelName || "assigned"}`
+                              : "Dummy · edited by Priya"
+                          ),
+                        });
+                        toast({
+                          variant: "success",
+                          title: "Booking updated",
+                          description: `${b.id} saved successfully.`,
+                        });
+                      }}
+                    />
+                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(b)}>
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                  </div>
+                </RecordCard>
+              ))
+            )}
+          </div>
+          <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-4 py-3 text-xs text-muted-foreground sm:px-5">
             <span>
               Showing {visible.length} of {state.bookings.length} bookings
             </span>

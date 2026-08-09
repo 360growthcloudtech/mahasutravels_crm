@@ -6,10 +6,12 @@ import {
   Bell,
   CalendarCheck,
   ClipboardCheck,
+  Menu,
   MessageSquare,
   Search,
   UserPlus,
 } from "lucide-react";
+import { useOpenMobileNav } from "@/components/crm/shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -117,6 +119,7 @@ export function Topbar({
   const [open, setOpen] = React.useState(false);
   const [items, setItems] = React.useState(seedNotifications);
   const unreadCount = items.filter((n) => n.unread).length;
+  const openMobileNav = useOpenMobileNav();
 
   function markAllRead() {
     setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
@@ -129,34 +132,51 @@ export function Topbar({
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-border bg-paper/85 px-6 py-4 backdrop-blur-sm lg:px-8">
-        <div className="min-w-0 flex-1">
-          {eyebrow && (
-            <p className="font-mono-data text-[11px] uppercase tracking-[0.14em] text-slate-soft">
-              {eyebrow}
-            </p>
-          )}
-          <h1 className="truncate font-display text-xl font-semibold text-ink-text">{title}</h1>
-        </div>
+      <header className="sticky top-0 z-30 border-b border-border bg-paper/90 backdrop-blur-sm">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={openMobileNav}
+            aria-label="Open menu"
+            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-slate transition-colors hover:bg-secondary lg:hidden"
+          >
+            <Menu className="size-4" />
+          </button>
 
-        <div className="relative hidden w-72 md:block">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-soft" />
-          <Input placeholder="Search leads, bookings, drivers…" className="pl-9" />
-        </div>
+          <div className="min-w-0 flex-1">
+            {eyebrow && (
+              <p className="font-mono-data truncate text-[10px] tracking-[0.14em] text-slate-soft uppercase sm:text-[11px]">
+                {eyebrow}
+              </p>
+            )}
+            <h1 className="truncate font-display text-lg font-semibold text-ink-text sm:text-xl">
+              {title}
+            </h1>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Open notifications"
-          className="relative flex size-9 items-center justify-center rounded-md border border-border bg-card text-slate transition-colors hover:bg-secondary"
-        >
-          <Bell className="size-4" />
-          {unreadCount > 0 ? (
-            <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-signal" />
+          <div className="relative hidden w-56 lg:block lg:w-72">
+            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-soft" />
+            <Input placeholder="Search leads, bookings, drivers…" className="pl-9" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Open notifications"
+            className="relative flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-slate transition-colors hover:bg-secondary"
+          >
+            <Bell className="size-4" />
+            {unreadCount > 0 ? (
+              <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-signal" />
+            ) : null}
+          </button>
+
+          {action ? (
+            <div className="ml-auto flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
+              {action}
+            </div>
           ) : null}
-        </button>
-
-        {action}
+        </div>
       </header>
 
       <Sheet open={open} onOpenChange={setOpen}>

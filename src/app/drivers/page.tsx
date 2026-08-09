@@ -31,7 +31,6 @@ export default function DriversPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Module 10 · Driver & vehicle management"
         title="Drivers & Vehicles"
         action={
           <DriverFormDialog
@@ -48,7 +47,7 @@ export default function DriversPage() {
         }
       />
 
-      <main className="px-6 py-6 lg:px-8">
+      <main className="page-pad">
         <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">

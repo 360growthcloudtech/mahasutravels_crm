@@ -42,6 +42,7 @@ import {
   HotelTemplateFormState,
 } from "@/components/crm/hotel-template-form-dialog";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { HotelTemplate, HotelTemplateStatus } from "@/lib/data";
@@ -112,7 +113,6 @@ export default function HotelsPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Module 12 · Master hotel templates"
         title="Hotels"
         action={
           <Button variant="marigold" size="sm" onClick={openCreateTemplate}>
@@ -121,7 +121,7 @@ export default function HotelsPage() {
         }
       />
 
-      <main className="px-6 py-6 lg:px-8">
+      <main className="page-pad">
         <Card className="mb-4 border-dashed">
           <CardContent className="flex items-start gap-3 p-4">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-marigold-soft text-marigold-ink">
@@ -220,7 +220,7 @@ export default function HotelsPage() {
         </div>
 
         <Card className="overflow-hidden">
-          <div className="overflow-auto">
+          <div className="hidden overflow-auto md:block">
             <Table containerClassName="min-w-[48rem]">
               <TableHeader>
                 <TableRow>
@@ -334,6 +334,59 @@ export default function HotelsPage() {
                 )}
               </TableBody>
             </Table>
+          </div>
+
+          <div className="space-y-3 p-3 md:hidden">
+            {filteredTemplates.length === 0 ? (
+              <p className="py-10 text-center text-sm text-slate-soft">
+                No hotel templates match. Create a master template to get started.
+              </p>
+            ) : (
+              filteredTemplates.map((t) => (
+                <RecordCard key={t.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold break-words text-ink-text">{t.name}</p>
+                      <p className="font-mono-data text-[11px] text-slate-soft">{t.id}</p>
+                    </div>
+                    <StatusBadge status={t.status} />
+                  </div>
+                  <InfoGrid>
+                    <InfoItem label="City">{t.city || "—"}</InfoItem>
+                    <InfoItem label="Typical rate">₹{t.typicalRate.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Default room" className="sm:col-span-2">
+                      {t.defaultRoomType || "—"}
+                    </InfoItem>
+                    <InfoItem label="Address" className="sm:col-span-2">
+                      {t.address || "—"}
+                    </InfoItem>
+                    <InfoItem label="Updated">{t.updatedAt}</InfoItem>
+                  </InfoGrid>
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    <Button size="sm" variant="outline" onClick={() => openEditTemplate(t)}>
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        duplicateHotelTemplate(t.id);
+                        toast({
+                          variant: "success",
+                          title: "Template duplicated",
+                          description: `${t.name} (Copy) as Draft`,
+                        });
+                      }}
+                    >
+                      <Copy className="size-3.5" /> Duplicate
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTemplate(t)}>
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                  </div>
+                </RecordCard>
+              ))
+            )}
           </div>
         </Card>
       </main>

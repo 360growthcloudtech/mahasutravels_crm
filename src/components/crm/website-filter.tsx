@@ -25,9 +25,9 @@ export function WebsiteFilter({ value, onChange }: WebsiteFilterProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 gap-2 px-3 text-xs font-medium">
+        <Button variant="outline" size="sm" className="h-9 w-full gap-2 px-3 text-xs font-medium sm:w-auto">
           <Globe className="size-3.5 text-muted-foreground text-teal" />
-          <span className="truncate max-w-[140px]">
+          <span className="max-w-[min(100%,14rem)] truncate sm:max-w-[140px]">
             {activeWebsite ? activeWebsite.name : "All Websites"}
           </span>
           <ChevronDown className="size-3 text-muted-foreground opacity-70" />

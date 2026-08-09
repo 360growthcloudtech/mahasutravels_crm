@@ -108,8 +108,11 @@
   * {
     @apply border-border;
   }
+  html {
+    overflow-x: clip;
+  }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply min-h-dvh bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
   }
   button:not(:disabled),
@@ -136,6 +139,10 @@
   }
   .font-mono-data {
     font-family: var(--font-mono);
+  }
+
+  .page-pad {
+    @apply px-4 py-4 sm:px-6 lg:px-8;
   }
 
   /* Signature motif: the dashed "route line" that threads through status
@@ -165,6 +172,20 @@
 
 @media print {
   @page {
-    margin: 12mm;
+    margin: 10mm;
   }
+  .proposal-print,
+  .proposal-sheet {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+.proposal-copy p + p {
+  margin-top: 0.6em;
+}
+.proposal-copy ul {
+  margin-top: 0.5em;
+  list-style: disc;
+  padding-left: 1.1em;
 }

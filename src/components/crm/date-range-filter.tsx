@@ -172,7 +172,7 @@ export function DateRangeFilter({
           type="button"
           variant="outline"
           className={cn(
-            "h-9 min-w-[11rem] justify-between gap-2 px-3 font-normal shadow-xs",
+            "h-9 w-full min-w-0 justify-between gap-2 px-3 font-normal shadow-xs sm:w-auto sm:min-w-[11rem]",
             className
           )}
         >
@@ -185,7 +185,7 @@ export function DateRangeFilter({
       </PopoverTrigger>
       <PopoverContent
         align={align}
-        className="w-auto overflow-hidden p-0 sm:min-w-[28rem]"
+        className="w-[min(100vw-1.5rem,28rem)] overflow-hidden p-0 sm:w-auto sm:min-w-[28rem]"
       >
         <TooltipProvider delayDuration={150}>
           <div className="flex flex-col sm:flex-row">

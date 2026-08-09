@@ -48,6 +48,7 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { agents, Lead, LeadStatus, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
 import { formatDisplayDate } from "@/components/crm/date-picker";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 const statuses: LeadStatus[] = ["New", "Contacted", "Quoted", "Follow-up", "Confirmed", "Lost"];
 const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
@@ -175,7 +176,6 @@ export default function LeadsPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Module 1–3 · Capture, dedupe, assignment"
         title="Leads"
         action={
           <LeadFormDialog
@@ -202,7 +202,7 @@ export default function LeadsPage() {
         }
       />
 
-      <main className="flex h-[calc(100dvh-4.75rem)] flex-col overflow-hidden px-6 py-6 lg:px-8">
+      <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -289,6 +289,7 @@ export default function LeadsPage() {
             </div>
           </div>
 
+          <div className="hidden min-h-0 flex-1 md:block">
           <Table containerClassName="min-h-0 flex-1 overflow-auto">
             <TableHeader>
               <TableRow className="group hover:bg-transparent">
@@ -481,7 +482,121 @@ export default function LeadsPage() {
               )}
             </TableBody>
           </Table>
-          <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-5 py-3 text-xs text-muted-foreground">
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
+            {visible.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No leads match these filters.
+              </p>
+            ) : (
+              visible.map((l) => (
+                <RecordCard key={l.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-base font-semibold break-words text-ink-text">{l.name}</p>
+                        {l.duplicate ? <Copy className="size-3.5 shrink-0 text-signal" /> : null}
+                      </div>
+                      <p className="font-mono-data text-[11px] text-slate-soft">{l.id}</p>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="inline-flex items-center gap-1">
+                          <StatusBadge status={l.status} />
+                          <ChevronDown className="size-3.5 text-slate-soft" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {statuses.map((s) => (
+                          <DropdownMenuItem
+                            key={s}
+                            disabled={s === l.status}
+                            onSelect={() => {
+                              updateLead(l.id, {
+                                status: s,
+                                lastActivity: "Just now",
+                                history: track(
+                                  l,
+                                  "status_changed",
+                                  `Status changed to ${s}`,
+                                  `${l.status} → ${s} · Dummy tracking`
+                                ),
+                              });
+                              toast({
+                                variant: "success",
+                                title: "Status updated",
+                                description: `${l.name} moved to ${s}.`,
+                              });
+                            }}
+                          >
+                            <StatusBadge status={s} />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <InfoGrid>
+                    <InfoItem label="Phone">{l.phone || "—"}</InfoItem>
+                    <InfoItem label="Email">{l.email || "—"}</InfoItem>
+                    <InfoItem label="Tour package" className="sm:col-span-2">
+                      {l.tourPackage}
+                    </InfoItem>
+                    <InfoItem label="Route" className="sm:col-span-2">
+                      {l.pickup}
+                      {l.dropoff ? ` → ${l.dropoff}` : ""}
+                    </InfoItem>
+                    <InfoItem label="Travel dates">
+                      {formatDisplayDate(l.travelDate)}
+                      {l.returnDate ? ` → ${formatDisplayDate(l.returnDate)}` : ""}
+                    </InfoItem>
+                    <InfoItem label="Cab / pax / days">
+                      {l.cabType} · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
+                    </InfoItem>
+                    <InfoItem label="Source">
+                      {l.source}
+                      {l.website ? ` · ${l.website}` : ""}
+                    </InfoItem>
+                    <InfoItem label="Agent">{l.agent}</InfoItem>
+                    <InfoItem label="Est. price">₹{l.budget.toLocaleString("en-IN")}</InfoItem>
+                  </InfoGrid>
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    <Button size="sm" variant="outline" onClick={() => setHistoryLeadId(l.id)}>
+                      <History className="size-3.5" /> History
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setCommentLeadId(l.id)}>
+                      <MessageCircle className="size-3.5" /> Comments
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setQuoteLeadId(l.id)}>
+                      <FileText className="size-3.5" /> Quote
+                    </Button>
+                    <LeadFormDialog
+                      lead={l}
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Pencil className="size-3.5" /> Edit
+                        </Button>
+                      }
+                      onSubmit={(data) => {
+                        updateLead(l.id, {
+                          ...data,
+                          lastActivity: "Just now",
+                          history: track(l, "updated", "Lead details updated", `Dummy · edited by Priya`),
+                        });
+                        toast({ variant: "success", title: "Lead updated", description: `${l.id} saved successfully.` });
+                      }}
+                    />
+                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(l)}>
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                  </div>
+                </RecordCard>
+              ))
+            )}
+          </div>
+          <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-4 py-3 text-xs text-muted-foreground sm:px-5">
             <span>Showing {visible.length} of {state.leads.length} leads</span>
           </div>
         </Card>

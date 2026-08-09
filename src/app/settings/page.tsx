@@ -55,6 +55,7 @@ import {
   allPermissionKeys,
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 const roles: MemberRole[] = ["Super Admin", "Admin", "Employee"];
 const statuses: MemberStatus[] = ["Active", "Inactive"];
@@ -290,7 +291,6 @@ export default function SettingsPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Organization · Access control"
         title="Roles & Permissions"
         action={
           section === "members" ? (
@@ -305,7 +305,7 @@ export default function SettingsPage() {
         }
       />
 
-      <main className="px-6 py-6 lg:px-8">
+      <main className="page-pad">
         <Tabs
           value={section}
           onValueChange={(v) => setSection(v as "members" | "permissions")}
@@ -351,6 +351,7 @@ export default function SettingsPage() {
             </div>
 
             <Card className="overflow-hidden">
+              <div className="hidden md:block">
               <Table containerClassName="min-w-[48rem]">
                 <TableHeader>
                   <TableRow>
@@ -406,6 +407,42 @@ export default function SettingsPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
+
+              <div className="space-y-3 p-3 md:hidden">
+                {filteredMembers.map((m) => (
+                  <RecordCard key={m.id}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold break-words text-ink-text">{m.name}</p>
+                        <p className="break-all text-xs text-slate-soft">{m.email}</p>
+                        <p className="font-mono-data text-[11px] text-slate-soft">{m.id}</p>
+                      </div>
+                      <StatusBadge status={m.status} />
+                    </div>
+                    <InfoGrid>
+                      <InfoItem label="Role">{m.role}</InfoItem>
+                      <InfoItem label="Department">{m.department || "—"}</InfoItem>
+                      <InfoItem label="Permissions">
+                        {m.permissionKeys.length}/{allPermissionKeys.length}
+                      </InfoItem>
+                    </InfoGrid>
+                    <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                      <Button size="sm" variant="outline" onClick={() => openEditMember(m)}>
+                        <Pencil className="size-3.5" /> Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-signal"
+                        onClick={() => setDeleteMemberTarget(m)}
+                      >
+                        <Trash2 className="size-3.5" /> Remove
+                      </Button>
+                    </div>
+                  </RecordCard>
+                ))}
+              </div>
             </Card>
           </TabsContent>
 

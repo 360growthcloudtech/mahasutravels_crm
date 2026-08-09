@@ -1320,14 +1320,14 @@ export type Quote = {
   cabType: string;
   amount: number;
   stage: QuoteStage;
-  sentVia: ("WhatsApp" | "PDF" | "Email")[];
+  sentVia: "WhatsApp"[];
   note?: string;
 };
 
 export const quotes: Quote[] = [
-  { id: "QT-3312", leadId: "LD-2401", customer: "Ritika Sharma", route: "Delhi → Delhi", days: 6, cabType: "Innova CRYSTA (7+1)", amount: 24000, stage: "Sent", sentVia: ["WhatsApp", "PDF"], note: "Family Shimla Manali package" },
-  { id: "QT-3311", leadId: "LD-2400", customer: "Karan Bhandari", route: "Chandigarh → Chandigarh", days: 10, cabType: "Tempo Traveller (12+1)", amount: 42000, stage: "Viewed", sentVia: ["WhatsApp", "Email"] },
-  { id: "QT-3310", leadId: "LD-2399", customer: "Neha Kapoor", route: "Delhi → Delhi", days: 2, cabType: "Maruti Dezire (4+1)", amount: 4200, stage: "Accepted", sentVia: ["WhatsApp", "PDF", "Email"] },
+  { id: "QT-3312", leadId: "LD-2401", customer: "Ritika Sharma", route: "Delhi → Delhi", days: 6, cabType: "Innova CRYSTA (7+1)", amount: 24000, stage: "Sent", sentVia: ["WhatsApp"], note: "Family Shimla Manali package" },
+  { id: "QT-3311", leadId: "LD-2400", customer: "Karan Bhandari", route: "Chandigarh → Chandigarh", days: 10, cabType: "Tempo Traveller (12+1)", amount: 42000, stage: "Viewed", sentVia: ["WhatsApp"] },
+  { id: "QT-3310", leadId: "LD-2399", customer: "Neha Kapoor", route: "Delhi → Delhi", days: 2, cabType: "Maruti Dezire (4+1)", amount: 4200, stage: "Accepted", sentVia: ["WhatsApp"] },
   { id: "QT-3309", leadId: "LD-2394", customer: "Sameer Chauhan", route: "Pathankot → Pathankot", days: 5, cabType: "Toyota Innova (7+1)", amount: 16000, stage: "Draft", sentVia: [] },
   { id: "QT-3308", leadId: "LD-2396", customer: "Rohan Malhotra", route: "Delhi → Delhi", days: 9, cabType: "Tempo Traveller (17+1)", amount: 46800, stage: "Expired", sentVia: ["WhatsApp"] },
 ];

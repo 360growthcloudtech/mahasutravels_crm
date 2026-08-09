@@ -101,7 +101,7 @@ export function BookingCalendarCard({ bookings }: { bookings: Booking[] }) {
               week: "mt-1 flex w-full",
               day: "relative flex-1 p-0.5 text-center text-sm",
               day_button:
-                "flex h-14 w-full flex-col items-center justify-start gap-0.5 rounded-md px-0.5 py-1 text-sm font-normal hover:bg-secondary",
+                "flex h-11 w-full flex-col items-center justify-start gap-0.5 rounded-md px-0.5 py-1 text-xs font-normal hover:bg-secondary sm:h-14 sm:text-sm",
               selected:
                 "[&>button]:bg-ink [&>button]:text-white [&>button]:hover:bg-ink-soft [&>button]:hover:text-white",
               today: "[&>button]:bg-marigold-soft [&>button]:text-marigold-ink",

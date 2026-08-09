@@ -43,6 +43,7 @@ import {
   makeLeadHistoryEvent,
 } from "@/lib/data";
 import { formatDisplayDate } from "@/components/crm/date-picker";
+import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -197,11 +198,10 @@ export default function AssignmentsPage() {
   return (
     <Shell>
       <Topbar
-        eyebrow="Dispatch · Booking ↔ driver assignments"
         title="Booking & Drivers"
       />
 
-      <main className="flex min-h-0 flex-1 flex-col px-6 py-6 lg:px-8">
+      <main className="page-pad flex min-h-0 flex-1 flex-col">
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -304,7 +304,7 @@ export default function AssignmentsPage() {
 
         {view === "table" ? (
           <Card className="min-h-0 flex-1 overflow-hidden">
-            <div className="h-full overflow-auto">
+            <div className="hidden h-full overflow-auto md:block">
               <Table containerClassName="min-w-[56rem]">
                 <TableHeader>
                   <TableRow>
@@ -401,6 +401,75 @@ export default function AssignmentsPage() {
                   )}
                 </TableBody>
               </Table>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
+              {visible.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-soft">
+                  No booking–driver rows match your filters.
+                </p>
+              ) : (
+                visible.map((b) => {
+                  const driver = findDriver(state.drivers, b.driver, b.vehicle);
+                  return (
+                    <RecordCard key={b.id}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-base font-semibold break-words text-ink-text">{b.customer}</p>
+                          <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
+                        </div>
+                        <StatusBadge status={b.status} />
+                      </div>
+                      <InfoGrid>
+                        <InfoItem label="Travel">
+                          {formatDisplayDate(b.travelDate)}
+                          {b.returnDate ? ` → ${formatDisplayDate(b.returnDate)}` : ""} · {b.days}d
+                        </InfoItem>
+                        <InfoItem label="Package">{b.tourPackage}</InfoItem>
+                        <InfoItem label="Route" className="sm:col-span-2">
+                          {bookingRoute(b)}
+                        </InfoItem>
+                        <InfoItem label="Driver">
+                          {b.driver || "Unassigned"}
+                          {driver ? ` · ${driver.status}` : b.driver ? " · not in master" : ""}
+                        </InfoItem>
+                        <InfoItem label="Vehicle">{b.vehicle || "—"}</InfoItem>
+                      </InfoGrid>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="w-full">
+                            {b.driver ? "Reassign driver" : "Assign driver"}
+                            <ChevronDown className="size-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[14rem]">
+                          <DropdownMenuLabel>Approved drivers</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {assignableDrivers.length === 0 ? (
+                            <DropdownMenuItem disabled>No approved drivers</DropdownMenuItem>
+                          ) : (
+                            assignableDrivers.map((d) => (
+                              <DropdownMenuItem
+                                key={d.id}
+                                disabled={d.name === b.driver && d.vehicle === b.vehicle}
+                                onSelect={() => assignDriver(b, d)}
+                              >
+                                <Car className="size-3.5" />
+                                <span className="min-w-0">
+                                  <span className="block text-sm">{d.name}</span>
+                                  <span className="block font-mono-data text-[10px] text-slate-soft">
+                                    {d.vehicle} · {d.vehicleType}
+                                  </span>
+                                </span>
+                              </DropdownMenuItem>
+                            ))
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </RecordCard>
+                  );
+                })
+              )}
             </div>
           </Card>
         ) : (
