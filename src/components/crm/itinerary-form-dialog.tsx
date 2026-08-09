@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { BedDouble, Plus, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -16,6 +16,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { HotelTemplateFormDialog } from "@/components/crm/hotel-template-form-dialog";
+import { useData } from "@/lib/store";
 import {
   ItineraryDay,
   ItineraryStatus,
@@ -62,9 +65,12 @@ export function ItineraryFormDialog({
   itinerary?: ItineraryTemplate | null;
   onSubmit: (data: ItineraryFormState) => void;
 }) {
+  const { state, addHotelTemplate } = useData();
   const [form, setForm] = React.useState<ItineraryFormState>(emptyItineraryForm);
   const [inclusionsText, setInclusionsText] = React.useState("");
   const [error, setError] = React.useState("");
+  const [addHotelOpen, setAddHotelOpen] = React.useState(false);
+  const [targetDayIndex, setTargetDayIndex] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -213,11 +219,11 @@ export function ItineraryFormDialog({
           </Field>
 
           <Field label="Overview">
-            <Textarea
-              rows={3}
+            <RichTextEditor
               value={form.overview}
-              onChange={(e) => setForm((f) => ({ ...f, overview: e.target.value }))}
+              onChange={(v) => setForm((f) => ({ ...f, overview: v }))}
               placeholder="Tour overview for proposals…"
+              minHeight="90px"
             />
           </Field>
 
@@ -241,11 +247,12 @@ export function ItineraryFormDialog({
             </Field>
           </div>
 
-          <Field label="Inclusions" hint="Comma-separated">
-            <Input
+          <Field label="Inclusions" hint="Rich text / bullet points supported">
+            <RichTextEditor
               value={inclusionsText}
-              onChange={(e) => setInclusionsText(e.target.value)}
-              placeholder="Hotel stay, Private cab, Sightseeing"
+              onChange={(v) => setInclusionsText(v)}
+              placeholder="Hotel stay, Private cab, Sightseeing..."
+              minHeight="70px"
             />
           </Field>
 
@@ -284,12 +291,58 @@ export function ItineraryFormDialog({
                       onChange={(e) => setDay(index, { title: e.target.value })}
                       placeholder="Day title"
                     />
-                    <Textarea
-                      rows={2}
+                    <RichTextEditor
                       value={day.detail}
-                      onChange={(e) => setDay(index, { detail: e.target.value })}
-                      placeholder="Day details…"
+                      onChange={(v) => setDay(index, { detail: v })}
+                      placeholder="Day plan description & activities…"
+                      minHeight="75px"
                     />
+
+                    <div className="pt-1">
+                      <div className="mb-1 flex items-center justify-between">
+                        <label className="text-[11px] font-medium text-slate">
+                          Overnight Hotel Stay
+                        </label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-1 text-[11px] text-teal hover:text-teal-dark"
+                          onClick={() => {
+                            setTargetDayIndex(index);
+                            setAddHotelOpen(true);
+                          }}
+                        >
+                          <Plus className="size-3" /> Add New Hotel
+                        </Button>
+                      </div>
+                      <Select
+                        value={day.hotelId || (day.hotelName ? `name:${day.hotelName}` : "none")}
+                        onValueChange={(val) => {
+                          if (val === "none") {
+                            setDay(index, { hotelId: undefined, hotelName: undefined });
+                          } else if (val.startsWith("name:")) {
+                            const name = val.replace("name:", "");
+                            setDay(index, { hotelId: undefined, hotelName: name });
+                          } else {
+                            const found = state.hotelTemplates.find((h) => h.id === val);
+                            setDay(index, { hotelId: val, hotelName: found?.name });
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-white">
+                          <SelectValue placeholder="-- Select Hotel Stay --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No Hotel Assigned</SelectItem>
+                          {state.hotelTemplates.map((h) => (
+                            <SelectItem key={h.id} value={h.id}>
+                              🏨 {h.name} ({h.city} · {h.defaultRoomType || "Standard"})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   {index < form.daysPlan.length - 1 ? (
                     <Button
@@ -319,6 +372,19 @@ export function ItineraryFormDialog({
           </Button>
         </SheetFooter>
       </SheetContent>
+
+      <HotelTemplateFormDialog
+        open={addHotelOpen}
+        onOpenChange={setAddHotelOpen}
+        onSubmit={(hotelData) => {
+          addHotelTemplate(hotelData);
+          if (targetDayIndex !== null) {
+            setDay(targetDayIndex, {
+              hotelName: hotelData.name,
+            });
+          }
+        }}
+      />
     </Sheet>
   );
 }

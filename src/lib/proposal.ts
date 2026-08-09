@@ -10,6 +10,8 @@ export type ProposalDay = {
   day: number;
   title: string;
   detail: string;
+  hotelId?: string;
+  hotelName?: string;
 };
 
 export type ProposalTemplate = {
