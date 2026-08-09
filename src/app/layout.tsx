@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { DataProvider } from "@/lib/store";
 import { ToastProvider } from "@/lib/toast";
+import { ThemeProvider } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Mahasu Travels — Dispatch CRM",
@@ -21,11 +22,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(localStorage.getItem("mahasu-theme")==="dark"){document.documentElement.classList.add("dark")}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full">
-        <ToastProvider>
-          <DataProvider>{children}</DataProvider>
-        </ToastProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <DataProvider>{children}</DataProvider>
+          </ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -516,7 +516,7 @@ export default function AssignmentsPage() {
                     {group.bookings.map((b) => (
                       <div
                         key={b.id}
-                        className="rounded-md border border-border-soft bg-[#f8f9fc] px-3 py-2.5"
+                        className="rounded-md border border-border-soft bg-wash px-3 py-2.5"
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-ink-text">

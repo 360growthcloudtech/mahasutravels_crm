@@ -33,24 +33,26 @@ export function RevenueChart({
             <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid vertical={false} stroke="#e3e6ee" />
+        <CartesianGrid vertical={false} stroke="var(--border)" />
         <XAxis
           dataKey="day"
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#8991a3", fontFamily: "var(--font-mono)" }}
+          tick={{ fontSize: 11, fill: "var(--slate-soft)", fontFamily: "var(--font-mono)" }}
         />
         <YAxis
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#8991a3", fontFamily: "var(--font-mono)" }}
+          tick={{ fontSize: 11, fill: "var(--slate-soft)", fontFamily: "var(--font-mono)" }}
           tickFormatter={(v) => `₹${v / 1000}k`}
           width={44}
         />
         <Tooltip
           contentStyle={{
             borderRadius: 8,
-            border: "1px solid #e3e6ee",
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--ink-text)",
             fontSize: 12,
             fontFamily: "var(--font-sans)",
             boxShadow: "0 4px 14px rgba(18,23,43,0.08)",

@@ -25,6 +25,7 @@
   --ink-text: #12172b;
   --slate: #5b6478;
   --slate-soft: #8991a3;
+  --wash: #f8f9fc;
 
   --marigold: #f5a524;
   --marigold-ink: #7a4c05;
@@ -48,6 +49,46 @@
   --secondary: #eef0f4;
   --secondary-foreground: var(--ink-text);
   --muted: #eef0f4;
+  --muted-foreground: var(--slate);
+  --accent: var(--marigold-soft);
+  --accent-foreground: var(--marigold-ink);
+  --destructive: var(--signal);
+  --destructive-foreground: #ffffff;
+  --input: var(--border);
+  --ring: var(--marigold);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --paper: #0e1220;
+  --card: #171c2e;
+  --border: #2a3150;
+  --border-soft: #222844;
+  --wash: #12172b;
+
+  --ink-text: #eef1f7;
+  --slate: #9aa3b8;
+  --slate-soft: #7a8398;
+
+  --marigold-ink: #ffd089;
+  --marigold-soft: #2f2614;
+  --teal: #3cb8b8;
+  --teal-soft: #103030;
+  --signal-soft: #3a1c14;
+  --violet: #9b8eeb;
+  --violet-soft: #24203a;
+
+  --background: var(--paper);
+  --foreground: var(--ink-text);
+  --card-foreground: var(--ink-text);
+  --popover: #171c2e;
+  --popover-foreground: var(--ink-text);
+  --primary: var(--ink);
+  --primary-foreground: #ffffff;
+  --secondary: #1b2138;
+  --secondary-foreground: var(--ink-text);
+  --muted: #1b2138;
   --muted-foreground: var(--slate);
   --accent: var(--marigold-soft);
   --accent-foreground: var(--marigold-ink);
@@ -81,9 +122,12 @@
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-line: var(--ink-line);
+  --color-ink-text: var(--ink-text);
   --color-paper: var(--paper);
   --color-slate: var(--slate);
   --color-slate-soft: var(--slate-soft);
+  --color-wash: var(--wash);
+  --color-border-soft: var(--border-soft);
   --color-marigold: var(--marigold);
   --color-marigold-ink: var(--marigold-ink);
   --color-marigold-soft: var(--marigold-soft);

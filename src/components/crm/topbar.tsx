@@ -25,6 +25,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/crm/theme-toggle";
 
 type NotificationItem = {
   id: string;
@@ -158,6 +159,8 @@ export function Topbar({
             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-soft" />
             <Input placeholder="Search leads, bookings, drivers…" className="pl-9" />
           </div>
+
+          <ThemeToggle />
 
           <button
             type="button"

@@ -174,7 +174,7 @@ export function LeadItineraryCustomizeDrawer({
                 {form.daysPlan.map((day, index) => (
                   <div
                     key={`guest-day-${index}`}
-                    className="rounded-md border border-border bg-[#f8f9fc] p-3"
+                    className="rounded-md border border-border bg-wash p-3"
                   >
                     <div className="mb-2 flex items-center justify-between">
                       <p className="font-mono-data text-[11px] font-semibold uppercase text-slate">
@@ -236,7 +236,7 @@ export function LeadItineraryCustomizeDrawer({
                             }
                           }}
                         >
-                          <SelectTrigger className="h-8 text-xs bg-white">
+                          <SelectTrigger className="h-8 text-xs bg-card">
                             <SelectValue placeholder="-- Select Hotel Stay --" />
                           </SelectTrigger>
                           <SelectContent>

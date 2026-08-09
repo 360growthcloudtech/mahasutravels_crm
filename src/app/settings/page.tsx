@@ -756,7 +756,7 @@ export default function SettingsPage() {
                         key={module}
                         className="overflow-hidden rounded-md border border-border"
                       >
-                        <div className="flex items-center gap-2 bg-[#f8f9fc] px-3 py-2">
+                        <div className="flex items-center gap-2 bg-wash px-3 py-2">
                           <Checkbox
                             checked={allChecked}
                             onCheckedChange={(v) =>

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getSession, login } from "@/lib/auth";
+import { ThemeToggle } from "@/components/crm/theme-toggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -104,7 +105,8 @@ export default function LoginPage() {
       </aside>
 
       <main className="relative flex items-center justify-center px-4 py-10 sm:px-8">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,#fdf1da,transparent_70%)] lg:hidden" />
+        <ThemeToggle className="absolute top-4 right-4 sm:top-6 sm:right-6" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,var(--marigold-soft),transparent_70%)] lg:hidden" />
 
         <div className="relative w-full max-w-[26rem]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
@@ -119,7 +121,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-white p-6 shadow-[0_20px_60px_-28px_rgba(18,23,43,0.28)] sm:p-8">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-[0_20px_60px_-28px_rgba(18,23,43,0.28)] sm:p-8">
             <div className="mb-6 space-y-1.5">
               <h2 className="font-display text-2xl font-semibold tracking-tight text-ink-text">
                 Welcome back
@@ -142,7 +144,7 @@ export default function LoginPage() {
                       setError("");
                     }}
                     placeholder="you@mahasutravels.com"
-                    className="h-11 rounded-xl bg-[#f8f9fc] pl-10"
+                    className="h-11 rounded-xl bg-wash pl-10"
                   />
                 </div>
               </label>
@@ -163,7 +165,7 @@ export default function LoginPage() {
                       setError("");
                     }}
                     placeholder="Enter your password"
-                    className="h-11 rounded-xl bg-[#f8f9fc] pr-11 pl-10"
+                    className="h-11 rounded-xl bg-wash pr-11 pl-10"
                   />
                   <button
                     type="button"
@@ -190,7 +192,7 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 rounded-xl border border-dashed border-border bg-[#f8f9fc] px-4 py-3">
+            <div className="mt-6 rounded-xl border border-dashed border-border bg-wash px-4 py-3">
               <p className="font-mono-data text-[10px] tracking-[0.14em] text-slate-soft uppercase">
                 Demo access
               </p>

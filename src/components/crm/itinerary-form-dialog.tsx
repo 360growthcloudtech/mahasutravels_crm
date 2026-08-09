@@ -267,7 +267,7 @@ export function ItineraryFormDialog({
               {form.daysPlan.map((day, index) => (
                 <div
                   key={`day-${index}`}
-                  className="rounded-md border border-border bg-[#f8f9fc] p-3"
+                  className="rounded-md border border-border bg-wash p-3"
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <p className="font-mono-data text-[11px] font-semibold uppercase tracking-wide text-slate">
@@ -330,7 +330,7 @@ export function ItineraryFormDialog({
                           }
                         }}
                       >
-                        <SelectTrigger className="h-8 text-xs bg-white">
+                        <SelectTrigger className="h-8 text-xs bg-card">
                           <SelectValue placeholder="-- Select Hotel Stay --" />
                         </SelectTrigger>
                         <SelectContent>
