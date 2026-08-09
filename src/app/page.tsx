@@ -8,8 +8,10 @@ import {
   ClipboardCheck,
   IndianRupee,
   ArrowUpRight,
-  Phone,
   Plus,
+  TrendingUp,
+  Receipt,
+  Target,
 } from "lucide-react";
 import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
@@ -18,20 +20,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { RevenueChart } from "@/components/crm/revenue-chart";
-import { RouteProgress } from "@/components/crm/route-progress";
 import { LeadFormDialog } from "@/components/crm/lead-form-dialog";
 import { StatusBadge } from "@/components/crm/status-badge";
+import { BookingCalendarCard } from "@/components/crm/booking-calendar-card";
+import { WebsiteFilter } from "@/components/crm/website-filter";
+import { AdSpendDialog } from "@/components/crm/ad-spend-dialog";
+import { AdSpendListDialog } from "@/components/crm/ad-spend-list-dialog";
 import {
   DateRangeFilter,
   DashboardDateRange,
   bookingOverlapsRange,
   isoInRange,
 } from "@/components/crm/date-range-filter";
-import { agents, sourceSplit, makeLeadHistoryEvent, bookingRoute, Booking } from "@/lib/data";
+import { agents, sourceSplit, makeLeadHistoryEvent, bookingRoute, Booking, getRevenueTrendForSource, trackedWebsites } from "@/lib/data";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-
-const pipelineStages = ["New", "Contacted", "Quoted", "Confirmed"];
+import { cn } from "@/lib/utils";
 
 function todayISO() {
   const d = new Date();
@@ -102,6 +106,11 @@ function BookingListCard({
                           : ""}
                       </span>
                       <StatusBadge status={b.status} />
+                      {b.website && (
+                        <span className="inline-flex items-center gap-1 rounded bg-secondary/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          🌐 {b.website}
+                        </span>
+                      )}
                       {b.driver ? (
                         <span className="truncate text-[11px] text-slate-soft">{b.driver}</span>
                       ) : null}
@@ -123,18 +132,47 @@ function BookingListCard({
 }
 
 export default function DashboardPage() {
-  const { state, addLead } = useData();
+  const { state, addLead, addAdSpend } = useData();
   const { toast } = useToast();
-  const { leads, bookings, quotes } = state;
+  const { leads, bookings, quotes, adSpends } = state;
   const today = todayISO();
   const [dateRange, setDateRange] = React.useState<DashboardDateRange>(null);
+  const [selectedSource, setSelectedSource] = React.useState<string | null>(null);
+  const [selectedWebsite, setSelectedWebsite] = React.useState<string | null>(null);
 
-  const rangedLeads = leads.filter((l) => isoInRange(l.travelDate, dateRange));
-  const rangedBookings = bookings.filter((b) => bookingOverlapsRange(b, dateRange));
+  const rangedLeads = leads.filter((l) => {
+    const matchDate = isoInRange(l.travelDate, dateRange);
+    const matchWeb = !selectedWebsite || l.website === selectedWebsite;
+    return matchDate && matchWeb;
+  });
+
+  const rangedBookings = bookings.filter((b) => {
+    const matchDate = bookingOverlapsRange(b, dateRange);
+    const matchWeb = !selectedWebsite || b.website === selectedWebsite;
+    return matchDate && matchWeb;
+  });
 
   const confirmedRevenue = rangedBookings
     .filter((b) => b.status !== "Cancelled" && b.status !== "Refunded")
     .reduce((s, b) => s + b.total, 0);
+
+  const activeSourceItem = sourceSplit.find((s) => s.source === selectedSource);
+  const baseTrendData = getRevenueTrendForSource(selectedSource);
+  
+  // Scale trend data when specific website is filtered
+  const activeTrendData = baseTrendData.map((point) => {
+    if (!selectedWebsite) return point;
+    const factor = selectedWebsite === "mahasutravels.com" ? 0.35 : 0.16;
+    return {
+      ...point,
+      revenue: Math.round(point.revenue * factor),
+      leads: Math.max(1, Math.round(point.leads * factor)),
+    };
+  });
+
+  const activeTrendTotal = activeTrendData.reduce((acc, curr) => acc + curr.revenue, 0);
+  const activeTrendColor = activeSourceItem?.color || "#f5a524";
+  const formattedTrendBadge = `₹${(activeTrendTotal / 100000).toFixed(2)}L total`;
 
   const ongoingBookings = rangedBookings
     .filter(
@@ -154,13 +192,32 @@ export default function DashboardPage() {
     { label: "Revenue on record", value: `₹${confirmedRevenue.toLocaleString("en-IN")}`, delta: "+18%", icon: IndianRupee, accent: "signal" },
   ];
 
+  const activeWebObj = trackedWebsites.find((w) => w.name === selectedWebsite);
+
+  const filteredAdSpends = (adSpends || []).filter(
+    (s) => !selectedWebsite || !s.website || s.website === selectedWebsite
+  );
+
+  const totalAdSpend = filteredAdSpends.reduce((acc, curr) => acc + curr.amount, 0);
+  const googleAdSpend = filteredAdSpends
+    .filter((s) => s.platform === "Google Ads")
+    .reduce((acc, curr) => acc + curr.amount, 0);
+  const metaAdSpend = filteredAdSpends
+    .filter((s) => s.platform === "Meta Ads")
+    .reduce((acc, curr) => acc + curr.amount, 0);
+  const otherAdSpend = totalAdSpend - googleAdSpend - metaAdSpend;
+
+  const costPerLead = rangedLeads.length > 0 ? Math.round(totalAdSpend / rangedLeads.length) : 0;
+  const roasRatio = totalAdSpend > 0 ? (confirmedRevenue / totalAdSpend).toFixed(1) : "0.0";
+
   return (
     <Shell>
       <Topbar
-        eyebrow="Overview · Live demo data"
+        eyebrow={selectedWebsite ? `Filtered by ${selectedWebsite}` : "Overview · All 5 Web Portals"}
         title="Dashboard"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <WebsiteFilter value={selectedWebsite} onChange={setSelectedWebsite} />
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
             <LeadFormDialog
               trigger={
@@ -171,9 +228,10 @@ export default function DashboardPage() {
               onSubmit={(data) => {
                 addLead({
                   ...data,
+                  website: data.website || selectedWebsite || "mahasutravels.com",
                   history: [
                     makeLeadHistoryEvent("created", "Lead created", {
-                      detail: `Source: ${data.source} · Dummy entry`,
+                      detail: `Website: ${data.website || selectedWebsite || "mahasutravels.com"} · Source: ${data.source}`,
                     }),
                     makeLeadHistoryEvent("assigned", `Assigned to ${data.agent}`, {
                       detail: "Manual assignment on create",
@@ -183,7 +241,7 @@ export default function DashboardPage() {
                 toast({
                   variant: "success",
                   title: "Lead added",
-                  description: `${data.name} was added to the pipeline.`,
+                  description: `${data.name} was added for ${data.website || selectedWebsite || "mahasutravels.com"}.`,
                 });
               }}
             />
@@ -228,39 +286,205 @@ export default function DashboardPage() {
         <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
           <Card className="xl:col-span-2">
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div>
-                  <CardTitle>Revenue trend</CardTitle>
-                  <CardDescription>Confirmed bookings, last 7 days</CardDescription>
+                  <div className="flex items-center gap-2">
+                    <CardTitle>Revenue trend</CardTitle>
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white shadow-xs transition-colors duration-200"
+                      style={{ backgroundColor: activeTrendColor }}
+                    >
+                      {selectedSource || "All"}
+                    </span>
+                  </div>
+                  <CardDescription>
+                    {selectedSource
+                      ? `Confirmed bookings, last 7 days · Filtered by ${selectedSource}`
+                      : "Confirmed bookings, last 7 days · All sources"}
+                  </CardDescription>
                 </div>
-                <Badge variant="teal">₹3.73L total</Badge>
+                <div className="flex items-center gap-2">
+                  {selectedSource && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedSource(null)}
+                      className="h-7 px-2 text-xs text-muted-foreground hover:text-ink-text"
+                    >
+                      Clear filter
+                    </Button>
+                  )}
+                  <Badge variant="teal">{formattedTrendBadge}</Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              <RevenueChart />
+              <RevenueChart
+                data={activeTrendData}
+                color={activeTrendColor}
+                sourceName={selectedSource}
+              />
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Lead source split</CardTitle>
-              <CardDescription>Where this week&apos;s leads came from</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Lead source split</CardTitle>
+                  <CardDescription>Click a source to filter trend</CardDescription>
+                </div>
+                {selectedSource && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedSource(null)}
+                    className="h-7 text-xs"
+                  >
+                    All sources
+                  </Button>
+                )}
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {sourceSplit.map((s) => (
-                <div key={s.source}>
-                  <div className="mb-1.5 flex items-center justify-between text-xs">
-                    <span className="font-medium text-ink-text">{s.source}</span>
-                    <span className="font-mono-data text-slate-soft">{s.value}%</span>
+            <CardContent className="space-y-2">
+              {sourceSplit.map((s) => {
+                const isSelected = selectedSource === s.source;
+                return (
+                  <button
+                    key={s.source}
+                    type="button"
+                    onClick={() => setSelectedSource(isSelected ? null : s.source)}
+                    className={cn(
+                      "group w-full rounded-lg p-2.5 text-left transition-all duration-150 border cursor-pointer",
+                      isSelected
+                        ? "bg-slate-50 border-slate-300 dark:bg-slate-800/60 dark:border-slate-700 shadow-xs ring-1 ring-black/5"
+                        : "border-transparent hover:bg-slate-50/80 dark:hover:bg-slate-800/40 hover:border-slate-200"
+                    )}
+                  >
+                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="size-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: s.color }}
+                        />
+                        <span
+                          className={cn(
+                            "font-medium transition-colors text-ink-text",
+                            isSelected && "font-semibold"
+                          )}
+                        >
+                          {s.source}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono-data text-slate-soft">{s.value}%</span>
+                        {isSelected && (
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                            style={{ backgroundColor: s.color }}
+                          >
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${s.value}%`, backgroundColor: s.color }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle>Ad Spend & Marketing ROI</CardTitle>
+                    <Badge variant="marigold">₹{totalAdSpend.toLocaleString("en-IN")} Total Spend</Badge>
                   </div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                  <CardDescription>
+                    {selectedWebsite
+                      ? `Marketing performance & ad budget tracking for ${selectedWebsite}`
+                      : "Marketing performance & ad budget tracking across all portals"}
+                  </CardDescription>
+                </div>
+                <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs">
+                  <Link href="/marketing">Manage Ad Spend →</Link>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border bg-slate-50/50 p-4 dark:bg-slate-800/30">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Google Ads Spend</span>
+                    <span className="font-semibold text-marigold-ink">
+                      {totalAdSpend > 0 ? Math.round((googleAdSpend / totalAdSpend) * 100) : 0}%
+                    </span>
+                  </div>
+                  <p className="mt-1 font-display text-xl font-bold text-ink-text">
+                    ₹{googleAdSpend.toLocaleString("en-IN")}
+                  </p>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <div
-                      className="h-full rounded-full"
-                      style={{ width: `${s.value}%`, backgroundColor: s.color }}
+                      className="h-full bg-marigold rounded-full"
+                      style={{ width: `${totalAdSpend > 0 ? (googleAdSpend / totalAdSpend) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
-              ))}
+
+                <div className="rounded-lg border bg-slate-50/50 p-4 dark:bg-slate-800/30">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Meta Ads Spend</span>
+                    <span className="font-semibold text-violet">
+                      {totalAdSpend > 0 ? Math.round((metaAdSpend / totalAdSpend) * 100) : 0}%
+                    </span>
+                  </div>
+                  <p className="mt-1 font-display text-xl font-bold text-ink-text">
+                    ₹{metaAdSpend.toLocaleString("en-IN")}
+                  </p>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full bg-violet rounded-full"
+                      style={{ width: `${totalAdSpend > 0 ? (metaAdSpend / totalAdSpend) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-slate-50/50 p-4 dark:bg-slate-800/30">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Cost Per Lead (CPL)</span>
+                    <Target className="size-3.5 text-teal" />
+                  </div>
+                  <p className="mt-1 font-display text-xl font-bold text-teal">
+                    ₹{costPerLead.toLocaleString("en-IN")}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Based on {rangedLeads.length} total leads
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-slate-50/50 p-4 dark:bg-slate-800/30">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Return on Ad Spend (ROAS)</span>
+                    <TrendingUp className="size-3.5 text-signal" />
+                  </div>
+                  <p className="mt-1 font-display text-xl font-bold text-ink-text">
+                    {roasRatio}x
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    ₹{confirmedRevenue.toLocaleString("en-IN")} revenue returned
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -301,33 +525,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="xl:col-span-2">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Pipeline snapshot</CardTitle>
-                <Phone className="size-4 text-slate-soft" />
-              </div>
-              <CardDescription>Recent leads moving through the route</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {rangedLeads.slice(0, 3).map((l) => {
-                const idx = Math.min(pipelineStages.indexOf(l.status), 3);
-                const current = idx === -1 ? 0 : idx;
-                return (
-                  <div key={l.id} className="border-b border-border-soft pb-4 last:border-0 last:pb-0">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-medium text-ink-text">{l.name}</p>
-                      <span className="font-mono-data text-[11px] text-slate-soft">{l.id}</span>
-                    </div>
-                    <p className="mb-2.5 text-xs text-muted-foreground">
-                      {l.tourPackage} · {l.pickup}{l.dropoff ? ` → ${l.dropoff}` : ""}
-                    </p>
-                    <RouteProgress stages={pipelineStages} current={current} />
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+          <BookingCalendarCard bookings={rangedBookings} />
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

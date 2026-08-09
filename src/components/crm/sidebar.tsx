@@ -13,6 +13,7 @@ import {
   Compass,
   BedDouble,
   UserRound,
+  Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/bookings", label: "Bookings", icon: ClipboardList },
+  { href: "/marketing", label: "Ad Spend & Marketing", icon: Megaphone },
   { href: "/assignments", label: "Booking & Drivers", icon: UserRound },
   { href: "/itineraries", label: "Itineraries", icon: Route },
   { href: "/hotels", label: "Hotels", icon: BedDouble },

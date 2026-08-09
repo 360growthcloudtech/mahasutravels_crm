@@ -69,6 +69,16 @@ export type LeadCustomItinerary = {
   daysPlan: ItineraryDay[];
 };
 
+export const trackedWebsites = [
+  { id: "web-1", name: "mahasutravels.com", label: "Mahasu Main Portal", badge: "Main", icon: "🌐" },
+  { id: "web-2", name: "himachaltaxiservice.in", label: "Himachal Taxi Service", badge: "Cab Rentals", icon: "🚗" },
+  { id: "web-3", name: "spitivalleytours.com", label: "Spiti Valley Tours", badge: "Expeditions", icon: "🏔️" },
+  { id: "web-4", name: "shimlamanalicabs.com", label: "Shimla Manali Cabs", badge: "Packages", icon: "🌲" },
+  { id: "web-5", name: "lehladakhcabs.in", label: "Leh Ladakh Cabs", badge: "Luxury Fleet", icon: "❄️" },
+] as const;
+
+export type TrackedWebsiteName = typeof trackedWebsites[number]["name"];
+
 export type Lead = {
   id: string;
   name: string;
@@ -76,6 +86,7 @@ export type Lead = {
   city: string;
   phone: string;
   source: "Website" | "Google Ads" | "Meta Ads" | "Manual";
+  website?: string;
   tourPackage: string;
   pickup: string;
   dropoff: string;
@@ -265,8 +276,17 @@ const leadSeed: Omit<Lead, "history">[] = [
   { id: "LD-2394", name: "Sameer Chauhan", email: "sameer.c@gmail.com", city: "Pathankot", phone: "+91 90200 11987", source: "Google Ads", tourPackage: "4N/5D Pathankot Dharamshala Dalhousie Taxi Tour", pickup: "Pathankot", dropoff: "Pathankot", travelDate: "2026-08-25", returnDate: "2026-08-29", cabType: "Toyota Innova (7+1)", adults: 5, kids: 1, days: 5, tourPlan: "Family trip with McLeod Ganj and Khajjiar.", status: "Quoted", agent: "Priya", budget: 16000, lastActivity: "8h ago" },
 ];
 
-export const leads: Lead[] = leadSeed.map((l) => ({
+const defaultWebsites = [
+  "mahasutravels.com",
+  "himachaltaxiservice.in",
+  "spitivalleytours.com",
+  "shimlamanalicabs.com",
+  "lehladakhcabs.in",
+];
+
+export const leads: Lead[] = leadSeed.map((l, index) => ({
   ...l,
+  website: l.website || defaultWebsites[index % defaultWebsites.length],
   history: dummyHistory[l.id] ?? [
     {
       id: `EV-${l.id}`,
@@ -445,6 +465,7 @@ export type Booking = {
   city: string;
   phone?: string;
   source: Lead["source"];
+  website?: string;
   tourPackage: string;
   pickup: string;
   dropoff: string;
@@ -1240,8 +1261,9 @@ const bookingSeed: Omit<Booking, "history">[] = [
   },
 ];
 
-export const bookings: Booking[] = bookingSeed.map((b) => ({
+export const bookings: Booking[] = bookingSeed.map((b, index) => ({
   ...b,
+  website: b.website || defaultWebsites[index % defaultWebsites.length],
   history: bookingDummyHistory[b.id] ?? [
     {
       id: `BEV-${b.id}`,
@@ -1355,11 +1377,57 @@ export const revenueTrend = [
   { day: "Sun", revenue: 58900, leads: 27 },
 ];
 
+export const revenueTrendBySource: Record<string, { day: string; revenue: number; leads: number }[]> = {
+  "Google Ads": [
+    { day: "Mon", revenue: 15960, leads: 7 },
+    { day: "Tue", revenue: 14630, leads: 8 },
+    { day: "Wed", revenue: 19456, leads: 7 },
+    { day: "Thu", revenue: 18164, leads: 10 },
+    { day: "Fri", revenue: 24092, leads: 12 },
+    { day: "Sat", revenue: 27056, leads: 13 },
+    { day: "Sun", revenue: 22382, leads: 10 },
+  ],
+  "Meta Ads": [
+    { day: "Mon", revenue: 11340, leads: 5 },
+    { day: "Tue", revenue: 10395, leads: 6 },
+    { day: "Wed", revenue: 13824, leads: 5 },
+    { day: "Thu", revenue: 12906, leads: 7 },
+    { day: "Fri", revenue: 17118, leads: 8 },
+    { day: "Sat", revenue: 19224, leads: 9 },
+    { day: "Sun", revenue: 15903, leads: 7 },
+  ],
+  Website: [
+    { day: "Mon", revenue: 9240, leads: 4 },
+    { day: "Tue", revenue: 8470, leads: 5 },
+    { day: "Wed", revenue: 11264, leads: 4 },
+    { day: "Thu", revenue: 10516, leads: 5 },
+    { day: "Fri", revenue: 13948, leads: 7 },
+    { day: "Sat", revenue: 15664, leads: 8 },
+    { day: "Sun", revenue: 12958, leads: 6 },
+  ],
+  Manual: [
+    { day: "Mon", revenue: 5460, leads: 2 },
+    { day: "Tue", revenue: 5005, leads: 3 },
+    { day: "Wed", revenue: 6656, leads: 3 },
+    { day: "Thu", revenue: 6214, leads: 3 },
+    { day: "Fri", revenue: 8242, leads: 4 },
+    { day: "Sat", revenue: 9256, leads: 4 },
+    { day: "Sun", revenue: 7657, leads: 4 },
+  ],
+};
+
+export function getRevenueTrendForSource(source?: string | null) {
+  if (source && revenueTrendBySource[source]) {
+    return revenueTrendBySource[source];
+  }
+  return revenueTrend;
+}
+
 export const sourceSplit = [
-  { source: "Google Ads", value: 38, color: "var(--marigold)" },
-  { source: "Meta Ads", value: 27, color: "var(--violet)" },
-  { source: "Website", value: 22, color: "var(--teal)" },
-  { source: "Manual", value: 13, color: "var(--slate-soft)" },
+  { source: "Google Ads", value: 38, color: "#f5a524" },
+  { source: "Meta Ads", value: 27, color: "#8b5cf6" },
+  { source: "Website", value: 22, color: "#0d9488" },
+  { source: "Manual", value: 13, color: "#64748b" },
 ];
 
 export type PermissionAction = "view" | "create" | "edit" | "delete" | "assign" | "export";
@@ -1587,3 +1655,75 @@ export const statusColor: Record<string, string> = {
   Completed: "teal",
   "Payment Pending": "signal",
 };
+
+export type AdPlatform = "Google Ads" | "Meta Ads" | "Website SEO" | "Offline / Print" | "Other";
+
+export type AdSpendEntry = {
+  id: string;
+  platform: AdPlatform;
+  website?: string;
+  amount: number;
+  date: string;
+  campaignName?: string;
+  leadsGenerated?: number;
+  notes?: string;
+  createdAt: string;
+};
+
+export const adSpends: AdSpendEntry[] = [
+  {
+    id: "SP-101",
+    platform: "Google Ads",
+    website: "mahasutravels.com",
+    amount: 32000,
+    date: "2026-08-01",
+    campaignName: "Shimla Manali Summer Search Campaign",
+    leadsGenerated: 18,
+    notes: "Targeting Delhi NCR & Punjab search terms.",
+    createdAt: "2026-08-01",
+  },
+  {
+    id: "SP-102",
+    platform: "Meta Ads",
+    website: "mahasutravels.com",
+    amount: 22000,
+    date: "2026-08-02",
+    campaignName: "Himachal Family Tour Reels & IG Lead Gen",
+    leadsGenerated: 14,
+    notes: "Carousel ad featuring Innova Crysta & Tempo Traveller packages.",
+    createdAt: "2026-08-02",
+  },
+  {
+    id: "SP-103",
+    platform: "Google Ads",
+    website: "spitivalleytours.com",
+    amount: 18500,
+    date: "2026-08-03",
+    campaignName: "Spiti & Kinnaur Expedition Search Ads",
+    leadsGenerated: 9,
+    notes: "High intent adventure keywords.",
+    createdAt: "2026-08-03",
+  },
+  {
+    id: "SP-104",
+    platform: "Meta Ads",
+    website: "himachaltaxiservice.in",
+    amount: 14000,
+    date: "2026-08-04",
+    campaignName: "Chandigarh Pickups & One-way Cab Ads",
+    leadsGenerated: 8,
+    notes: "FB Lead form targeting weekend travelers.",
+    createdAt: "2026-08-04",
+  },
+  {
+    id: "SP-105",
+    platform: "Website SEO",
+    website: "mahasutravels.com",
+    amount: 8000,
+    date: "2026-08-05",
+    campaignName: "SEO Backlinks & Content Marketing",
+    leadsGenerated: 12,
+    notes: "Monthly local SEO optimization.",
+    createdAt: "2026-08-05",
+  },
+];

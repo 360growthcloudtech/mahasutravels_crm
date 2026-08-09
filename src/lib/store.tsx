@@ -12,6 +12,7 @@ import {
   LeadCustomItinerary,
   Member,
   SystemPermission,
+  AdSpendEntry,
   leads as seedLeads,
   bookings as seedBookings,
   drivers as seedDrivers,
@@ -20,6 +21,7 @@ import {
   hotelTemplates as seedHotelTemplates,
   members as seedMembers,
   systemPermissions as seedSystemPermissions,
+  adSpends as seedAdSpends,
   genId,
   makeLeadHistoryEvent,
 } from "@/lib/data";
@@ -33,9 +35,10 @@ type State = {
   hotelTemplates: HotelTemplate[];
   members: Member[];
   systemPermissions: SystemPermission[];
+  adSpends: AdSpendEntry[];
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v17";
+const STORAGE_KEY = "mahasu-crm-state-v18";
 
 function loadInitial(): State {
   return {
@@ -47,6 +50,7 @@ function loadInitial(): State {
     hotelTemplates: seedHotelTemplates,
     members: seedMembers,
     systemPermissions: seedSystemPermissions,
+    adSpends: seedAdSpends,
   };
 }
 
@@ -83,6 +87,9 @@ type Ctx = {
   addSystemPermission: (p: Omit<SystemPermission, "id">) => void;
   updateSystemPermission: (id: string, patch: Partial<SystemPermission>) => void;
   deleteSystemPermission: (id: string) => void;
+  addAdSpend: (s: Omit<AdSpendEntry, "id" | "createdAt">) => void;
+  updateAdSpend: (id: string, patch: Partial<AdSpendEntry>) => void;
+  deleteAdSpend: (id: string) => void;
   resetDemoData: () => void;
 };
 
@@ -111,6 +118,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           systemPermissions: parsed.systemPermissions?.length
             ? parsed.systemPermissions
             : seedSystemPermissions,
+          adSpends: parsed.adSpends?.length ? parsed.adSpends : seedAdSpends,
         });
       }
     } catch {
@@ -342,6 +350,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({
           ...s,
           systemPermissions: s.systemPermissions.filter((x) => x.id !== id),
+        })),
+
+      addAdSpend: (spend) =>
+        setState((s) => ({
+          ...s,
+          adSpends: [
+            {
+              ...spend,
+              id: genId("SP"),
+              createdAt: new Date().toISOString().split("T")[0],
+            },
+            ...(s.adSpends || []),
+          ],
+        })),
+      updateAdSpend: (id, patch) =>
+        setState((s) => ({
+          ...s,
+          adSpends: (s.adSpends || []).map((x) => (x.id === id ? { ...x, ...patch } : x)),
+        })),
+      deleteAdSpend: (id) =>
+        setState((s) => ({
+          ...s,
+          adSpends: (s.adSpends || []).filter((x) => x.id !== id),
         })),
 
       resetDemoData: () => setState(loadInitial()),

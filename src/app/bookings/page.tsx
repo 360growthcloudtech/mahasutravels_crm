@@ -44,8 +44,10 @@ import { BookingHistoryDrawer } from "@/components/crm/booking-history-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent } from "@/lib/data";
+import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
+
+const websiteNames = trackedWebsites.map((w) => w.name);
 
 const statuses: BookingStatus[] = [
   "Advance Pending",
@@ -125,6 +127,7 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = React.useState<BookingStatus[]>([]);
   const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
   const [hotelFilter, setHotelFilter] = React.useState<Array<"With hotel" | "No hotel">>([]);
+  const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [travelFrom, setTravelFrom] = React.useState("");
   const [travelTo, setTravelTo] = React.useState("");
   const [deleteTarget, setDeleteTarget] = React.useState<Booking | null>(null);
@@ -157,6 +160,7 @@ export default function BookingsPage() {
     statusFilter.length > 0 ||
     driverFilter.length > 0 ||
     hotelFilter.length > 0 ||
+    websiteFilter.length > 0 ||
     travelFrom.length > 0 ||
     travelTo.length > 0;
 
@@ -171,6 +175,7 @@ export default function BookingsPage() {
     }
     if (statusFilter.length > 0 && !statusFilter.includes(b.status)) return false;
     if (driverFilter.length > 0 && !driverFilter.includes(b.driver)) return false;
+    if (websiteFilter.length > 0 && (!b.website || !websiteFilter.includes(b.website))) return false;
     if (hotelFilter.length > 0) {
       const withHotel = !!b.hotel;
       const ok =
@@ -283,6 +288,12 @@ export default function BookingsPage() {
                 />
               </div>
               <MultiFilter
+                label="Website"
+                options={websiteNames}
+                selected={websiteFilter}
+                onChange={setWebsiteFilter}
+              />
+              <MultiFilter
                 label="Payment status"
                 options={statuses}
                 selected={statusFilter}
@@ -326,6 +337,7 @@ export default function BookingsPage() {
                     setStatusFilter([]);
                     setDriverFilter([]);
                     setHotelFilter([]);
+                    setWebsiteFilter([]);
                     setTravelFrom("");
                     setTravelTo("");
                   }}

@@ -11,14 +11,26 @@ import {
 } from "recharts";
 import { revenueTrend } from "@/lib/data";
 
-export function RevenueChart() {
+interface RevenueChartProps {
+  data?: Array<{ day: string; revenue: number; leads: number }>;
+  color?: string;
+  sourceName?: string | null;
+}
+
+export function RevenueChart({
+  data = revenueTrend,
+  color = "#f5a524",
+  sourceName,
+}: RevenueChartProps) {
+  const gradientId = `revFill-${color.replace("#", "")}`;
+
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={revenueTrend} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
         <defs>
-          <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f5a524" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#f5a524" stopOpacity={0} />
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid vertical={false} stroke="#e3e6ee" />
@@ -43,14 +55,17 @@ export function RevenueChart() {
             fontFamily: "var(--font-sans)",
             boxShadow: "0 4px 14px rgba(18,23,43,0.08)",
           }}
-          formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, "Revenue"]}
+          formatter={(value) => [
+            `₹${Number(value).toLocaleString("en-IN")}`,
+            sourceName ? `Revenue (${sourceName})` : "Revenue",
+          ]}
         />
         <Area
           type="monotone"
           dataKey="revenue"
-          stroke="#f5a524"
+          stroke={color}
           strokeWidth={2.5}
-          fill="url(#revFill)"
+          fill={`url(#${gradientId})`}
         />
       </AreaChart>
     </ResponsiveContainer>

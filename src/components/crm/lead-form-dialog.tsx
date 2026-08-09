@@ -24,6 +24,7 @@ import {
   pickupLocations,
   cabFleet,
   estimateCabPrice,
+  trackedWebsites,
 } from "@/lib/data";
 
 const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
@@ -241,6 +242,19 @@ export function LeadFormDialog({
                   <SelectContent>
                     {sources.map((s) => (
                       <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field label="Website domain">
+                <Select value={form.website || "mahasutravels.com"} onValueChange={(v) => set("website", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {trackedWebsites.map((w) => (
+                      <SelectItem key={w.id} value={w.name}>
+                        {w.icon} {w.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

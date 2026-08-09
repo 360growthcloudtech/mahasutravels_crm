@@ -46,12 +46,13 @@ import { LeadQuoteDrawer } from "@/components/crm/lead-quote-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { agents, Lead, LeadStatus, makeLeadHistoryEvent } from "@/lib/data";
+import { agents, Lead, LeadStatus, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 
 const statuses: LeadStatus[] = ["New", "Contacted", "Quoted", "Follow-up", "Confirmed", "Lost"];
 const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
 const agentNames = agents.map((a) => a.name);
+const websiteNames = trackedWebsites.map((w) => w.name);
 
 const stickyActionHead =
   "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-card";
@@ -125,6 +126,7 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = React.useState<LeadStatus[]>([]);
   const [sourceFilter, setSourceFilter] = React.useState<Lead["source"][]>([]);
   const [agentFilter, setAgentFilter] = React.useState<string[]>([]);
+  const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null);
   const [commentLeadId, setCommentLeadId] = React.useState<string | null>(null);
   const [historyLeadId, setHistoryLeadId] = React.useState<string | null>(null);
@@ -153,7 +155,8 @@ export default function LeadsPage() {
     query.trim().length > 0 ||
     statusFilter.length > 0 ||
     sourceFilter.length > 0 ||
-    agentFilter.length > 0;
+    agentFilter.length > 0 ||
+    websiteFilter.length > 0;
 
   const visible = state.leads.filter((l) => {
     const q = query.trim().toLowerCase();
@@ -165,6 +168,7 @@ export default function LeadsPage() {
     if (statusFilter.length > 0 && !statusFilter.includes(l.status)) return false;
     if (sourceFilter.length > 0 && !sourceFilter.includes(l.source)) return false;
     if (agentFilter.length > 0 && !agentFilter.includes(l.agent)) return false;
+    if (websiteFilter.length > 0 && (!l.website || !websiteFilter.includes(l.website))) return false;
     return true;
   });
 
@@ -243,6 +247,12 @@ export default function LeadsPage() {
                 />
               </div>
               <MultiFilter
+                label="Website"
+                options={websiteNames}
+                selected={websiteFilter}
+                onChange={setWebsiteFilter}
+              />
+              <MultiFilter
                 label="Status"
                 options={statuses}
                 selected={statusFilter}
@@ -270,6 +280,7 @@ export default function LeadsPage() {
                     setStatusFilter([]);
                     setSourceFilter([]);
                     setAgentFilter([]);
+                    setWebsiteFilter([]);
                   }}
                 >
                   <X className="size-3.5" /> Clear filters
@@ -332,7 +343,14 @@ export default function LeadsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="font-normal">{l.source}</Badge>
+                    <div className="space-y-0.5">
+                      <Badge variant="outline" className="font-normal">{l.source}</Badge>
+                      {l.website && (
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                          🌐 {l.website}
+                        </p>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm text-slate">{l.agent}</TableCell>
                   <TableCell>
