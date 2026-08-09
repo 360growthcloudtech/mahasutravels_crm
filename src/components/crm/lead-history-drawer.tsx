@@ -2,6 +2,7 @@
 
 import type { ComponentType } from "react";
 import {
+  Copy,
   History,
   MessageSquare,
   Pencil,
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/sheet";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { Lead, LeadHistoryAction, LeadHistoryEvent } from "@/lib/data";
+import { formatDateTime } from "@/lib/lead-utils";
 import { cn } from "@/lib/utils";
 
 const actionMeta: Record<
@@ -36,6 +38,7 @@ const actionMeta: Record<
   quoted: { icon: FileText, tone: "bg-marigold-soft text-marigold-ink" },
   whatsapp: { icon: Share2, tone: "bg-teal-soft text-teal" },
   note: { icon: StickyNote, tone: "bg-signal-soft text-signal" },
+  repeat_inquiry: { icon: Copy, tone: "bg-signal-soft text-signal" },
 };
 
 export function LeadHistoryDrawer({
@@ -47,7 +50,7 @@ export function LeadHistoryDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const history = [...(lead?.history ?? [])].reverse();
+  const history = lead?.history ?? [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -64,7 +67,7 @@ export function LeadHistoryDrawer({
                 <StatusBadge status={lead.status} />
               </div>
               <SheetDescription>
-                {lead.id} · Dummy activity log for every action
+                {lead.leadNo} · Activity log
               </SheetDescription>
             </>
           )}
@@ -109,7 +112,7 @@ function HistoryItem({ event, isFirst }: { event: LeadHistoryEvent; isFirst: boo
       <div className="rounded-md border border-border-soft bg-secondary/30 px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <p className="text-sm font-medium text-ink-text">{event.label}</p>
-          <span className="shrink-0 font-mono-data text-[10px] text-slate-soft">{event.createdAt}</span>
+          <span className="shrink-0 font-mono-data text-[10px] text-slate-soft">{formatDateTime(event.createdAt)}</span>
         </div>
         {event.detail ? (
           <p className="mt-1 text-xs text-slate">{event.detail}</p>

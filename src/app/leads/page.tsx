@@ -46,14 +46,10 @@ import { LeadQuoteDrawer } from "@/components/crm/lead-quote-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { agents, Lead, LeadStatus, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
+import { Lead } from "@/lib/data";
+import { formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
-
-const statuses: LeadStatus[] = ["New", "Contacted", "Quoted", "Follow-up", "Confirmed", "Lost"];
-const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
-const agentNames = agents.map((a) => a.name);
-const websiteNames = trackedWebsites.map((w) => w.name);
 
 const stickyActionHead =
   "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-card";
@@ -69,11 +65,13 @@ function MultiFilter<T extends string>({
   options,
   selected,
   onChange,
+  formatOption,
 }: {
   label: string;
   options: readonly T[];
   selected: T[];
   onChange: (next: T[]) => void;
+  formatOption?: (value: T) => string;
 }) {
   const count = selected.length;
   return (
@@ -101,7 +99,7 @@ function MultiFilter<T extends string>({
             onCheckedChange={() => onChange(toggleValue(selected, option))}
             onSelect={(e) => e.preventDefault()}
           >
-            {option}
+            {formatOption ? formatOption(option) : option}
           </DropdownMenuCheckboxItem>
         ))}
         {count > 0 && (
@@ -121,11 +119,28 @@ function MultiFilter<T extends string>({
 }
 
 export default function LeadsPage() {
-  const { state, addLead, updateLead, deleteLead, addQuote, assignLeadItinerary, updateLeadCustomItinerary, resetLeadItinerary } = useData();
+  const {
+    state,
+    assignees,
+    leadStatuses,
+    leadSources,
+    websites,
+    leadsLoading,
+    addLead,
+    updateLead,
+    deleteLead,
+    addQuote,
+    assignLeadItinerary,
+    updateLeadCustomItinerary,
+    resetLeadItinerary,
+    addLeadComment,
+    loadLeadComments,
+    loadLeadActivity,
+  } = useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<LeadStatus[]>([]);
-  const [sourceFilter, setSourceFilter] = React.useState<Lead["source"][]>([]);
+  const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = React.useState<string[]>([]);
   const [agentFilter, setAgentFilter] = React.useState<string[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null);
@@ -143,14 +158,20 @@ export default function LeadsPage() {
     ? state.leads.find((l) => l.id === quoteLeadId) ?? null
     : null;
 
-  function track(
-    lead: Lead,
-    action: Parameters<typeof makeLeadHistoryEvent>[0],
-    label: string,
-    detail?: string
-  ) {
-    return [...(lead.history ?? []), makeLeadHistoryEvent(action, label, { detail })];
-  }
+  React.useEffect(() => {
+    if (commentLeadId) void loadLeadComments(commentLeadId);
+  }, [commentLeadId, loadLeadComments]);
+
+  React.useEffect(() => {
+    if (historyLeadId) void loadLeadActivity(historyLeadId);
+  }, [historyLeadId, loadLeadActivity]);
+
+  const assigneeNames = ["Unassigned", ...assignees.map((a) => a.name)];
+  const statusCodes = leadStatuses.map((s) => s.code);
+  const sourceCodes = leadSources.map((s) => s.code);
+  const websiteDomains = websites.map((w) => w.domain);
+  const closedStatusCodes = new Set(leadStatuses.filter((s) => s.is_closed).map((s) => s.code));
+  const confirmedCount = state.leads.filter((l) => l.status === "Confirmed").length;
 
   const hasFilters =
     query.trim().length > 0 ||
@@ -164,14 +185,20 @@ export default function LeadsPage() {
     if (q) {
       const matchesName = l.name.toLowerCase().includes(q);
       const matchesEmail = l.email.toLowerCase().includes(q);
-      if (!matchesName && !matchesEmail) return false;
+      const matchesPhone = l.phone.toLowerCase().includes(q) || l.leadNo.toLowerCase().includes(q);
+      if (!matchesName && !matchesEmail && !matchesPhone) return false;
     }
     if (statusFilter.length > 0 && !statusFilter.includes(l.status)) return false;
     if (sourceFilter.length > 0 && !sourceFilter.includes(l.source)) return false;
-    if (agentFilter.length > 0 && !agentFilter.includes(l.agent)) return false;
+    if (agentFilter.length > 0) {
+      const agentName = l.assignedTo?.name || "Unassigned";
+      if (!agentFilter.includes(agentName)) return false;
+    }
     if (websiteFilter.length > 0 && (!l.website || !websiteFilter.includes(l.website))) return false;
     return true;
   });
+
+  const repeatCount = state.leads.filter((l) => l.inquiryCount > 1 || l.previousLeadId).length;
 
   return (
     <Shell>
@@ -184,19 +211,24 @@ export default function LeadsPage() {
                 <Plus className="size-4" /> Add Lead
               </Button>
             }
-            onSubmit={(data) => {
-              addLead({
-                ...data,
-                history: [
-                  makeLeadHistoryEvent("created", "Lead created", {
-                    detail: `Source: ${data.source} · Dummy entry`,
-                  }),
-                  makeLeadHistoryEvent("assigned", `Assigned to ${data.agent}`, {
-                    detail: "Manual assignment on create",
-                  }),
-                ],
-              });
-              toast({ variant: "success", title: "Lead added", description: `${data.name} was added to the pipeline.` });
+            onSubmit={async (data) => {
+              try {
+                const created = await addLead(data);
+                toast({
+                  variant: "success",
+                  title: created.inquiryCount > 1 ? "Repeat inquiry updated" : "Lead added",
+                  description:
+                    created.inquiryCount > 1
+                      ? `${created.name} already had an open lead · inquiry #${created.inquiryCount}.`
+                      : `${created.name} was added to the pipeline.`,
+                });
+              } catch (error) {
+                toast({
+                  variant: "error",
+                  title: "Could not add lead",
+                  description: error instanceof Error ? error.message : "Please try again.",
+                });
+              }
             }}
           />
         }
@@ -206,15 +238,15 @@ export default function LeadsPage() {
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total open leads</p>
+              <p className="text-xs text-muted-foreground">Total leads</p>
               <p className="mt-1 font-display text-xl font-semibold">{state.leads.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Possible duplicates</p>
+              <p className="text-xs text-muted-foreground">Repeat inquiries</p>
               <p className="mt-1 font-display text-xl font-semibold text-signal">
-                {state.leads.filter((l) => l.duplicate).length}
+                {repeatCount}
               </p>
             </CardContent>
           </Card>
@@ -222,14 +254,16 @@ export default function LeadsPage() {
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">Confirmed</p>
               <p className="mt-1 font-display text-xl font-semibold text-teal">
-                {state.leads.filter((l) => l.status === "Confirmed").length}
+                {confirmedCount}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Avg. response time</p>
-              <p className="mt-1 font-display text-xl font-semibold">7m</p>
+              <p className="text-xs text-muted-foreground">Open</p>
+              <p className="mt-1 font-display text-xl font-semibold">
+                {state.leads.filter((l) => !closedStatusCodes.has(l.status)).length}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -242,31 +276,33 @@ export default function LeadsPage() {
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by name or email…"
+                  placeholder="Search name, phone, email…"
                   className="h-8 pl-8 text-xs"
                 />
               </div>
               <MultiFilter
                 label="Website"
-                options={websiteNames}
+                options={websiteDomains}
                 selected={websiteFilter}
                 onChange={setWebsiteFilter}
               />
               <MultiFilter
                 label="Status"
-                options={statuses}
+                options={statusCodes}
                 selected={statusFilter}
                 onChange={setStatusFilter}
+                formatOption={(code) => leadStatuses.find((s) => s.code === code)?.label ?? code}
               />
               <MultiFilter
                 label="Source"
-                options={sources}
+                options={sourceCodes}
                 selected={sourceFilter}
                 onChange={setSourceFilter}
+                formatOption={(code) => sourceLabel(code, leadSources)}
               />
               <MultiFilter
                 label="Agent"
-                options={agentNames}
+                options={assigneeNames}
                 selected={agentFilter}
                 onChange={setAgentFilter}
               />
@@ -296,11 +332,11 @@ export default function LeadsPage() {
                 <TableHead className="sticky top-0 z-20 bg-card">Lead</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Tour package / Route</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Cab / pax / days</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Car / pax / days</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Source</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Agent</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Assigned</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Est. price</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Price</TableHead>
                 <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -315,45 +351,47 @@ export default function LeadsPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="truncate text-sm font-medium text-ink-text">{l.name}</p>
-                          {l.duplicate && (
-                            <span title="Possible duplicate">
+                          {l.inquiryCount > 1 && (
+                            <span title={`Repeat inquiry · ${l.inquiryCount} times`}>
                               <Copy className="size-3 text-signal" />
                             </span>
                           )}
                         </div>
-                        <p className="font-mono-data text-[11px] text-slate-soft">{l.phone}</p>
+                        <p className="font-mono-data text-[11px] text-slate-soft">
+                          {l.leadNo} · {l.phone}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="min-w-0">
-                    <p className="truncate text-sm text-ink-text">{l.tourPackage}</p>
+                    <p className="truncate text-sm text-ink-text">{l.tourPackage || "—"}</p>
                     <p className="truncate text-[11px] text-slate-soft">
-                      {l.pickup}{l.dropoff ? ` → ${l.dropoff}` : ""}
+                      {l.pickup}{l.drop ? ` → ${l.drop}` : ""}
                     </p>
                   </TableCell>
                   <TableCell className="text-sm text-slate">
-                    <p>{formatDisplayDate(l.travelDate)}</p>
-                    {l.returnDate ? (
-                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(l.returnDate)}</p>
+                    <p>{formatDisplayDate(l.pickupDate)}</p>
+                    {l.dropDate ? (
+                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(l.dropDate)}</p>
                     ) : null}
                   </TableCell>
                   <TableCell className="text-sm text-slate">
-                    {l.cabType}{" "}
+                    {l.car || "—"}{" "}
                     <span className="text-slate-soft">
                       · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
                     </span>
                   </TableCell>
                   <TableCell>
                     <div className="space-y-0.5">
-                      <Badge variant="outline" className="font-normal">{l.source}</Badge>
+                      <Badge variant="outline" className="font-normal">{sourceLabel(l.source, leadSources)}</Badge>
                       {l.website && (
                         <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
-                          🌐 {l.website}
+                          {l.website}
                         </p>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-slate">{l.agent}</TableCell>
+                  <TableCell className="text-sm text-slate">{l.assignedTo?.name || "Unassigned"}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -369,36 +407,36 @@ export default function LeadsPage() {
                       <DropdownMenuContent align="start">
                         <DropdownMenuLabel>Set status</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {statuses.map((s) => (
+                        {leadStatuses.map((s) => (
                           <DropdownMenuItem
-                            key={s}
-                            disabled={s === l.status}
+                            key={s.code}
+                            disabled={s.code === l.status}
                             onSelect={() => {
-                              updateLead(l.id, {
-                                status: s,
-                                lastActivity: "Just now",
-                                history: track(
-                                  l,
-                                  "status_changed",
-                                  `Status changed to ${s}`,
-                                  `${l.status} → ${s} · Dummy tracking`
-                                ),
-                              });
-                              toast({
-                                variant: "success",
-                                title: "Status updated",
-                                description: `${l.name} moved to ${s}.`,
-                              });
+                              void updateLead(l.id, { status: s.code })
+                                .then(() =>
+                                  toast({
+                                    variant: "success",
+                                    title: "Status updated",
+                                    description: `${l.name} moved to ${s.label}.`,
+                                  })
+                                )
+                                .catch((error) =>
+                                  toast({
+                                    variant: "error",
+                                    title: "Could not update status",
+                                    description: error instanceof Error ? error.message : "Please try again.",
+                                  })
+                                );
                             }}
                           >
-                            <StatusBadge status={s} />
+                            <StatusBadge status={s.code} />
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                   <TableCell className="whitespace-nowrap pr-6 text-right font-mono-data text-sm text-ink-text">
-                    ₹{l.budget.toLocaleString("en-IN")}
+                    ₹{l.price.toLocaleString("en-IN")}
                   </TableCell>
                   <TableCell className={stickyActionCell}>
                     <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
@@ -443,18 +481,20 @@ export default function LeadsPage() {
                                 <Pencil className="size-3.5" /> Edit lead
                               </DropdownMenuItem>
                             }
-                            onSubmit={(data) => {
-                              updateLead(l.id, {
-                                ...data,
-                                lastActivity: "Just now",
-                                history: track(
-                                  l,
-                                  "updated",
-                                  "Lead details updated",
-                                  `Dummy · edited by Priya`
-                                ),
-                              });
-                              toast({ variant: "success", title: "Lead updated", description: `${l.id} saved successfully.` });
+                            onSubmit={async (data) => {
+                              try {
+                                await updateLead(l.id, {
+                                  ...data,
+                                  assignedToId: data.assignedToId,
+                                });
+                                toast({ variant: "success", title: "Lead updated", description: `${l.leadNo} saved successfully.` });
+                              } catch (error) {
+                                toast({
+                                  variant: "error",
+                                  title: "Could not update lead",
+                                  description: error instanceof Error ? error.message : "Please try again.",
+                                });
+                              }
                             }}
                           />
                           <DropdownMenuSeparator />
@@ -476,7 +516,7 @@ export default function LeadsPage() {
               {visible.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
-                    No leads match these filters.
+                    {leadsLoading ? "Loading leads…" : "No leads match these filters."}
                   </TableCell>
                 </TableRow>
               )}
@@ -487,7 +527,7 @@ export default function LeadsPage() {
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
             {visible.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
-                No leads match these filters.
+                {leadsLoading ? "Loading leads…" : "No leads match these filters."}
               </p>
             ) : (
               visible.map((l) => (
@@ -496,9 +536,9 @@ export default function LeadsPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <p className="text-base font-semibold break-words text-ink-text">{l.name}</p>
-                        {l.duplicate ? <Copy className="size-3.5 shrink-0 text-signal" /> : null}
+                        {l.inquiryCount > 1 ? <Copy className="size-3.5 shrink-0 text-signal" /> : null}
                       </div>
-                      <p className="font-mono-data text-[11px] text-slate-soft">{l.id}</p>
+                      <p className="font-mono-data text-[11px] text-slate-soft">{l.leadNo}</p>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -510,29 +550,21 @@ export default function LeadsPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Set status</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {statuses.map((s) => (
+                        {leadStatuses.map((s) => (
                           <DropdownMenuItem
-                            key={s}
-                            disabled={s === l.status}
+                            key={s.code}
+                            disabled={s.code === l.status}
                             onSelect={() => {
-                              updateLead(l.id, {
-                                status: s,
-                                lastActivity: "Just now",
-                                history: track(
-                                  l,
-                                  "status_changed",
-                                  `Status changed to ${s}`,
-                                  `${l.status} → ${s} · Dummy tracking`
-                                ),
-                              });
-                              toast({
-                                variant: "success",
-                                title: "Status updated",
-                                description: `${l.name} moved to ${s}.`,
-                              });
+                              void updateLead(l.id, { status: s.code }).then(() =>
+                                toast({
+                                  variant: "success",
+                                  title: "Status updated",
+                                  description: `${l.name} moved to ${s.label}.`,
+                                })
+                              );
                             }}
                           >
-                            <StatusBadge status={s} />
+                            <StatusBadge status={s.code} />
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -542,25 +574,26 @@ export default function LeadsPage() {
                     <InfoItem label="Phone">{l.phone || "—"}</InfoItem>
                     <InfoItem label="Email">{l.email || "—"}</InfoItem>
                     <InfoItem label="Tour package" className="sm:col-span-2">
-                      {l.tourPackage}
+                      {l.tourPackage || "—"}
                     </InfoItem>
                     <InfoItem label="Route" className="sm:col-span-2">
                       {l.pickup}
-                      {l.dropoff ? ` → ${l.dropoff}` : ""}
+                      {l.drop ? ` → ${l.drop}` : ""}
                     </InfoItem>
                     <InfoItem label="Travel dates">
-                      {formatDisplayDate(l.travelDate)}
-                      {l.returnDate ? ` → ${formatDisplayDate(l.returnDate)}` : ""}
+                      {formatDisplayDate(l.pickupDate)}
+                      {l.dropDate ? ` → ${formatDisplayDate(l.dropDate)}` : ""}
                     </InfoItem>
-                    <InfoItem label="Cab / pax / days">
-                      {l.cabType} · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
+                    <InfoItem label="Car / pax / days">
+                      {l.car || "—"} · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
                     </InfoItem>
                     <InfoItem label="Source">
-                      {l.source}
+                      {sourceLabel(l.source, leadSources)}
                       {l.website ? ` · ${l.website}` : ""}
                     </InfoItem>
-                    <InfoItem label="Agent">{l.agent}</InfoItem>
-                    <InfoItem label="Est. price">₹{l.budget.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Assigned">{l.assignedTo?.name || "Unassigned"}</InfoItem>
+                    <InfoItem label="Price">₹{l.price.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Last inquiry">{formatRelativeTime(l.lastInquiryAt)}</InfoItem>
                   </InfoGrid>
                   <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
                     <Button size="sm" variant="outline" onClick={() => setHistoryLeadId(l.id)}>
@@ -579,13 +612,9 @@ export default function LeadsPage() {
                           <Pencil className="size-3.5" /> Edit
                         </Button>
                       }
-                      onSubmit={(data) => {
-                        updateLead(l.id, {
-                          ...data,
-                          lastActivity: "Just now",
-                          history: track(l, "updated", "Lead details updated", `Dummy · edited by Priya`),
-                        });
-                        toast({ variant: "success", title: "Lead updated", description: `${l.id} saved successfully.` });
+                      onSubmit={async (data) => {
+                        await updateLead(l.id, { ...data, assignedToId: data.assignedToId });
+                        toast({ variant: "success", title: "Lead updated", description: `${l.leadNo} saved successfully.` });
                       }}
                     />
                     <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(l)}>
@@ -606,23 +635,12 @@ export default function LeadsPage() {
         lead={commentLead}
         open={!!commentLeadId}
         onOpenChange={(v) => !v && setCommentLeadId(null)}
-        onAddComment={(leadId, comment) => {
-          const current = state.leads.find((l) => l.id === leadId);
-          if (!current) return;
-          updateLead(leadId, {
-            comments: [...(current.comments ?? []), comment],
-            lastActivity: "Just now",
-            history: track(
-              current,
-              "comment_added",
-              "Comment added",
-              comment.text
-            ),
-          });
+        onAddComment={async (leadId, text) => {
+          await addLeadComment(leadId, text);
           toast({
             variant: "success",
             title: "Comment added",
-            description: `Note saved on ${current.name}.`,
+            description: `Note saved on ${commentLead?.name ?? "lead"}.`,
           });
         }}
       />
@@ -669,32 +687,24 @@ export default function LeadsPage() {
         onSend={({ amount, note, sentVia, saveAsDraft }) => {
           if (!quoteLead) return;
           const route =
-            quoteLead.pickup && quoteLead.dropoff
-              ? `${quoteLead.pickup} → ${quoteLead.dropoff}`
+            quoteLead.pickup && quoteLead.drop
+              ? `${quoteLead.pickup} → ${quoteLead.drop}`
               : quoteLead.tourPackage;
           addQuote({
             leadId: quoteLead.id,
             customer: quoteLead.name,
             route,
             days: quoteLead.days,
-            cabType: quoteLead.cabType,
+            cabType: quoteLead.car,
             amount,
             stage: saveAsDraft ? "Draft" : "Sent",
             sentVia,
             note: note || undefined,
           });
-          updateLead(quoteLead.id, {
+          void updateLead(quoteLead.id, {
             status: saveAsDraft ? quoteLead.status : "Quoted",
-            budget: amount,
-            lastActivity: "Just now",
-            history: track(
-              quoteLead,
-              "quoted",
-              saveAsDraft ? "Quote draft saved" : "Quote sent",
-              saveAsDraft
-                ? `Dummy · ₹${amount.toLocaleString("en-IN")} draft`
-                : `Dummy · ₹${amount.toLocaleString("en-IN")} via ${sentVia.join(", ")}`
-            ),
+            price: amount,
+            notes: note || quoteLead.notes,
           });
           setQuoteLeadId(null);
           toast({
@@ -711,12 +721,12 @@ export default function LeadsPage() {
         open={!!deleteTarget}
         onOpenChange={(v) => !v && setDeleteTarget(null)}
         title="Delete this lead?"
-        description={`${deleteTarget?.name ?? ""} (${deleteTarget?.id ?? ""}) will be permanently removed from the pipeline.`}
+        description={`${deleteTarget?.name ?? ""} (${deleteTarget?.leadNo ?? ""}) will be permanently removed from the pipeline.`}
         onConfirm={() => {
-          if (deleteTarget) {
-            deleteLead(deleteTarget.id);
+          if (!deleteTarget) return;
+          void deleteLead(deleteTarget.id).then(() => {
             toast({ variant: "info", title: "Lead deleted", description: `${deleteTarget.name} was removed.` });
-          }
+          });
         }}
       />
     </Shell>

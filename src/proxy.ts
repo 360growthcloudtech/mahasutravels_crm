@@ -4,6 +4,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth-jwt";
 
 function isPublicPath(pathname: string) {
   if (pathname.startsWith("/api/auth")) return true;
+  if (pathname.startsWith("/api/leads")) return true;
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
   if (pathname.startsWith("/proposal")) return true;
   return false;

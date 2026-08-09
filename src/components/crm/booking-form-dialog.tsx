@@ -25,14 +25,14 @@ import {
   BookingStatus,
   Driver,
   Hotel,
-  Lead,
+  MarketingChannel,
   tourPackages,
   pickupLocations,
   cabFleet,
   estimateCabPrice,
 } from "@/lib/data";
 
-const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
+const sources: MarketingChannel[] = ["Website", "Google Ads", "Meta Ads", "Manual"];
 const agentsList = ["Aman", "Priya", "Sana"];
 const statuses: BookingStatus[] = [
   "Advance Pending",
@@ -295,7 +295,7 @@ export function BookingFormDialog({
               </Field>
 
               <Field label="Source">
-                <Select value={form.source} onValueChange={(v) => set("source", v as Lead["source"])}>
+                <Select value={form.source} onValueChange={(v) => set("source", v as MarketingChannel)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {sources.map((s) => (

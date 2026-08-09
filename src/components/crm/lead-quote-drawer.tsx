@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FileText, MessageCircle, Pencil, RotateCcw, Send } from "lucide-react";
+import { ExternalLink, FileText, MessageCircle, Pencil, RotateCcw, Send } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -30,7 +30,7 @@ import {
   matchItineraryTemplate,
 } from "@/lib/data";
 function leadRoute(lead: Lead) {
-  if (lead.pickup && lead.dropoff) return `${lead.pickup} → ${lead.dropoff}`;
+  if (lead.pickup && lead.drop) return `${lead.pickup} → ${lead.drop}`;
   return lead.tourPackage;
 }
 
@@ -67,16 +67,16 @@ export function LeadQuoteDrawer({
 
   React.useEffect(() => {
     if (!open || !lead) return;
-    const estimated = estimateCabPrice(lead.cabType, lead.days) || lead.budget;
+    const estimated = estimateCabPrice(lead.car, lead.days) || lead.price;
     setAmount(estimated);
-    setNote(lead.tourPlan || "");
+    setNote(lead.notes || "");
   }, [open, lead]);
 
   const leadQuotes = lead
     ? quotes.filter((q) => q.leadId === lead.id || q.customer === lead.name)
     : [];
 
-  const rate = lead ? cabFleet.find((c) => c.name === lead.cabType)?.ratePerDay : undefined;
+  const rate = lead ? cabFleet.find((c) => c.name === lead.car)?.ratePerDay : undefined;
 
   const matchedTemplate = lead
     ? matchItineraryTemplate(itineraries, {
@@ -88,6 +88,9 @@ export function LeadQuoteDrawer({
   const activeTemplates = itineraries.filter((t) => t.status === "Active" || t.status === "Draft");
   const isCustomized = Boolean(lead?.customItinerary);
   const dayCount = lead?.customItinerary?.daysPlan.length ?? matchedTemplate?.daysPlan.length ?? 0;
+  const proposalHref = lead
+    ? `/proposal/${lead.id}${amount > 0 ? `?amount=${amount}` : ""}`
+    : "";
 
   function submit(saveAsDraft: boolean) {
     if (!lead || amount <= 0) return;
@@ -131,7 +134,7 @@ export function LeadQuoteDrawer({
                   <StatusBadge status={lead.status} />
                 </div>
                 <SheetDescription>
-                  {lead.id} · Prefills from this lead — send quote on WhatsApp
+                  {lead.leadNo} · Prefills from this lead — send quote on WhatsApp
                 </SheetDescription>
               </>
             )}
@@ -142,10 +145,10 @@ export function LeadQuoteDrawer({
               <div className="rounded-md border border-border-soft bg-secondary/40 px-3 py-2.5 text-xs">
                 <p className="font-medium text-ink-text">{lead.tourPackage}</p>
                 <p className="mt-1 text-slate">
-                  {leadRoute(lead)} · {lead.days}d · {lead.cabType}
+                  {leadRoute(lead)} · {lead.days}d · {lead.car}
                 </p>
                 <p className="mt-1 text-slate-soft">
-                  {lead.adults}A{lead.kids > 0 ? `+${lead.kids}K` : ""} · Agent {lead.agent}
+                  {lead.adults}A{lead.kids > 0 ? `+${lead.kids}K` : ""} · {lead.assignedTo?.name || "Unassigned"}
                 </p>
               </div>
             )}
@@ -203,6 +206,11 @@ export function LeadQuoteDrawer({
                       <RotateCcw className="size-3.5" /> Reset to template
                     </Button>
                   ) : null}
+                  <Button asChild variant="outline" size="sm">
+                    <a href={proposalHref} target="_blank" rel="noreferrer">
+                      <ExternalLink className="size-3.5" /> Open full preview
+                    </a>
+                  </Button>
                 </div>
               </div>
             )}

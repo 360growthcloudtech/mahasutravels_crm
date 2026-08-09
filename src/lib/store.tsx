@@ -13,7 +13,6 @@ import {
   Member,
   SystemPermission,
   AdSpendEntry,
-  leads as seedLeads,
   bookings as seedBookings,
   drivers as seedDrivers,
   quotes as seedQuotes,
@@ -25,6 +24,48 @@ import {
   genId,
   makeLeadHistoryEvent,
 } from "@/lib/data";
+import {
+  activityFromApi,
+  commentFromApi,
+  createLeadApi,
+  createLeadCommentApi,
+  deleteLeadApi,
+  fetchAssignees,
+  fetchLeadActivity,
+  fetchLeadComments,
+  fetchLeadMasters,
+  fetchLeads,
+  leadFromApi,
+  leadToWritePayload,
+  updateLeadApi,
+  type LeadItineraryOverlay,
+  type LeadSourceMasterApi,
+  type LeadStatusMasterApi,
+  type LeadWritePayload,
+  type WebsiteMasterApi,
+} from "@/lib/leads-api";
+
+export type LeadFormValues = {
+  name: string;
+  email: string;
+  city: string;
+  phone: string;
+  source: string;
+  website?: string;
+  tourPackage: string;
+  pickup: string;
+  drop: string;
+  pickupDate: string;
+  dropDate: string;
+  car: string;
+  adults: number;
+  kids: number;
+  days: number;
+  notes: string;
+  status: Lead["status"];
+  assignedToId: string | null;
+  price: number;
+};
 
 type State = {
   leads: Lead[];
@@ -36,13 +77,19 @@ type State = {
   members: Member[];
   systemPermissions: SystemPermission[];
   adSpends: AdSpendEntry[];
+  leadItineraries: Record<string, LeadItineraryOverlay>;
 };
 
-const STORAGE_KEY = "mahasu-crm-state-v18";
+export type AssigneeOption = { id: string; name: string; email: string; role: string };
+export type LeadStatusOption = LeadStatusMasterApi;
+export type LeadSourceOption = LeadSourceMasterApi;
+export type WebsiteOption = WebsiteMasterApi;
+
+const STORAGE_KEY = "mahasu-crm-state-v19";
 
 function loadInitial(): State {
   return {
-    leads: seedLeads,
+    leads: [],
     bookings: seedBookings,
     drivers: seedDrivers,
     quotes: seedQuotes,
@@ -51,14 +98,32 @@ function loadInitial(): State {
     members: seedMembers,
     systemPermissions: seedSystemPermissions,
     adSpends: seedAdSpends,
+    leadItineraries: {},
+  };
+}
+
+function mergeLead(dtoLead: Lead, overlay?: LeadItineraryOverlay): Lead {
+  return {
+    ...dtoLead,
+    itineraryTemplateId: overlay?.itineraryTemplateId ?? dtoLead.itineraryTemplateId,
+    customItinerary: overlay?.customItinerary ?? dtoLead.customItinerary,
   };
 }
 
 type Ctx = {
   state: State;
-  addLead: (l: Omit<Lead, "id">) => void;
-  updateLead: (id: string, patch: Partial<Lead>) => void;
-  deleteLead: (id: string) => void;
+  assignees: AssigneeOption[];
+  leadStatuses: LeadStatusOption[];
+  leadSources: LeadSourceOption[];
+  websites: WebsiteOption[];
+  leadsLoading: boolean;
+  refreshLeads: () => Promise<void>;
+  addLead: (l: LeadFormValues) => Promise<Lead>;
+  updateLead: (id: string, patch: Partial<Lead> & { assignedToId?: string | null }) => Promise<void>;
+  deleteLead: (id: string) => Promise<void>;
+  addLeadComment: (leadId: string, text: string) => Promise<void>;
+  loadLeadComments: (leadId: string) => Promise<void>;
+  loadLeadActivity: (leadId: string) => Promise<void>;
   addBooking: (b: Omit<Booking, "id">) => void;
   updateBooking: (id: string, patch: Partial<Booking>) => void;
   deleteBooking: (id: string) => void;
@@ -98,6 +163,11 @@ const DataContext = React.createContext<Ctx | null>(null);
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<State>(loadInitial);
   const [hydrated, setHydrated] = React.useState(false);
+  const [assignees, setAssignees] = React.useState<AssigneeOption[]>([]);
+  const [leadStatuses, setLeadStatuses] = React.useState<LeadStatusOption[]>([]);
+  const [leadSources, setLeadSources] = React.useState<LeadSourceOption[]>([]);
+  const [websites, setWebsites] = React.useState<WebsiteOption[]>([]);
+  const [leadsLoading, setLeadsLoading] = React.useState(true);
 
   React.useEffect(() => {
     try {
@@ -107,6 +177,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setState({
           ...loadInitial(),
           ...parsed,
+          leads: [],
           itineraries: parsed.itineraries?.length ? parsed.itineraries : seedItineraries,
           hotelTemplates: parsed.hotelTemplates?.length
             ? parsed.hotelTemplates
@@ -119,6 +190,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ? parsed.systemPermissions
             : seedSystemPermissions,
           adSpends: parsed.adSpends?.length ? parsed.adSpends : seedAdSpends,
+          leadItineraries: parsed.leadItineraries ?? {},
         });
       }
     } catch {
@@ -130,19 +202,175 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!hydrated) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const { leads: _leads, ...rest } = state;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
     } catch {
       // storage full or unavailable — ignore
     }
   }, [state, hydrated]);
 
+  const refreshLeads = React.useCallback(async () => {
+    setLeadsLoading(true);
+    try {
+      const [rows, users, masters] = await Promise.all([
+        fetchLeads(),
+        fetchAssignees().catch(() => []),
+        fetchLeadMasters().catch(() => ({ statuses: [], sources: [], websites: [] })),
+      ]);
+      setAssignees(users);
+      setLeadStatuses(masters.statuses);
+      setLeadSources(masters.sources);
+      setWebsites(masters.websites);
+      setState((s) => ({
+        ...s,
+        leads: rows.map((row) => leadFromApi(row, s.leadItineraries[row.id])),
+      }));
+    } catch {
+      setAssignees([]);
+      setLeadStatuses([]);
+      setLeadSources([]);
+      setWebsites([]);
+    } finally {
+      setLeadsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void refreshLeads();
+  }, [hydrated, refreshLeads]);
+
+  const addLead = React.useCallback(async (input: LeadFormValues) => {
+    const { lead } = await createLeadApi(leadToWritePayload(input));
+    let mapped!: Lead;
+    setState((s) => {
+      mapped = mergeLead(leadFromApi(lead, s.leadItineraries[lead.id]), s.leadItineraries[lead.id]);
+      return {
+        ...s,
+        leads: [mapped, ...s.leads.filter((item) => item.id !== lead.id)],
+      };
+    });
+    return mapped;
+  }, []);
+
+  const updateLead = React.useCallback(async (id: string, patch: Partial<Lead> & { assignedToId?: string | null }) => {
+    const itineraryOnly =
+      (patch.itineraryTemplateId !== undefined || patch.customItinerary !== undefined) &&
+      Object.keys(patch).every((key) =>
+        ["itineraryTemplateId", "customItinerary", "history", "comments"].includes(key)
+      );
+
+    if (!itineraryOnly) {
+      const payload: Partial<LeadWritePayload> = {};
+      if (patch.name !== undefined) payload.name = patch.name;
+      if (patch.phone !== undefined) payload.phone = patch.phone;
+      if (patch.email !== undefined) payload.email = patch.email;
+      if (patch.city !== undefined) payload.city = patch.city;
+      if (patch.source !== undefined) payload.source = patch.source;
+      if (patch.website !== undefined) payload.website = patch.website || null;
+      if (patch.tourPackage !== undefined) payload.tour_package = patch.tourPackage;
+      if (patch.pickup !== undefined) payload.pickup = patch.pickup;
+      if (patch.drop !== undefined) payload.drop = patch.drop;
+      if (patch.pickupDate !== undefined) payload.pickup_date = patch.pickupDate;
+      if (patch.dropDate !== undefined) payload.drop_date = patch.dropDate;
+      if (patch.car !== undefined) payload.car = patch.car;
+      if (patch.adults !== undefined) payload.adults = patch.adults;
+      if (patch.kids !== undefined) payload.kids = patch.kids;
+      if (patch.days !== undefined) payload.days = patch.days;
+      if (patch.notes !== undefined) payload.notes = patch.notes;
+      if (patch.status !== undefined) payload.status = patch.status;
+      if (patch.price !== undefined) payload.price = patch.price;
+      if (patch.assignedToId !== undefined) payload.assigned_to = patch.assignedToId;
+      else if (patch.assignedTo !== undefined) payload.assigned_to = patch.assignedTo?.id ?? null;
+
+      if (Object.keys(payload).length > 0) {
+        const updated = await updateLeadApi(id, payload);
+        setState((s) => ({
+          ...s,
+          leads: s.leads.map((item) =>
+            item.id === id ? mergeLead(leadFromApi(updated, s.leadItineraries[id]), s.leadItineraries[id]) : item
+          ),
+        }));
+      }
+    }
+
+    if (patch.itineraryTemplateId !== undefined || patch.customItinerary !== undefined) {
+      setState((s) => {
+        const overlay: LeadItineraryOverlay = {
+          ...s.leadItineraries[id],
+          ...(patch.itineraryTemplateId !== undefined
+            ? { itineraryTemplateId: patch.itineraryTemplateId }
+            : {}),
+          ...(patch.customItinerary !== undefined ? { customItinerary: patch.customItinerary } : {}),
+        };
+        return {
+          ...s,
+          leadItineraries: { ...s.leadItineraries, [id]: overlay },
+          leads: s.leads.map((item) => (item.id === id ? mergeLead(item, overlay) : item)),
+        };
+      });
+    }
+  }, []);
+
+  const deleteLead = React.useCallback(async (id: string) => {
+    await deleteLeadApi(id);
+    setState((s) => {
+      const { [id]: _removed, ...rest } = s.leadItineraries;
+      return {
+        ...s,
+        leads: s.leads.filter((x) => x.id !== id),
+        leadItineraries: rest,
+      };
+    });
+  }, []);
+
+  const addLeadComment = React.useCallback(async (leadId: string, text: string) => {
+    const comment = await createLeadCommentApi(leadId, text);
+    setState((s) => ({
+      ...s,
+      leads: s.leads.map((lead) =>
+        lead.id === leadId
+          ? { ...lead, comments: [commentFromApi(comment), ...(lead.comments ?? [])] }
+          : lead
+      ),
+    }));
+  }, []);
+
+  const loadLeadComments = React.useCallback(async (leadId: string) => {
+    const comments = await fetchLeadComments(leadId);
+    setState((s) => ({
+      ...s,
+      leads: s.leads.map((lead) =>
+        lead.id === leadId ? { ...lead, comments: comments.map(commentFromApi) } : lead
+      ),
+    }));
+  }, []);
+
+  const loadLeadActivity = React.useCallback(async (leadId: string) => {
+    const activity = await fetchLeadActivity(leadId);
+    setState((s) => ({
+      ...s,
+      leads: s.leads.map((lead) =>
+        lead.id === leadId ? { ...lead, history: activity.map(activityFromApi) } : lead
+      ),
+    }));
+  }, []);
+
   const value = React.useMemo<Ctx>(
     () => ({
       state,
-      addLead: (l) => setState((s) => ({ ...s, leads: [{ ...l, id: genId("LD") }, ...s.leads] })),
-      updateLead: (id, patch) =>
-        setState((s) => ({ ...s, leads: s.leads.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
-      deleteLead: (id) => setState((s) => ({ ...s, leads: s.leads.filter((x) => x.id !== id) })),
+      assignees,
+      leadStatuses,
+      leadSources,
+      websites,
+      leadsLoading,
+      refreshLeads,
+      addLead,
+      updateLead,
+      deleteLead,
+      addLeadComment,
+      loadLeadComments,
+      loadLeadActivity,
 
       addBooking: (b) => setState((s) => ({ ...s, bookings: [{ ...b, id: genId("BK") }, ...s.bookings] })),
       updateBooking: (id, patch) =>
@@ -234,64 +462,78 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }),
 
       assignLeadItinerary: (leadId, templateId) =>
-        setState((s) => ({
-          ...s,
-          leads: s.leads.map((lead) => {
-            if (lead.id !== leadId) return lead;
-            const template = s.itineraries.find((t) => t.id === templateId);
-            return {
-              ...lead,
-              itineraryTemplateId: templateId,
-              customItinerary: undefined,
-              lastActivity: "Just now",
-              history: [
-                makeLeadHistoryEvent("updated", "Itinerary template assigned", {
-                  detail: template ? `${template.name} · master template` : templateId,
-                }),
-                ...(lead.history ?? []),
-              ],
-            };
-          }),
-        })),
+        setState((s) => {
+          const template = s.itineraries.find((t) => t.id === templateId);
+          const overlay: LeadItineraryOverlay = {
+            itineraryTemplateId: templateId,
+            customItinerary: undefined,
+          };
+          return {
+            ...s,
+            leadItineraries: { ...s.leadItineraries, [leadId]: overlay },
+            leads: s.leads.map((lead) => {
+              if (lead.id !== leadId) return lead;
+              return {
+                ...mergeLead(lead, overlay),
+                history: [
+                  makeLeadHistoryEvent("updated", "Itinerary template assigned", {
+                    detail: template ? `${template.name} · master template` : templateId,
+                  }),
+                  ...(lead.history ?? []),
+                ],
+              };
+            }),
+          };
+        }),
 
       updateLeadCustomItinerary: (leadId, custom) =>
-        setState((s) => ({
-          ...s,
-          leads: s.leads.map((lead) => {
-            if (lead.id !== leadId) return lead;
-            return {
-              ...lead,
-              itineraryTemplateId: custom.templateId || lead.itineraryTemplateId,
-              customItinerary: custom,
-              lastActivity: "Just now",
-              history: [
-                makeLeadHistoryEvent("updated", "Itinerary customized for guest", {
-                  detail: `${custom.title} · original template unchanged`,
-                }),
-                ...(lead.history ?? []),
-              ],
-            };
-          }),
-        })),
+        setState((s) => {
+          const overlay: LeadItineraryOverlay = {
+            ...s.leadItineraries[leadId],
+            itineraryTemplateId: custom.templateId || s.leadItineraries[leadId]?.itineraryTemplateId,
+            customItinerary: custom,
+          };
+          return {
+            ...s,
+            leadItineraries: { ...s.leadItineraries, [leadId]: overlay },
+            leads: s.leads.map((lead) => {
+              if (lead.id !== leadId) return lead;
+              return {
+                ...mergeLead(lead, overlay),
+                history: [
+                  makeLeadHistoryEvent("updated", "Itinerary customized for guest", {
+                    detail: `${custom.title} · original template unchanged`,
+                  }),
+                  ...(lead.history ?? []),
+                ],
+              };
+            }),
+          };
+        }),
 
       resetLeadItinerary: (leadId) =>
-        setState((s) => ({
-          ...s,
-          leads: s.leads.map((lead) => {
-            if (lead.id !== leadId) return lead;
-            return {
-              ...lead,
-              customItinerary: undefined,
-              lastActivity: "Just now",
-              history: [
-                makeLeadHistoryEvent("updated", "Itinerary reset to template", {
-                  detail: "Guest copy cleared · master template restored",
-                }),
-                ...(lead.history ?? []),
-              ],
-            };
-          }),
-        })),
+        setState((s) => {
+          const overlay: LeadItineraryOverlay = {
+            itineraryTemplateId: s.leadItineraries[leadId]?.itineraryTemplateId,
+            customItinerary: undefined,
+          };
+          return {
+            ...s,
+            leadItineraries: { ...s.leadItineraries, [leadId]: overlay },
+            leads: s.leads.map((lead) => {
+              if (lead.id !== leadId) return lead;
+              return {
+                ...mergeLead(lead, overlay),
+                history: [
+                  makeLeadHistoryEvent("updated", "Itinerary reset to template", {
+                    detail: "Guest copy cleared · master template restored",
+                  }),
+                  ...(lead.history ?? []),
+                ],
+              };
+            }),
+          };
+        }),
 
       addHotelTemplate: (t) =>
         setState((s) => ({
@@ -377,7 +619,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       resetDemoData: () => setState(loadInitial()),
     }),
-    [state]
+    [
+      state,
+      assignees,
+      leadStatuses,
+      leadSources,
+      websites,
+      leadsLoading,
+      refreshLeads,
+      addLead,
+      updateLead,
+      deleteLead,
+      addLeadComment,
+      loadLeadComments,
+      loadLeadActivity,
+    ]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

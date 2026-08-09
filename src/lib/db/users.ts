@@ -9,6 +9,13 @@ export type UserRow = {
   status: string;
 };
 
+export type PublicUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
   const { rows } = await query<UserRow>(
     `SELECT id, name, email, password_hash, role, status
@@ -18,4 +25,14 @@ export async function findUserByEmail(email: string): Promise<UserRow | null> {
     [email]
   );
   return rows[0] ?? null;
+}
+
+export async function listActiveUsers(): Promise<PublicUser[]> {
+  const { rows } = await query<PublicUser>(
+    `SELECT id, name, email, role
+     FROM users
+     WHERE status = 'Active'
+     ORDER BY name ASC`
+  );
+  return rows;
 }

@@ -19,77 +19,132 @@ import { Field } from "@/components/crm/field";
 import { DatePicker } from "@/components/crm/date-picker";
 import {
   Lead,
-  LeadStatus,
   tourPackages,
   pickupLocations,
   cabFleet,
   estimateCabPrice,
-  trackedWebsites,
+  leadCars,
 } from "@/lib/data";
+import { useData, type LeadFormValues } from "@/lib/store";
 
-const sources: Lead["source"][] = ["Website", "Google Ads", "Meta Ads", "Manual"];
-const statuses: LeadStatus[] = ["New", "Contacted", "Quoted", "Follow-up", "Confirmed", "Lost"];
-const agentsList = ["Aman", "Priya", "Sana"];
+const carOptions = [...leadCars, ...cabFleet.map((c) => c.name)];
 
-type FormState = Omit<Lead, "id">;
+type FormState = LeadFormValues;
 
-const empty: FormState = {
-  name: "",
-  email: "",
-  city: "",
-  phone: "",
-  source: "Website",
-  tourPackage: "Custom / Plan your trip",
-  pickup: "",
-  dropoff: "",
-  travelDate: "",
-  returnDate: "",
-  cabType: "Ertiga (6+1)",
-  adults: 2,
-  kids: 0,
-  days: 2,
-  tourPlan: "",
-  status: "New",
-  agent: "Aman",
-  budget: estimateCabPrice("Ertiga (6+1)", 2),
-  lastActivity: "Just now",
-};
+function emptyForm(defaults?: {
+  source?: string;
+  website?: string;
+  status?: string;
+}): FormState {
+  return {
+    name: "",
+    email: "",
+    city: "",
+    phone: "",
+    source: defaults?.source || "manual",
+    website: defaults?.website || "mahasutravels.com",
+    tourPackage: "Custom / Plan your trip",
+    pickup: "",
+    drop: "",
+    pickupDate: "",
+    dropDate: "",
+    car: "sedan",
+    adults: 2,
+    kids: 0,
+    days: 2,
+    notes: "",
+    status: defaults?.status || "New",
+    assignedToId: null,
+    price: estimateCabPrice("sedan", 2),
+  };
+}
+
+function fromLead(lead: Lead): FormState {
+  return {
+    name: lead.name,
+    email: lead.email,
+    city: lead.city,
+    phone: lead.phone,
+    source: lead.source || "manual",
+    website: lead.website || "mahasutravels.com",
+    tourPackage: lead.tourPackage || "Custom / Plan your trip",
+    pickup: lead.pickup,
+    drop: lead.drop,
+    pickupDate: lead.pickupDate,
+    dropDate: lead.dropDate,
+    car: lead.car || "sedan",
+    adults: lead.adults,
+    kids: lead.kids,
+    days: lead.days,
+    notes: lead.notes,
+    status: lead.status,
+    assignedToId: lead.assignedTo?.id ?? null,
+    price: lead.price,
+  };
+}
 
 export function LeadFormDialog({
   trigger,
   lead,
+  defaultWebsite,
   onSubmit,
 }: {
   trigger: React.ReactNode;
   lead?: Lead;
-  onSubmit: (data: FormState) => void;
+  defaultWebsite?: string;
+  onSubmit: (data: FormState) => void | Promise<void>;
 }) {
+  const { assignees, leadStatuses, leadSources, websites } = useData();
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(lead ?? empty);
+  const [saving, setSaving] = React.useState(false);
+  const masterSource = leadSources.find((s) => s.code === "manual")?.code || leadSources[0]?.code || "manual";
+  const masterWebsite = websites[0]?.domain || "mahasutravels.com";
+  const masterStatus = leadStatuses.find((s) => s.is_default)?.code || leadStatuses[0]?.code || "New";
+  const [form, setForm] = React.useState<FormState>(() =>
+    emptyForm({ source: masterSource, website: defaultWebsite || masterWebsite, status: masterStatus })
+  );
 
   React.useEffect(() => {
-    if (open) setForm(lead ?? empty);
-  }, [open, lead]);
+    if (!open) return;
+    if (lead) {
+      setForm(fromLead(lead));
+      return;
+    }
+    setForm(
+      emptyForm({
+        source: masterSource,
+        website: defaultWebsite || masterWebsite,
+        status: masterStatus,
+      })
+    );
+  }, [open, lead, defaultWebsite, masterSource, masterWebsite, masterStatus]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => {
       const next = { ...f, [key]: value };
-      if (key === "cabType" || key === "days") {
-        const cabType = key === "cabType" ? (value as string) : next.cabType;
+      if (key === "car" || key === "days") {
+        const car = key === "car" ? (value as string) : next.car;
         const days = key === "days" ? (value as number) : next.days;
-        next.budget = estimateCabPrice(cabType, days);
+        next.price = estimateCabPrice(car, days);
       }
       return next;
     });
   }
 
-  function submit() {
+  async function submit() {
     if (!form.name.trim() || !form.phone.trim()) return;
-    onSubmit({ ...form, lastActivity: lead ? form.lastActivity : "Just now" });
-    setOpen(false);
+    setSaving(true);
+    try {
+      await onSubmit(form);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const rate = cabFleet.find((c) => c.name === form.cabType)?.ratePerDay;
+  const rate =
+    cabFleet.find((c) => c.name === form.car)?.ratePerDay ??
+    (form.car === "sedan" ? 2100 : form.car === "suv" ? 2800 : form.car === "innova" ? 4000 : undefined);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -99,8 +154,8 @@ export function LeadFormDialog({
           <SheetTitle>{lead ? "Edit lead" : "Add new lead"}</SheetTitle>
           <SheetDescription>
             {lead
-              ? `Updating ${lead.id}`
-              : "Fields match Plan Your Trip + booking enquiry on mahasutravels.com"}
+              ? `Updating ${lead.leadNo}`
+              : "Fields match website forms + taxi calculator ingest"}
           </SheetDescription>
         </SheetHeader>
 
@@ -109,27 +164,27 @@ export function LeadFormDialog({
             <p className="text-xs font-semibold tracking-wide text-slate uppercase">About yourself</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Name">
-                <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Ritika Sharma" />
+                <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Rahul Sharma" />
               </Field>
               <Field label="Email ID">
                 <Input
                   type="email"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
-                  placeholder="ritika@email.com"
+                  placeholder="rahul@gmail.com"
                 />
               </Field>
               <Field label="City">
                 <Input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="Delhi" />
               </Field>
               <Field label="Phone number">
-                <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98170 22314" />
+                <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="9876543210" />
               </Field>
             </div>
           </section>
 
           <section className="space-y-3">
-            <p className="text-xs font-semibold tracking-wide text-slate uppercase">Your tour plan</p>
+            <p className="text-xs font-semibold tracking-wide text-slate uppercase">Trip details</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Tour package" className="sm:col-span-2">
                 <Select value={form.tourPackage} onValueChange={(v) => set("tourPackage", v)}>
@@ -142,26 +197,26 @@ export function LeadFormDialog({
                 </Select>
               </Field>
 
-              <Field label="Date of travel">
+              <Field label="Pickup date">
                 <DatePicker
-                  value={form.travelDate}
-                  onChange={(v) => set("travelDate", v)}
-                  placeholder="Select travel date"
+                  value={form.pickupDate}
+                  onChange={(v) => set("pickupDate", v)}
+                  placeholder="Select pickup date"
                 />
               </Field>
-              <Field label="Date of return">
+              <Field label="Drop date">
                 <DatePicker
-                  value={form.returnDate}
-                  onChange={(v) => set("returnDate", v)}
-                  placeholder="Select return date"
+                  value={form.dropDate}
+                  onChange={(v) => set("dropDate", v)}
+                  placeholder="Select drop date"
                 />
               </Field>
 
-              <Field label="Pick-up point">
+              <Field label="Pickup location">
                 <Input
                   value={form.pickup}
                   onChange={(e) => set("pickup", e.target.value)}
-                  placeholder="Delhi / Chandigarh"
+                  placeholder="Shimla"
                   list="lead-pickup-suggestions"
                 />
                 <datalist id="lead-pickup-suggestions">
@@ -170,18 +225,18 @@ export function LeadFormDialog({
                   ))}
                 </datalist>
               </Field>
-              <Field label="Drop-off point">
+              <Field label="Drop location">
                 <Input
-                  value={form.dropoff}
-                  onChange={(e) => set("dropoff", e.target.value)}
-                  placeholder="Same as pickup"
+                  value={form.drop}
+                  onChange={(e) => set("drop", e.target.value)}
+                  placeholder="Delhi"
                 />
               </Field>
 
               <Field label="Adults">
                 <Input
                   type="number"
-                  min={1}
+                  min={0}
                   value={form.adults}
                   onChange={(e) => set("adults", Number(e.target.value))}
                 />
@@ -195,12 +250,16 @@ export function LeadFormDialog({
                 />
               </Field>
 
-              <Field label="Select a cab">
-                <Select value={form.cabType} onValueChange={(v) => set("cabType", v)}>
-                  <SelectTrigger><SelectValue placeholder="--- Select Cab ---" /></SelectTrigger>
+              <Field label="Car">
+                <Select value={form.car} onValueChange={(v) => set("car", v)}>
+                  <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
                   <SelectContent>
-                    {cabFleet.map((c) => (
-                      <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
+                    {carOptions.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c === "sedan" || c === "suv" || c === "innova"
+                          ? c.charAt(0).toUpperCase() + c.slice(1)
+                          : c}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -214,21 +273,21 @@ export function LeadFormDialog({
                 />
               </Field>
 
-              <Field label="Tour plan in brief" className="sm:col-span-2">
+              <Field label="Notes" className="sm:col-span-2">
                 <Textarea
-                  value={form.tourPlan}
-                  onChange={(e) => set("tourPlan", e.target.value)}
+                  value={form.notes}
+                  onChange={(e) => set("notes", e.target.value)}
                   placeholder="Share preferred hotels, sightseeing, budget notes…"
                   rows={3}
                 />
               </Field>
 
-              <Field label="Estimated price (₹)">
+              <Field label="Price (₹)">
                 <Input
                   type="number"
                   min={0}
-                  value={form.budget}
-                  onChange={(e) => set("budget", Number(e.target.value))}
+                  value={form.price}
+                  onChange={(e) => set("price", Number(e.target.value))}
                 />
                 {rate ? (
                   <p className="mt-1 text-[11px] text-muted-foreground">
@@ -237,45 +296,49 @@ export function LeadFormDialog({
                 ) : null}
               </Field>
               <Field label="Source">
-                <Select value={form.source} onValueChange={(v) => set("source", v as Lead["source"])}>
+                <Select value={form.source} onValueChange={(v) => set("source", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {sources.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    {leadSources.map((s) => (
+                      <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
 
               <Field label="Website domain">
-                <Select value={form.website || "mahasutravels.com"} onValueChange={(v) => set("website", v)}>
+                <Select value={form.website || masterWebsite} onValueChange={(v) => set("website", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {trackedWebsites.map((w) => (
-                      <SelectItem key={w.id} value={w.name}>
-                        {w.icon} {w.name}
+                    {websites.map((w) => (
+                      <SelectItem key={w.id} value={w.domain}>
+                        {w.label} · {w.domain}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
 
-              <Field label="Assigned agent">
-                <Select value={form.agent} onValueChange={(v) => set("agent", v)}>
+              <Field label="Assigned to">
+                <Select
+                  value={form.assignedToId || "unassigned"}
+                  onValueChange={(v) => set("assignedToId", v === "unassigned" ? null : v)}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {agentsList.map((a) => (
-                      <SelectItem key={a} value={a}>{a}</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {assignees.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
               <Field label="Status">
-                <Select value={form.status} onValueChange={(v) => set("status", v as LeadStatus)}>
+                <Select value={form.status} onValueChange={(v) => set("status", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {statuses.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    {leadStatuses.map((s) => (
+                      <SelectItem key={s.code} value={s.code}>{s.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -286,7 +349,9 @@ export function LeadFormDialog({
 
         <SheetFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="marigold" onClick={submit}>{lead ? "Save changes" : "Add lead"}</Button>
+          <Button variant="marigold" disabled={saving} onClick={() => void submit()}>
+            {lead ? "Save changes" : "Add lead"}
+          </Button>
         </SheetFooter>
       </SheetContent>
     </Sheet>

@@ -25,7 +25,8 @@ export type LeadHistoryAction =
   | "assigned"
   | "quoted"
   | "whatsapp"
-  | "note";
+  | "note"
+  | "repeat_inquiry";
 
 export type LeadHistoryEvent = {
   id: string;
@@ -81,29 +82,49 @@ export const trackedWebsites = [
 
 export type TrackedWebsiteName = typeof trackedWebsites[number]["name"];
 
+export const leadSources = [
+  "taxi_calculator",
+  "quick_inquiry",
+  "plan_your_trip",
+  "request_callback",
+  "manual",
+] as const;
+
+export type LeadSource = (typeof leadSources)[number];
+
+export type MarketingChannel = "Website" | "Google Ads" | "Meta Ads" | "Manual";
+
+export const leadCars = ["sedan", "suv", "innova"] as const;
+
+export type LeadAssignee = { id: string; name: string };
+
 export type Lead = {
   id: string;
+  leadNo: string;
   name: string;
   email: string;
   city: string;
   phone: string;
-  source: "Website" | "Google Ads" | "Meta Ads" | "Manual";
+  source: string;
   website?: string;
   tourPackage: string;
   pickup: string;
-  dropoff: string;
-  travelDate: string;
-  returnDate: string;
-  cabType: string;
+  drop: string;
+  pickupDate: string;
+  dropDate: string;
+  car: string;
   adults: number;
   kids: number;
   days: number;
-  tourPlan: string;
-  status: LeadStatus;
-  agent: string;
-  budget: number;
-  lastActivity: string;
-  duplicate?: boolean;
+  notes: string;
+  status: string;
+  assignedTo: LeadAssignee | null;
+  price: number;
+  inquiryCount: number;
+  previousLeadId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastInquiryAt: string;
   comments?: LeadComment[];
   history?: LeadHistoryEvent[];
   itineraryTemplateId?: string;
@@ -207,99 +228,24 @@ export const cabFleet: { name: string; seats: string; ratePerDay: number }[] = [
   { name: "Urbania Tempo Traveller (10+1)", seats: "10+1", ratePerDay: 6000 },
 ];
 
+const carCategoryRates: Record<string, number> = {
+  sedan: 2100,
+  suv: 2800,
+  innova: 4000,
+};
+
 export function estimateCabPrice(cabType: string, days: number) {
+  if (days < 1) return 0;
+  const category = carCategoryRates[cabType.toLowerCase()];
+  if (category) return category * days;
   const cab = cabFleet.find((c) => c.name === cabType);
-  if (!cab || days < 1) return 0;
+  if (!cab) return 0;
   return cab.ratePerDay * days;
 }
 
 export function leadPax(lead: Pick<Lead, "adults" | "kids">) {
   return lead.adults + lead.kids;
 }
-
-const dummyHistory: Record<string, LeadHistoryEvent[]> = {
-  "LD-2401": [
-    { id: "EV-101", action: "created", label: "Lead created", detail: "Captured from Google Ads enquiry form", actor: "System", createdAt: "Today, 11:34 AM" },
-    { id: "EV-102", action: "assigned", label: "Assigned to Aman", detail: "Round-robin assignment", actor: "System", createdAt: "Today, 11:34 AM" },
-    { id: "EV-103", action: "whatsapp", label: "WhatsApp intro sent", detail: "Dummy · template: New enquiry reply", actor: "Aman", createdAt: "Today, 11:36 AM" },
-    { id: "EV-104", action: "comment_added", label: "Comment added", detail: "Called once — asked for Innova Crysta quote with hotel options.", actor: "Aman", createdAt: "Today, 11:40 AM" },
-  ],
-  "LD-2400": [
-    { id: "EV-201", action: "created", label: "Lead created", detail: "Captured from Meta Ads", actor: "System", createdAt: "Yesterday, 6:12 PM" },
-    { id: "EV-202", action: "assigned", label: "Assigned to Priya", actor: "System", createdAt: "Yesterday, 6:12 PM" },
-    { id: "EV-203", action: "status_changed", label: "Status changed to Contacted", detail: "New → Contacted", actor: "Priya", createdAt: "Yesterday, 6:40 PM" },
-    { id: "EV-204", action: "whatsapp", label: "WhatsApp follow-up sent", detail: "Dummy · waiting on final pax count", actor: "Priya", createdAt: "Today, 10:55 AM" },
-    { id: "EV-205", action: "comment_added", label: "Comment added", detail: "Group is 10 adults + 2 kids confirmed.", actor: "Priya", createdAt: "Today, 11:18 AM" },
-  ],
-  "LD-2399": [
-    { id: "EV-301", action: "created", label: "Lead created", detail: "Website booking calculator", actor: "System", createdAt: "2 days ago, 3:05 PM" },
-    { id: "EV-302", action: "assigned", label: "Assigned to Aman", actor: "System", createdAt: "2 days ago, 3:05 PM" },
-    { id: "EV-303", action: "status_changed", label: "Status changed to Contacted", detail: "New → Contacted", actor: "Aman", createdAt: "2 days ago, 4:10 PM" },
-    { id: "EV-304", action: "quoted", label: "Quote QT-3310 prepared", detail: "Dummy · ₹4,200 for 2 days Dezire", actor: "Aman", createdAt: "Yesterday, 11:20 AM" },
-    { id: "EV-305", action: "status_changed", label: "Status changed to Quoted", detail: "Contacted → Quoted", actor: "Aman", createdAt: "Yesterday, 11:22 AM" },
-  ],
-  "LD-2398": [
-    { id: "EV-401", action: "created", label: "Lead created", detail: "Manual entry by Sana", actor: "Sana", createdAt: "3 days ago, 10:00 AM" },
-    { id: "EV-402", action: "status_changed", label: "Status changed to Follow-up", detail: "New → Follow-up", actor: "Sana", createdAt: "Yesterday, 4:15 PM" },
-    { id: "EV-403", action: "note", label: "Follow-up reminder set", detail: "Dummy · due tomorrow morning", actor: "Sana", createdAt: "Yesterday, 4:20 PM" },
-  ],
-  "LD-2397": [
-    { id: "EV-501", action: "created", label: "Lead created", detail: "Google Ads", actor: "System", createdAt: "5 days ago" },
-    { id: "EV-502", action: "assigned", label: "Assigned to Priya", actor: "System", createdAt: "5 days ago" },
-    { id: "EV-503", action: "status_changed", label: "Status changed to Quoted", detail: "Contacted → Quoted", actor: "Priya", createdAt: "4 days ago" },
-    { id: "EV-504", action: "status_changed", label: "Status changed to Confirmed", detail: "Quoted → Confirmed · advance pending", actor: "Priya", createdAt: "3 hours ago" },
-  ],
-  "LD-2396": [
-    { id: "EV-601", action: "created", label: "Lead created", detail: "Meta Ads", actor: "System", createdAt: "1 week ago" },
-    { id: "EV-602", action: "quoted", label: "Quote sent", detail: "Dummy · Tempo Traveller package", actor: "Sana", createdAt: "6 days ago" },
-    { id: "EV-603", action: "status_changed", label: "Status changed to Lost", detail: "Quoted → Lost · chose another vendor", actor: "Sana", createdAt: "5 hours ago" },
-  ],
-  "LD-2395": [
-    { id: "EV-701", action: "created", label: "Lead created", detail: "Website · possible duplicate flagged", actor: "System", createdAt: "6 hours ago" },
-    { id: "EV-702", action: "assigned", label: "Assigned to Aman", actor: "System", createdAt: "6 hours ago" },
-    { id: "EV-703", action: "note", label: "Duplicate check queued", detail: "Dummy · matches Divya Negi phone pattern", actor: "System", createdAt: "6 hours ago" },
-  ],
-  "LD-2394": [
-    { id: "EV-801", action: "created", label: "Lead created", detail: "Google Ads", actor: "System", createdAt: "8 hours ago" },
-    { id: "EV-802", action: "assigned", label: "Assigned to Priya", actor: "System", createdAt: "8 hours ago" },
-    { id: "EV-803", action: "status_changed", label: "Status changed to Quoted", detail: "New → Quoted", actor: "Priya", createdAt: "7 hours ago" },
-    { id: "EV-804", action: "quoted", label: "Quote shared on WhatsApp", detail: "Dummy · ₹16,000 · 5N package", actor: "Priya", createdAt: "7 hours ago" },
-  ],
-};
-
-const leadSeed: Omit<Lead, "history">[] = [
-  { id: "LD-2401", name: "Ritika Sharma", email: "ritika.sharma@gmail.com", city: "Delhi", phone: "+91 98170 22314", source: "Google Ads", tourPackage: "5N/6D Shimla Manali Taxi Tour", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-12", returnDate: "2026-08-17", cabType: "Innova CRYSTA (7+1)", adults: 4, kids: 2, days: 6, tourPlan: "Family trip covering Shimla mall road and Manali local sightseeing.", status: "New", agent: "Aman", budget: 24000, lastActivity: "6m ago", itineraryTemplateId: "IT-1001", comments: [{ id: "CM-1", text: "Called once — asked for Innova Crysta quote with hotel options.", author: "Aman", createdAt: "Today, 11:40 AM" }] },
-  { id: "LD-2400", name: "Karan Bhandari", email: "karan.b@outlook.com", city: "Chandigarh", phone: "+91 90158 77021", source: "Meta Ads", tourPackage: "9N/10D Complete Himachal Taxi Tour", pickup: "Chandigarh", dropoff: "Chandigarh", travelDate: "2026-08-15", returnDate: "2026-08-24", cabType: "Tempo Traveller (12+1)", adults: 10, kids: 2, days: 10, tourPlan: "Group tour — Shimla, Manali, Dharamshala, Dalhousie.", status: "Contacted", agent: "Priya", budget: 42000, lastActivity: "22m ago", itineraryTemplateId: "IT-1002", comments: [{ id: "CM-2", text: "WhatsApp intro sent. Waiting on final pax count.", author: "Priya", createdAt: "Today, 10:55 AM" }, { id: "CM-3", text: "Group is 10 adults + 2 kids confirmed.", author: "Priya", createdAt: "Today, 11:18 AM" }] },
-  { id: "LD-2399", name: "Neha Kapoor", email: "neha.kapoor@yahoo.com", city: "Noida", phone: "+91 99889 10234", source: "Website", tourPackage: "Cab rental only", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-09", returnDate: "2026-08-10", cabType: "Maruti Dezire (4+1)", adults: 3, kids: 1, days: 2, tourPlan: "Weekend cab for Mussoorie day trip.", status: "Quoted", agent: "Aman", budget: 4200, lastActivity: "1h ago" },
-  { id: "LD-2398", name: "Vivek Thakur", email: "vivek.thakur@gmail.com", city: "Shimla", phone: "+91 88170 44521", source: "Manual", tourPackage: "9N/10D Kinnaur Spiti Taxi Tour", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-10", returnDate: "2026-08-11", cabType: "Ertiga (6+1)", adults: 3, kids: 0, days: 2, tourPlan: "Short enquiry for Spiti dates — want Ertiga quote.", status: "Follow-up", agent: "Sana", budget: 5600, lastActivity: "2h ago", comments: [{ id: "CM-4", text: "Follow-up due tomorrow morning if no reply.", author: "Sana", createdAt: "Yesterday, 4:20 PM" }] },
-  { id: "LD-2397", name: "Ananya Rao", email: "ananya.rao@gmail.com", city: "Chandigarh", phone: "+91 98765 22109", source: "Google Ads", tourPackage: "5N/6D Shimla Manali Taxi Tour", pickup: "Chandigarh", dropoff: "Chandigarh", travelDate: "2026-08-18", returnDate: "2026-08-23", cabType: "Innova CRYSTA (7+1)", adults: 5, kids: 2, days: 6, tourPlan: "Honeymoon + parents travelling together.", status: "Confirmed", agent: "Priya", budget: 24000, lastActivity: "3h ago" },
-  { id: "LD-2396", name: "Rohan Malhotra", email: "rohan.m@gmail.com", city: "Gurugram", phone: "+91 97190 33452", source: "Meta Ads", tourPackage: "8N/9D Leh & Ladakh Taxi Tour", pickup: "Delhi", dropoff: "Delhi", travelDate: "2026-08-22", returnDate: "2026-08-30", cabType: "Tempo Traveller (17+1)", adults: 12, kids: 2, days: 9, tourPlan: "Corporate team outing to Ladakh.", status: "Lost", agent: "Sana", budget: 46800, lastActivity: "5h ago" },
-  { id: "LD-2395", name: "Divya Negi", email: "divya.negi@gmail.com", city: "Solan", phone: "+91 96543 88012", source: "Website", tourPackage: "Custom / Plan your trip", pickup: "Kalka", dropoff: "Kalka", travelDate: "2026-08-11", returnDate: "2026-08-12", cabType: "Maruti Dezire (4+1)", adults: 2, kids: 1, days: 2, tourPlan: "Apple orchard visit near Narkanda.", status: "New", agent: "Aman", budget: 4200, lastActivity: "6h ago", duplicate: true },
-  { id: "LD-2394", name: "Sameer Chauhan", email: "sameer.c@gmail.com", city: "Pathankot", phone: "+91 90200 11987", source: "Google Ads", tourPackage: "4N/5D Pathankot Dharamshala Dalhousie Taxi Tour", pickup: "Pathankot", dropoff: "Pathankot", travelDate: "2026-08-25", returnDate: "2026-08-29", cabType: "Toyota Innova (7+1)", adults: 5, kids: 1, days: 5, tourPlan: "Family trip with McLeod Ganj and Khajjiar.", status: "Quoted", agent: "Priya", budget: 16000, lastActivity: "8h ago" },
-];
-
-const defaultWebsites = [
-  "mahasutravels.com",
-  "himachaltaxiservice.in",
-  "spitivalleytours.com",
-  "shimlamanalicabs.com",
-  "lehladakhcabs.in",
-];
-
-export const leads: Lead[] = leadSeed.map((l, index) => ({
-  ...l,
-  website: l.website || defaultWebsites[index % defaultWebsites.length],
-  history: dummyHistory[l.id] ?? [
-    {
-      id: `EV-${l.id}`,
-      action: "created",
-      label: "Lead created",
-      detail: `Source: ${l.source}`,
-      actor: "System",
-      createdAt: l.lastActivity,
-    },
-  ],
-}));
 
 export const itineraries: ItineraryTemplate[] = [
   {
@@ -466,7 +412,7 @@ export type Booking = {
   email: string;
   city: string;
   phone?: string;
-  source: Lead["source"];
+  source: MarketingChannel;
   website?: string;
   tourPackage: string;
   pickup: string;
@@ -1261,6 +1207,14 @@ const bookingSeed: Omit<Booking, "history">[] = [
     balance: 0,
     status: "Fully Paid",
   },
+];
+
+const defaultWebsites = [
+  "mahasutravels.com",
+  "himachaltaxiservice.in",
+  "spitivalleytours.com",
+  "shimlamanalicabs.com",
+  "lehladakhcabs.in",
 ];
 
 export const bookings: Booking[] = bookingSeed.map((b, index) => ({

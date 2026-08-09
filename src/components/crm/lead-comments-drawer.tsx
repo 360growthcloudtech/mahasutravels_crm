@@ -14,7 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/crm/status-badge";
-import { genId, Lead, LeadComment } from "@/lib/data";
+import { Lead } from "@/lib/data";
+import { formatDateTime } from "@/lib/lead-utils";
 
 export function LeadCommentsDrawer({
   lead,
@@ -25,9 +26,10 @@ export function LeadCommentsDrawer({
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddComment: (leadId: string, comment: LeadComment) => void;
+  onAddComment: (leadId: string, text: string) => void | Promise<void>;
 }) {
   const [text, setText] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (open) setText("");
@@ -35,15 +37,15 @@ export function LeadCommentsDrawer({
 
   const comments = lead?.comments ?? [];
 
-  function submit() {
+  async function submit() {
     if (!lead || !text.trim()) return;
-    onAddComment(lead.id, {
-      id: genId("CM"),
-      text: text.trim(),
-      author: "Priya",
-      createdAt: "Just now",
-    });
-    setText("");
+    setSaving(true);
+    try {
+      await onAddComment(lead.id, text.trim());
+      setText("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -61,7 +63,7 @@ export function LeadCommentsDrawer({
                 <StatusBadge status={lead.status} />
               </div>
               <SheetDescription>
-                {lead.id} · {lead.phone}
+                {lead.leadNo} · {lead.phone}
               </SheetDescription>
             </>
           )}
@@ -75,11 +77,11 @@ export function LeadCommentsDrawer({
               <p className="mt-0.5 text-xs text-slate-soft">Add the first note for this lead.</p>
             </div>
           ) : (
-            [...comments].reverse().map((c) => (
+            comments.map((c) => (
               <div key={c.id} className="rounded-md border border-border-soft bg-secondary/40 px-3 py-2.5">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-ink-text">{c.author}</span>
-                  <span className="font-mono-data text-[10px] text-slate-soft">{c.createdAt}</span>
+                  <span className="font-mono-data text-[10px] text-slate-soft">{formatDateTime(c.createdAt)}</span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap text-slate">{c.text}</p>
               </div>
@@ -96,12 +98,12 @@ export function LeadCommentsDrawer({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                submit();
+                void submit();
               }
             }}
           />
           <div className="flex justify-end">
-            <Button variant="marigold" disabled={!text.trim()} onClick={submit}>
+            <Button variant="marigold" disabled={!text.trim() || saving} onClick={() => void submit()}>
               <Send className="size-3.5" /> Add comment
             </Button>
           </div>

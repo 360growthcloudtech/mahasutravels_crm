@@ -2,6 +2,7 @@
 
 import type { ComponentType } from "react";
 import {
+  Copy,
   History,
   MessageSquare,
   Pencil,
@@ -36,6 +37,7 @@ const actionMeta: Record<
   quoted: { icon: FileText, tone: "bg-marigold-soft text-marigold-ink" },
   whatsapp: { icon: Share2, tone: "bg-teal-soft text-teal" },
   note: { icon: StickyNote, tone: "bg-signal-soft text-signal" },
+  repeat_inquiry: { icon: Copy, tone: "bg-signal-soft text-signal" },
 };
 
 export function BookingHistoryDrawer({

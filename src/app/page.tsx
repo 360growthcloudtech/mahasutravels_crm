@@ -32,7 +32,7 @@ import {
   bookingOverlapsRange,
   isoInRange,
 } from "@/components/crm/date-range-filter";
-import { agents, sourceSplit, makeLeadHistoryEvent, bookingRoute, Booking, getRevenueTrendForSource, trackedWebsites } from "@/lib/data";
+import { agents, sourceSplit, bookingRoute, Booking, getRevenueTrendForSource, trackedWebsites } from "@/lib/data";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -141,7 +141,7 @@ export default function DashboardPage() {
   const [selectedWebsite, setSelectedWebsite] = React.useState<string | null>(null);
 
   const rangedLeads = leads.filter((l) => {
-    const matchDate = isoInRange(l.travelDate, dateRange);
+    const matchDate = isoInRange(l.pickupDate, dateRange);
     const matchWeb = !selectedWebsite || l.website === selectedWebsite;
     return matchDate && matchWeb;
   });
@@ -224,24 +224,25 @@ export default function DashboardPage() {
                   <Plus className="size-4" /> New Lead
                 </Button>
               }
-              onSubmit={(data) => {
-                addLead({
-                  ...data,
-                  website: data.website || selectedWebsite || "mahasutravels.com",
-                  history: [
-                    makeLeadHistoryEvent("created", "Lead created", {
-                      detail: `Website: ${data.website || selectedWebsite || "mahasutravels.com"} · Source: ${data.source}`,
-                    }),
-                    makeLeadHistoryEvent("assigned", `Assigned to ${data.agent}`, {
-                      detail: "Manual assignment on create",
-                    }),
-                  ],
-                });
-                toast({
-                  variant: "success",
-                  title: "Lead added",
-                  description: `${data.name} was added for ${data.website || selectedWebsite || "mahasutravels.com"}.`,
-                });
+              defaultWebsite={selectedWebsite || undefined}
+              onSubmit={async (data) => {
+                try {
+                  const created = await addLead({
+                    ...data,
+                    website: data.website || selectedWebsite || "mahasutravels.com",
+                  });
+                  toast({
+                    variant: "success",
+                    title: created.inquiryCount > 1 ? "Repeat inquiry updated" : "Lead added",
+                    description: `${created.name} was added for ${created.website || "mahasutravels.com"}.`,
+                  });
+                } catch (error) {
+                  toast({
+                    variant: "error",
+                    title: "Could not add lead",
+                    description: error instanceof Error ? error.message : "Please try again.",
+                  });
+                }
               }}
             />
           </div>
