@@ -105,7 +105,7 @@ export function Sidebar({
   const [session, setSession] = React.useState<AuthSession | null>(null);
 
   React.useEffect(() => {
-    setSession(getSession());
+    getSession().then(setSession);
   }, []);
 
   const displayName = session?.name ?? "Priya Anand";
@@ -274,7 +274,7 @@ export function MobileNav({
   const [session, setSession] = React.useState<AuthSession | null>(null);
 
   React.useEffect(() => {
-    setSession(getSession());
+    getSession().then(setSession);
   }, []);
 
   const displayName = session?.name ?? "Priya Anand";

@@ -9,11 +9,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
-    if (!getSession()) {
-      router.replace("/login");
-      return;
-    }
-    setReady(true);
+    let cancelled = false;
+    getSession().then((session) => {
+      if (cancelled) return;
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (!ready) {

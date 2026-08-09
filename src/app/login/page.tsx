@@ -14,8 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { members } from "@/lib/data";
-import { getSession, setSession } from "@/lib/auth";
+import { getSession, login } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,29 +25,24 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    if (getSession()) router.replace("/");
+    let cancelled = false;
+    getSession().then((session) => {
+      if (!cancelled && session) router.replace("/");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const member = members.find(
-      (m) =>
-        m.email.toLowerCase() === email.trim().toLowerCase() &&
-        m.password === password &&
-        m.status === "Active"
-    );
-    if (!member) {
-      setError("Invalid email or password.");
+    const result = await login(email, password);
+    if (!result.ok) {
+      setError(result.error);
       setLoading(false);
       return;
     }
-    setSession({
-      memberId: member.id,
-      name: member.name,
-      email: member.email,
-      role: member.role,
-    });
     router.replace("/");
   }
 
