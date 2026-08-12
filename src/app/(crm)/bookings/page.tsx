@@ -14,7 +14,6 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
@@ -206,7 +205,7 @@ export default function BookingsPage() {
   const withHotel = state.bookings.filter((b) => b.hotel).length;
 
   return (
-    <Shell>
+    <>
       <Topbar
         title="Bookings"
         action={
@@ -699,6 +698,6 @@ export default function BookingsPage() {
           }
         }}
       />
-    </Shell>
+    </>
   );
 }

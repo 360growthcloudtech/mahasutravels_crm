@@ -19,7 +19,7 @@ import { HotelTemplate, HotelTemplateStatus } from "@/lib/data";
 
 const statuses: HotelTemplateStatus[] = ["Active", "Draft", "Archived"];
 
-export type HotelTemplateFormState = Omit<HotelTemplate, "id" | "updatedAt">;
+export type HotelTemplateFormState = Omit<HotelTemplate, "id" | "hotelNo" | "updatedAt">;
 
 export const emptyHotelTemplateForm: HotelTemplateFormState = {
   name: "",
@@ -41,15 +41,16 @@ export function HotelTemplateFormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   template?: HotelTemplate | null;
-  onSubmit: (data: HotelTemplateFormState) => void;
+  onSubmit: (data: HotelTemplateFormState) => void | Promise<void>;
 }) {
   const [form, setForm] = React.useState<HotelTemplateFormState>(emptyHotelTemplateForm);
   const [error, setError] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     if (template) {
-      const { id: _id, updatedAt: _u, ...rest } = template;
+      const { id: _id, hotelNo: _no, updatedAt: _u, ...rest } = template;
       setForm({ ...rest });
     } else {
       setForm(emptyHotelTemplateForm);
@@ -57,7 +58,7 @@ export function HotelTemplateFormDialog({
     setError("");
   }, [open, template]);
 
-  function submit() {
+  async function submit() {
     if (!form.name.trim()) {
       setError("Hotel name is required.");
       return;
@@ -66,16 +67,21 @@ export function HotelTemplateFormDialog({
       setError("City is required.");
       return;
     }
-    onSubmit({
-      ...form,
-      name: form.name.trim(),
-      city: form.city.trim(),
-      address: form.address.trim(),
-      contactNumber: form.contactNumber.trim(),
-      defaultRoomType: form.defaultRoomType.trim(),
-      notes: form.notes.trim(),
-    });
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await onSubmit({
+        ...form,
+        name: form.name.trim(),
+        city: form.city.trim(),
+        address: form.address.trim(),
+        contactNumber: form.contactNumber.trim(),
+        defaultRoomType: form.defaultRoomType.trim(),
+        notes: form.notes.trim(),
+      });
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -145,7 +151,7 @@ export function HotelTemplateFormDialog({
                 placeholder="Deluxe Mountain View"
               />
             </Field>
-            <Field label="Typical rate (₹)" hint="Guide rate only">
+            <Field label="Typical rate / day (₹)" hint="Guide rate only">
               <Input
                 type="number"
                 min={0}
@@ -169,7 +175,7 @@ export function HotelTemplateFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="marigold" onClick={submit}>
+          <Button variant="marigold" disabled={saving} onClick={() => void submit()}>
             {template ? "Save template" : "Create template"}
           </Button>
         </SheetFooter>

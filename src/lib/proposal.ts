@@ -17,26 +17,34 @@ export type ProposalDay = {
 export type ProposalTemplate = {
   title: string;
   subtitle: string;
-  nights: number;
-  days: number;
+  nights: string;
+  days: string;
   overview: string;
   inclusions: string[];
   itinerary: ProposalDay[];
   startingFrom: number;
+  discountPercentage: number;
   templateId?: string;
   isCustomized?: boolean;
 };
+
+function parseDurationNumber(value: string | number | undefined, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
+  const n = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 function templateToProposal(t: ItineraryTemplate): ProposalTemplate {
   return {
     title: t.name,
     subtitle: t.subtitle,
-    nights: t.nights,
-    days: t.days,
+    nights: t.nights || String(Math.max(t.daysPlan.length - 1, 0)),
+    days: t.days || String(Math.max(t.daysPlan.length, 1)),
     overview: t.overview,
     inclusions: [...t.inclusions],
     itinerary: t.daysPlan.map((d) => ({ ...d })),
     startingFrom: t.startingFrom,
+    discountPercentage: t.discountPercentage ?? 0,
     templateId: t.id,
     isCustomized: false,
   };
@@ -46,16 +54,17 @@ function customToProposal(
   custom: LeadCustomItinerary,
   fallback?: ItineraryTemplate
 ): ProposalTemplate {
-  const days = custom.daysPlan.length || fallback?.days || 1;
+  const dayCount = custom.daysPlan.length || parseDurationNumber(fallback?.days, 1);
   return {
     title: custom.title,
     subtitle: custom.subtitle,
-    nights: Math.max(days - 1, 0),
-    days,
+    nights: String(Math.max(dayCount - 1, 0)),
+    days: String(dayCount),
     overview: custom.overview,
     inclusions: [...custom.inclusions],
     itinerary: custom.daysPlan.map((d) => ({ ...d })),
     startingFrom: fallback?.startingFrom ?? 0,
+    discountPercentage: fallback?.discountPercentage ?? 0,
     templateId: custom.templateId,
     isCustomized: true,
   };
@@ -64,12 +73,13 @@ function customToProposal(
 const fallbackProposal: ProposalTemplate = {
   title: "Custom Himachal Taxi Tour",
   subtitle: "Tailored itinerary · private cab",
-  nights: 2,
-  days: 3,
+  nights: "2",
+  days: "3",
   overview:
     "A flexible custom tour plan based on your preferred pickup, drop and sightseeing notes.",
   inclusions: ["Private cab", "Driver", "Fuel", "Toll & parking"],
   startingFrom: 8000,
+  discountPercentage: 0,
   itinerary: [
     { day: 1, title: "Pickup & start of tour", detail: "Cab report at pickup point. Drive as per agreed plan." },
     { day: 2, title: "Sightseeing day", detail: "Full day at disposal for local sightseeing and leisure." },
@@ -111,13 +121,13 @@ export function buildProposalForLead(
 ) {
   const template = resolveProposalTemplate(lead, templates);
   const dayCount = lead.customItinerary
-    ? lead.customItinerary.daysPlan.length || template.days
-    : lead.days || template.days;
+    ? lead.customItinerary.daysPlan.length || parseDurationNumber(template.days, 1)
+    : lead.days || parseDurationNumber(template.days, 1);
 
   return {
     ...template,
-    days: dayCount,
-    nights: Math.max(dayCount - 1, 0),
+    days: String(dayCount),
+    nights: String(Math.max(dayCount - 1, 0)),
     quoteAmount: amount ?? lead.price ?? template.startingFrom,
     customer: lead.name,
     email: lead.email,

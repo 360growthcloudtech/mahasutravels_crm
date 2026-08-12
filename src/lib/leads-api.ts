@@ -14,6 +14,8 @@ export type LeadApi = {
   days: number;
   pickup_date: string;
   drop_date: string;
+  next_follow_up_date: string;
+  next_follow_up_time: string;
   price: number;
   source: string;
   city: string;
@@ -62,6 +64,8 @@ export type LeadWritePayload = {
   days?: number;
   pickup_date?: string;
   drop_date?: string;
+  next_follow_up_date?: string | null;
+  next_follow_up_time?: string | null;
   price?: number;
   source: string;
   city?: string;
@@ -89,6 +93,8 @@ export function leadFromApi(dto: LeadApi, overlay?: LeadItineraryOverlay): Lead 
     drop: dto.drop ?? "",
     pickupDate: dto.pickup_date ?? "",
     dropDate: dto.drop_date ?? "",
+    nextFollowUpDate: dto.next_follow_up_date ?? "",
+    nextFollowUpTime: dto.next_follow_up_time ?? "",
     car: dto.car ?? "",
     adults: dto.adults ?? 0,
     kids: dto.kids ?? 0,
@@ -139,6 +145,8 @@ export function leadToWritePayload(input: {
   drop?: string;
   pickupDate?: string;
   dropDate?: string;
+  nextFollowUpDate?: string;
+  nextFollowUpTime?: string;
   car?: string;
   adults?: number;
   kids?: number;
@@ -158,6 +166,8 @@ export function leadToWritePayload(input: {
     days: input.days ?? 0,
     pickup_date: input.pickupDate || undefined,
     drop_date: input.dropDate || undefined,
+    next_follow_up_date: input.nextFollowUpDate || null,
+    next_follow_up_time: input.nextFollowUpTime || null,
     price: input.price ?? 0,
     source: input.source,
     city: input.city ?? "",

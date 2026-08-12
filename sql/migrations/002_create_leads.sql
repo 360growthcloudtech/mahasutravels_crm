@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS leads (
   days integer NOT NULL DEFAULT 0,
   pickup_date date,
   drop_date date,
+  next_follow_up_date date,
+  next_follow_up_time time,
   price numeric NOT NULL DEFAULT 0,
   source text NOT NULL,
   city text NOT NULL DEFAULT '',
@@ -21,8 +23,8 @@ CREATE TABLE IF NOT EXISTS leads (
   adults integer NOT NULL DEFAULT 0,
   kids integer NOT NULL DEFAULT 0,
   notes text NOT NULL DEFAULT '',
-  status text NOT NULL DEFAULT 'New'
-    CHECK (status IN ('New', 'Contacted', 'Quoted', 'Follow-up', 'Confirmed', 'Lost')),
+  status text NOT NULL DEFAULT 'New Lead'
+    CHECK (status IN ('New Lead', 'Cold', 'Hot', 'Lost', 'Booked')),
   assigned_to uuid REFERENCES users(id) ON DELETE SET NULL,
   inquiry_count integer NOT NULL DEFAULT 1,
   previous_lead_id uuid REFERENCES leads(id) ON DELETE SET NULL,
@@ -34,12 +36,13 @@ CREATE TABLE IF NOT EXISTS leads (
 CREATE INDEX IF NOT EXISTS leads_phone_normalized_idx ON leads (phone_normalized);
 CREATE UNIQUE INDEX IF NOT EXISTS leads_one_open_per_phone
   ON leads (phone_normalized)
-  WHERE status NOT IN ('Confirmed', 'Lost') AND phone_normalized <> '';
+  WHERE status NOT IN ('Lost', 'Booked') AND phone_normalized <> '';
 CREATE INDEX IF NOT EXISTS leads_status_idx ON leads (status);
 CREATE INDEX IF NOT EXISTS leads_source_idx ON leads (source);
 CREATE INDEX IF NOT EXISTS leads_assigned_to_idx ON leads (assigned_to);
 CREATE INDEX IF NOT EXISTS leads_website_idx ON leads (website);
 CREATE INDEX IF NOT EXISTS leads_created_at_idx ON leads (created_at DESC);
+CREATE INDEX IF NOT EXISTS leads_next_follow_up_date_idx ON leads (next_follow_up_date);
 
 CREATE TABLE IF NOT EXISTS lead_comments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -13,7 +13,6 @@ import {
   Globe,
   Megaphone,
 } from "lucide-react";
-import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -156,7 +155,7 @@ export default function MarketingPage() {
   const roasRatio = totalSpendSum > 0 ? (confirmedRevenue / totalSpendSum).toFixed(1) : "0.0";
 
   return (
-    <Shell>
+    <>
       <Topbar
         title="Ad Spend & Marketing"
         action={
@@ -442,6 +441,6 @@ export default function MarketingPage() {
           }
         }}
       />
-    </Shell>
+    </>
   );
 }

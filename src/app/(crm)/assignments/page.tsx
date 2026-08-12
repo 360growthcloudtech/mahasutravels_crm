@@ -10,7 +10,6 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
@@ -196,7 +195,7 @@ export default function AssignmentsPage() {
   const hasFilters = query.trim().length > 0 || driverFilter.length > 0;
 
   return (
-    <Shell>
+    <>
       <Topbar
         title="Booking & Drivers"
       />
@@ -566,6 +565,6 @@ export default function AssignmentsPage() {
           </div>
         )}
       </main>
-    </Shell>
+    </>
   );
 }

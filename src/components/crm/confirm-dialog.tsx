@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -18,6 +18,8 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Delete",
+  confirming = false,
+  closeOnConfirm = true,
   onConfirm,
 }: {
   open: boolean;
@@ -25,10 +27,19 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel?: string;
-  onConfirm: () => void;
+  confirming?: boolean;
+  /** When false, parent controls closing (e.g. after async delete). */
+  closeOnConfirm?: boolean;
+  onConfirm: () => void | Promise<void>;
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (confirming) return;
+        onOpenChange(next);
+      }}
+    >
       <SheetContent className="sm:max-w-sm">
         <SheetHeader>
           <div className="mb-1 flex size-9 items-center justify-center rounded-full bg-signal-soft text-signal">
@@ -38,17 +49,20 @@ export function ConfirmDialog({
           <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
         <SheetFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={confirming}>
             Cancel
           </Button>
           <Button
             variant="destructive"
+            disabled={confirming}
             onClick={() => {
-              onConfirm();
-              onOpenChange(false);
+              void Promise.resolve(onConfirm()).then(() => {
+                if (closeOnConfirm) onOpenChange(false);
+              });
             }}
           >
-            {confirmLabel}
+            {confirming ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            {confirming ? "Deleting…" : confirmLabel}
           </Button>
         </SheetFooter>
       </SheetContent>

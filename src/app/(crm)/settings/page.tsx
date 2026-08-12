@@ -14,7 +14,6 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -289,7 +288,7 @@ export default function SettingsPage() {
   const totalPermCount = state.systemPermissions.length;
 
   return (
-    <Shell>
+    <>
       <Topbar
         title="Roles & Permissions"
         action={
@@ -945,6 +944,6 @@ export default function SettingsPage() {
           setDeletePermTarget(null);
         }}
       />
-    </Shell>
+    </>
   );
 }

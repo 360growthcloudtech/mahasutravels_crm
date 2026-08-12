@@ -13,7 +13,6 @@ import {
   Receipt,
   Target,
 } from "lucide-react";
-import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -211,7 +210,7 @@ export default function DashboardPage() {
   const roasRatio = totalAdSpend > 0 ? (confirmedRevenue / totalAdSpend).toFixed(1) : "0.0";
 
   return (
-    <Shell>
+    <>
       <Topbar
         title="Dashboard"
         action={
@@ -547,6 +546,6 @@ export default function DashboardPage() {
           />
         </div>
       </main>
-    </Shell>
+    </>
   );
 }

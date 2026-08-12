@@ -15,7 +15,6 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Shell } from "@/components/crm/shell";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
@@ -47,9 +46,16 @@ import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Lead } from "@/lib/data";
-import { formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
+import { formatDisplayTime, formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+
+function formatNextFollowUp(date?: string, time?: string) {
+  if (!date) return "—";
+  const datePart = formatDisplayDate(date);
+  const timePart = formatDisplayTime(time);
+  return timePart ? `${datePart} · ${timePart}` : datePart;
+}
 
 const stickyActionHead =
   "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-card";
@@ -171,7 +177,7 @@ export default function LeadsPage() {
   const sourceCodes = leadSources.map((s) => s.code);
   const websiteDomains = websites.map((w) => w.domain);
   const closedStatusCodes = new Set(leadStatuses.filter((s) => s.is_closed).map((s) => s.code));
-  const confirmedCount = state.leads.filter((l) => l.status === "Confirmed").length;
+  const bookedCount = state.leads.filter((l) => l.status === "Booked").length;
 
   const hasFilters =
     query.trim().length > 0 ||
@@ -201,7 +207,7 @@ export default function LeadsPage() {
   const repeatCount = state.leads.filter((l) => l.inquiryCount > 1 || l.previousLeadId).length;
 
   return (
-    <Shell>
+    <>
       <Topbar
         title="Leads"
         action={
@@ -252,9 +258,9 @@ export default function LeadsPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Confirmed</p>
+              <p className="text-xs text-muted-foreground">Booked</p>
               <p className="mt-1 font-display text-xl font-semibold text-teal">
-                {confirmedCount}
+                {bookedCount}
               </p>
             </CardContent>
           </Card>
@@ -335,6 +341,7 @@ export default function LeadsPage() {
                 <TableHead className="sticky top-0 z-20 bg-card">Car / pax / days</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Source</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Assigned</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Next follow-up</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Price</TableHead>
                 <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
@@ -392,6 +399,9 @@ export default function LeadsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-slate">{l.assignedTo?.name || "Unassigned"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-slate">
+                    {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
+                  </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -515,7 +525,7 @@ export default function LeadsPage() {
               ))}
               {visible.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
                     {leadsLoading ? "Loading leads…" : "No leads match these filters."}
                   </TableCell>
                 </TableRow>
@@ -592,6 +602,9 @@ export default function LeadsPage() {
                       {l.website ? ` · ${l.website}` : ""}
                     </InfoItem>
                     <InfoItem label="Assigned">{l.assignedTo?.name || "Unassigned"}</InfoItem>
+                    <InfoItem label="Next follow-up">
+                      {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
+                    </InfoItem>
                     <InfoItem label="Price">₹{l.price.toLocaleString("en-IN")}</InfoItem>
                     <InfoItem label="Last inquiry">{formatRelativeTime(l.lastInquiryAt)}</InfoItem>
                   </InfoGrid>
@@ -702,7 +715,7 @@ export default function LeadsPage() {
             note: note || undefined,
           });
           void updateLead(quoteLead.id, {
-            status: saveAsDraft ? quoteLead.status : "Quoted",
+            status: saveAsDraft ? quoteLead.status : "Hot",
             price: amount,
             notes: note || quoteLead.notes,
           });
@@ -729,6 +742,6 @@ export default function LeadsPage() {
           });
         }}
       />
-    </Shell>
+    </>
   );
 }

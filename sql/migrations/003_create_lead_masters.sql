@@ -37,12 +37,11 @@ CREATE TABLE IF NOT EXISTS websites (
 );
 
 INSERT INTO lead_statuses (code, label, is_closed, is_default, sort_order) VALUES
-  ('New', 'New', false, true, 10),
-  ('Contacted', 'Contacted', false, false, 20),
-  ('Quoted', 'Quoted', false, false, 30),
-  ('Follow-up', 'Follow-up', false, false, 40),
-  ('Confirmed', 'Confirmed', true, false, 50),
-  ('Lost', 'Lost', true, false, 60)
+  ('New Lead', 'New Lead', false, true, 10),
+  ('Cold', 'Cold', false, false, 20),
+  ('Hot', 'Hot', false, false, 30),
+  ('Lost', 'Lost', true, false, 40),
+  ('Booked', 'Booked', true, false, 50)
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO lead_sources (code, label, sort_order) VALUES

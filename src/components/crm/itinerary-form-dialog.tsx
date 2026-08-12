@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { BedDouble, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
@@ -23,12 +22,14 @@ import {
   ItineraryDay,
   ItineraryStatus,
   ItineraryTemplate,
+  itineraryPriceAfterDiscount,
   renumberItineraryDays,
 } from "@/lib/data";
+import { isValidSlug, slugify, suggestDurationFromPlan } from "@/lib/itinerary-utils";
 
 const statuses: ItineraryStatus[] = ["Active", "Draft", "Archived"];
 
-export type ItineraryFormState = Omit<ItineraryTemplate, "id" | "updatedAt">;
+export type ItineraryFormState = Omit<ItineraryTemplate, "id" | "itineraryNo" | "updatedAt">;
 
 const emptyDay = (day: number): ItineraryDay => ({
   day,
@@ -38,21 +39,18 @@ const emptyDay = (day: number): ItineraryDay => ({
 
 export const emptyItineraryForm: ItineraryFormState = {
   name: "",
+  slug: "",
   tourPackage: "",
   subtitle: "",
-  nights: 1,
-  days: 2,
+  nights: "1",
+  days: "2",
   overview: "",
-  inclusions: ["Private cab", "Driver", "Fuel"],
+  inclusions: [],
   startingFrom: 8000,
+  discountPercentage: 0,
   daysPlan: [emptyDay(1), emptyDay(2)],
   status: "Draft",
 };
-
-function syncDuration(daysPlan: ItineraryDay[]) {
-  const days = Math.max(daysPlan.length, 1);
-  return { days, nights: Math.max(days - 1, 0) };
-}
 
 export function ItineraryFormDialog({
   open,
@@ -63,43 +61,50 @@ export function ItineraryFormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   itinerary?: ItineraryTemplate | null;
-  onSubmit: (data: ItineraryFormState) => void;
+  onSubmit: (data: ItineraryFormState) => void | Promise<void>;
 }) {
   const { state, addHotelTemplate } = useData();
   const [form, setForm] = React.useState<ItineraryFormState>(emptyItineraryForm);
-  const [inclusionsText, setInclusionsText] = React.useState("");
+  const [slugTouched, setSlugTouched] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
   const [addHotelOpen, setAddHotelOpen] = React.useState(false);
   const [targetDayIndex, setTargetDayIndex] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
     if (itinerary) {
-      const { id: _id, updatedAt: _u, ...rest } = itinerary;
+      const { id: _id, itineraryNo: _no, updatedAt: _u, ...rest } = itinerary;
       setForm({
         ...rest,
-        inclusions: [...rest.inclusions],
+        discountPercentage: rest.discountPercentage ?? 0,
+        inclusions: [...(rest.inclusions ?? [])],
         daysPlan: rest.daysPlan.map((d) => ({ ...d })),
       });
-      setInclusionsText(rest.inclusions.join(", "));
+      setSlugTouched(true);
     } else {
       setForm(emptyItineraryForm);
-      setInclusionsText(emptyItineraryForm.inclusions.join(", "));
+      setSlugTouched(false);
     }
     setError("");
+    setSaving(false);
   }, [open, itinerary]);
+
+  function applyDuration(daysPlan: ItineraryDay[]) {
+    return suggestDurationFromPlan(daysPlan);
+  }
 
   function setDay(index: number, patch: Partial<ItineraryDay>) {
     setForm((f) => {
       const daysPlan = f.daysPlan.map((d, i) => (i === index ? { ...d, ...patch } : d));
-      return { ...f, daysPlan, ...syncDuration(daysPlan) };
+      return { ...f, daysPlan, ...applyDuration(daysPlan) };
     });
   }
 
   function addDay() {
     setForm((f) => {
       const daysPlan = renumberItineraryDays([...f.daysPlan, emptyDay(f.daysPlan.length + 1)]);
-      return { ...f, daysPlan, ...syncDuration(daysPlan) };
+      return { ...f, daysPlan, ...applyDuration(daysPlan) };
     });
   }
 
@@ -107,7 +112,7 @@ export function ItineraryFormDialog({
     setForm((f) => {
       if (f.daysPlan.length <= 1) return f;
       const daysPlan = renumberItineraryDays(f.daysPlan.filter((_, i) => i !== index));
-      return { ...f, daysPlan, ...syncDuration(daysPlan) };
+      return { ...f, daysPlan, ...applyDuration(daysPlan) };
     });
   }
 
@@ -119,11 +124,11 @@ export function ItineraryFormDialog({
       const [item] = copy.splice(index, 1);
       copy.splice(next, 0, item);
       const daysPlan = renumberItineraryDays(copy);
-      return { ...f, daysPlan, ...syncDuration(daysPlan) };
+      return { ...f, daysPlan, ...applyDuration(daysPlan) };
     });
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const name = form.name.trim();
     if (!name) {
       setError("Template name is required.");
@@ -131,6 +136,11 @@ export function ItineraryFormDialog({
     }
     if (!form.tourPackage.trim()) {
       setError("Tour package is required.");
+      return;
+    }
+    const slug = slugify(form.slug || name);
+    if (!slug || !isValidSlug(slug)) {
+      setError("Slug must be lowercase letters, numbers, and hyphens.");
       return;
     }
     if (form.daysPlan.length < 1) {
@@ -141,27 +151,36 @@ export function ItineraryFormDialog({
       setError("Each day needs a title.");
       return;
     }
-    const inclusions = inclusionsText
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    onSubmit({
-      ...form,
-      name,
-      tourPackage: form.tourPackage.trim(),
-      subtitle: form.subtitle.trim(),
-      overview: form.overview.trim(),
-      inclusions: inclusions.length ? inclusions : ["Private cab"],
-      daysPlan: renumberItineraryDays(
-        form.daysPlan.map((d) => ({
-          ...d,
-          title: d.title.trim(),
-          detail: d.detail.trim(),
-        }))
-      ),
-      ...syncDuration(form.daysPlan),
-    });
-    onOpenChange(false);
+
+    const duration = applyDuration(form.daysPlan);
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit({
+        ...form,
+        name,
+        slug,
+        tourPackage: form.tourPackage.trim(),
+        subtitle: form.subtitle.trim(),
+        overview: form.overview.trim(),
+        inclusions: [],
+        nights: (form.nights || duration.nights).trim().slice(0, 255),
+        days: (form.days || duration.days).trim().slice(0, 255),
+        discountPercentage: Math.min(Math.max(form.discountPercentage || 0, 0), 100),
+        daysPlan: renumberItineraryDays(
+          form.daysPlan.map((d) => ({
+            ...d,
+            title: d.title.trim(),
+            detail: d.detail.trim(),
+          }))
+        ),
+      });
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save template.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -178,8 +197,27 @@ export function ItineraryFormDialog({
           <Field label="Template name">
             <Input
               value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onChange={(e) => {
+                const name = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  name,
+                  ...(!slugTouched ? { slug: slugify(name) } : {}),
+                }));
+              }}
               placeholder="e.g. Majestic Shimla Manali"
+            />
+          </Field>
+
+          <Field label="Slug" hint="URL-safe unique key">
+            <Input
+              value={form.slug}
+              onChange={(e) => {
+                setSlugTouched(true);
+                setForm((f) => ({ ...f, slug: slugify(e.target.value) }));
+              }}
+              placeholder="e.g. majestic-shimla-manali"
+              className="font-mono-data text-sm"
             />
           </Field>
 
@@ -227,7 +265,7 @@ export function ItineraryFormDialog({
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Field label="Starting from (₹)">
               <Input
                 type="number"
@@ -238,23 +276,44 @@ export function ItineraryFormDialog({
                 }
               />
             </Field>
-            <Field label="Duration" hint="Auto from day plan">
+            <Field label="Discount (%)">
               <Input
-                readOnly
-                value={`${form.nights}N / ${form.days}D`}
-                className="bg-secondary/50"
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={form.discountPercentage}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  const next = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 100) : 0;
+                  setForm((f) => ({ ...f, discountPercentage: next }));
+                }}
+              />
+              {form.discountPercentage > 0 ? (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  After discount: ₹
+                  {itineraryPriceAfterDiscount(
+                    form.startingFrom,
+                    form.discountPercentage
+                  ).toLocaleString("en-IN")}
+                </p>
+              ) : null}
+            </Field>
+            <Field label="Nights" hint="Auto from plan">
+              <Input
+                value={form.nights}
+                onChange={(e) => setForm((f) => ({ ...f, nights: e.target.value.slice(0, 255) }))}
+                placeholder="5"
+              />
+            </Field>
+            <Field label="Days" hint="Auto from plan">
+              <Input
+                value={form.days}
+                onChange={(e) => setForm((f) => ({ ...f, days: e.target.value.slice(0, 255) }))}
+                placeholder="6"
               />
             </Field>
           </div>
-
-          <Field label="Inclusions" hint="Rich text / bullet points supported">
-            <RichTextEditor
-              value={inclusionsText}
-              onChange={(v) => setInclusionsText(v)}
-              placeholder="Hotel stay, Private cab, Sightseeing..."
-              minHeight="70px"
-            />
-          </Field>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -337,7 +396,7 @@ export function ItineraryFormDialog({
                           <SelectItem value="none">No Hotel Assigned</SelectItem>
                           {state.hotelTemplates.map((h) => (
                             <SelectItem key={h.id} value={h.id}>
-                              🏨 {h.name} ({h.city} · {h.defaultRoomType || "Standard"})
+                              {h.name} ({h.city} · {h.defaultRoomType || "Standard"})
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -364,11 +423,11 @@ export function ItineraryFormDialog({
         </SheetBody>
 
         <SheetFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="marigold" onClick={handleSubmit}>
-            {itinerary ? "Save template" : "Create template"}
+          <Button variant="marigold" onClick={() => void handleSubmit()} disabled={saving}>
+            {saving ? "Saving…" : itinerary ? "Save template" : "Create template"}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -376,11 +435,12 @@ export function ItineraryFormDialog({
       <HotelTemplateFormDialog
         open={addHotelOpen}
         onOpenChange={setAddHotelOpen}
-        onSubmit={(hotelData) => {
-          addHotelTemplate(hotelData);
+        onSubmit={async (hotelData) => {
+          const created = await addHotelTemplate(hotelData);
           if (targetDayIndex !== null) {
             setDay(targetDayIndex, {
-              hotelName: hotelData.name,
+              hotelId: created.id,
+              hotelName: created.name,
             });
           }
         }}

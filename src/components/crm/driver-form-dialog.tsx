@@ -18,15 +18,17 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Field } from "@/components/crm/field";
+import { DatePicker } from "@/components/crm/date-picker";
 import { Driver } from "@/lib/data";
+import { Loader2 } from "lucide-react";
 
 const statuses: Driver["status"][] = ["Approved", "Rejected", "Deactivated"];
 const fuelTypes: NonNullable<Driver["fuelType"]>[] = ["Petrol", "Diesel", "CNG", "Electric"];
 const vehicleTypes = ["Swift Dzire", "Ertiga", "Innova Crysta", "Tempo Traveller", "Sedan", "SUV"];
 
-type FormState = Omit<Driver, "id">;
+export type DriverFormState = Omit<Driver, "id" | "driverNo">;
 
-const empty: FormState = {
+const empty: DriverFormState = {
   name: "",
   phone: "",
   address: "",
@@ -38,7 +40,7 @@ const empty: FormState = {
   licenseExpiry: "",
   rcNumber: "",
   insuranceExpiry: "",
-  commission: 10,
+  pollutionExpiry: "",
   status: "Approved",
   rating: 5,
   trips: 0,
@@ -54,33 +56,84 @@ export function DriverFormDialog({
 }: {
   trigger: React.ReactNode;
   driver?: Driver;
-  onSubmit: (data: FormState) => void;
+  onSubmit: (data: DriverFormState) => void | Promise<void>;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(driver ?? empty);
+  const [form, setForm] = React.useState<DriverFormState>(empty);
+  const [error, setError] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
-    if (open) setForm(driver ?? empty);
+    if (!open) return;
+    if (driver) {
+      const { id: _id, driverNo: _no, ...rest } = driver;
+      setForm({
+        ...empty,
+        ...rest,
+        address: rest.address ?? "",
+        licenseNumber: rest.licenseNumber ?? "",
+        licenseExpiry: rest.licenseExpiry ?? "",
+        rcNumber: rest.rcNumber ?? "",
+        insuranceExpiry: rest.insuranceExpiry ?? "",
+        pollutionExpiry: rest.pollutionExpiry ?? "",
+        notes: rest.notes ?? "",
+        vendor: rest.vendor ?? false,
+        documentsVerified: rest.documentsVerified ?? false,
+      });
+    } else {
+      setForm(empty);
+    }
+    setError("");
+    setSaving(false);
   }, [open, driver]);
 
-  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
+  function set<K extends keyof DriverFormState>(key: K, value: DriverFormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function submit() {
-    if (!form.name.trim() || !form.phone.trim() || !form.vehicle.trim()) return;
-    onSubmit(form);
-    setOpen(false);
+  async function submit() {
+    if (!form.name.trim() || !form.phone.trim() || !form.vehicle.trim()) {
+      setError("Name, phone, and vehicle number are required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit({
+        ...form,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        address: form.address?.trim() ?? "",
+        vehicle: form.vehicle.trim(),
+        vehicleType: form.vehicleType.trim(),
+        licenseNumber: form.licenseNumber?.trim() ?? "",
+        rcNumber: form.rcNumber?.trim() ?? "",
+        notes: form.notes?.trim() ?? "",
+      });
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save driver.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (saving) return;
+        setOpen(next);
+      }}
+    >
       <SheetTrigger asChild>{trigger}</SheetTrigger>
       <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{driver ? "Edit driver & vehicle" : "Add driver & vehicle"}</SheetTitle>
           <SheetDescription>
-            {driver ? `Updating ${driver.id}` : "Full profile including documents and commission"}
+            {driver
+              ? `Updating ${driver.driverNo}`
+              : "Full profile including vehicle and documents"}
           </SheetDescription>
         </SheetHeader>
 
@@ -117,19 +170,10 @@ export function DriverFormDialog({
               />
             </Field>
             <Field label="License expiry">
-              <Input
-                type="date"
+              <DatePicker
                 value={form.licenseExpiry}
-                onChange={(e) => set("licenseExpiry", e.target.value)}
-              />
-            </Field>
-            <Field label="Commission (%)">
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={form.commission}
-                onChange={(e) => set("commission", Number(e.target.value))}
+                onChange={(v) => set("licenseExpiry", v)}
+                placeholder="Select license expiry"
               />
             </Field>
             <Field label="Status">
@@ -183,7 +227,7 @@ export function DriverFormDialog({
             </Field>
             <Field label="Fuel type">
               <Select
-                value={form.fuelType}
+                value={form.fuelType || "Diesel"}
                 onValueChange={(v) => set("fuelType", v as Driver["fuelType"])}
               >
                 <SelectTrigger>
@@ -202,22 +246,29 @@ export function DriverFormDialog({
               <Input value={form.rcNumber} onChange={(e) => set("rcNumber", e.target.value)} />
             </Field>
             <Field label="Insurance expiry">
-              <Input
-                type="date"
+              <DatePicker
                 value={form.insuranceExpiry}
-                onChange={(e) => set("insuranceExpiry", e.target.value)}
+                onChange={(v) => set("insuranceExpiry", v)}
+                placeholder="Select insurance expiry"
+              />
+            </Field>
+            <Field label="Pollution expiry (optional)">
+              <DatePicker
+                value={form.pollutionExpiry}
+                onChange={(v) => set("pollutionExpiry", v)}
+                placeholder="Select pollution expiry"
               />
             </Field>
           </div>
 
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2">
-              <Switch checked={form.vendor} onCheckedChange={(v) => set("vendor", v)} />
+              <Switch checked={!!form.vendor} onCheckedChange={(v) => set("vendor", v)} />
               <Label className="text-xs text-slate">Outsourced / vendor vehicle</Label>
             </div>
             <div className="flex items-center gap-2">
               <Switch
-                checked={form.documentsVerified}
+                checked={!!form.documentsVerified}
                 onCheckedChange={(v) => set("documentsVerified", v)}
               />
               <Label className="text-xs text-slate">Documents verified</Label>
@@ -232,14 +283,17 @@ export function DriverFormDialog({
               rows={3}
             />
           </Field>
+
+          {error ? <p className="text-xs text-signal">{error}</p> : null}
         </SheetBody>
 
         <SheetFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="marigold" onClick={submit}>
-            {driver ? "Save changes" : "Add driver"}
+          <Button variant="marigold" onClick={() => void submit()} disabled={saving}>
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            {saving ? "Saving…" : driver ? "Save changes" : "Add driver"}
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -270,11 +270,12 @@ export function LeadItineraryCustomizeDrawer({
       <HotelTemplateFormDialog
         open={addHotelOpen}
         onOpenChange={setAddHotelOpen}
-        onSubmit={(hotelData) => {
-          addHotelTemplate(hotelData);
+        onSubmit={async (hotelData) => {
+          const created = await addHotelTemplate(hotelData);
           if (targetDayIndex !== null) {
             setDay(targetDayIndex, {
-              hotelName: hotelData.name,
+              hotelId: created.id,
+              hotelName: created.name,
             });
           }
         }}

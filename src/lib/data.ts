@@ -3,12 +3,11 @@ export function genId(prefix: string) {
 }
 
 export type LeadStatus =
-  | "New"
-  | "Contacted"
-  | "Quoted"
-  | "Follow-up"
-  | "Confirmed"
-  | "Lost";
+  | "New Lead"
+  | "Cold"
+  | "Hot"
+  | "Lost"
+  | "Booked";
 
 export type LeadComment = {
   id: string;
@@ -49,18 +48,27 @@ export type ItineraryStatus = "Active" | "Draft" | "Archived";
 
 export type ItineraryTemplate = {
   id: string;
+  itineraryNo: string;
   name: string;
+  slug: string;
   tourPackage: string;
   subtitle: string;
-  nights: number;
-  days: number;
+  nights: string;
+  days: string;
   overview: string;
   inclusions: string[];
   startingFrom: number;
+  /** 0–100; applied to startingFrom for display / proposals */
+  discountPercentage: number;
   daysPlan: ItineraryDay[];
   status: ItineraryStatus;
   updatedAt: string;
 };
+
+export function itineraryPriceAfterDiscount(startingFrom: number, discountPercentage = 0) {
+  const pct = Math.min(Math.max(Number(discountPercentage) || 0, 0), 100);
+  return Math.round(startingFrom * (1 - pct / 100));
+}
 
 /** Customer-specific clone — editing this never mutates the master template. */
 export type LeadCustomItinerary = {
@@ -112,6 +120,8 @@ export type Lead = {
   drop: string;
   pickupDate: string;
   dropDate: string;
+  nextFollowUpDate: string;
+  nextFollowUpTime: string;
   car: string;
   adults: number;
   kids: number;
@@ -250,15 +260,18 @@ export function leadPax(lead: Pick<Lead, "adults" | "kids">) {
 export const itineraries: ItineraryTemplate[] = [
   {
     id: "IT-1001",
+    itineraryNo: "IT-1001",
+    slug: "majestic-himachal-tour-shimla-manali",
     name: "Majestic Himachal Tour — Shimla & Manali",
     tourPackage: "5N/6D Shimla Manali Taxi Tour",
     subtitle: "Queen of Hills to Valley of Gods",
-    nights: 5,
-    days: 6,
+    nights: "5",
+    days: "6",
     overview:
       "A scenic Himalayan journey covering Shimla and Manali with private cab, hotel stays and curated sightseeing. Ideal for families and couples looking for a comfortable hill-station escape.",
     inclusions: ["Hotel stay", "Private cab", "Sightseeing", "Driver allowance", "Toll & parking"],
     startingFrom: 21500,
+    discountPercentage: 10,
     status: "Active",
     updatedAt: "Today",
     daysPlan: [
@@ -272,15 +285,18 @@ export const itineraries: ItineraryTemplate[] = [
   },
   {
     id: "IT-1002",
+    itineraryNo: "IT-1002",
+    slug: "complete-himachal-taxi-tour",
     name: "Complete Himachal Taxi Tour",
     tourPackage: "9N/10D Complete Himachal Taxi Tour",
     subtitle: "Shimla · Manali · Dharamshala · Dalhousie",
-    nights: 9,
-    days: 10,
+    nights: "9",
+    days: "10",
     overview:
       "An extended Himachal circuit covering the major hill stations with private tempo/cab support — built for groups who want one seamless road trip across the mountains.",
     inclusions: ["Private cab / tempo", "Driver & fuel", "Hotel stay support", "Sightseeing stops", "State taxes"],
     startingFrom: 42000,
+    discountPercentage: 5,
     status: "Active",
     updatedAt: "Yesterday",
     daysPlan: [
@@ -298,15 +314,18 @@ export const itineraries: ItineraryTemplate[] = [
   },
   {
     id: "IT-1003",
+    itineraryNo: "IT-1003",
+    slug: "kinnaur-spiti-taxi-tour",
     name: "Kinnaur Spiti Taxi Tour",
     tourPackage: "9N/10D Kinnaur Spiti Taxi Tour",
     subtitle: "High-altitude desert & Himalayan villages",
-    nights: 9,
-    days: 10,
+    nights: "9",
+    days: "10",
     overview:
       "A rugged Spiti circuit with private cab for explorers who want monasteries, mountain passes and remote village stays.",
     inclusions: ["Private cab", "Experienced hill driver", "Permit support", "Flexible sightseeing"],
     startingFrom: 38000,
+    discountPercentage: 0,
     status: "Active",
     updatedAt: "2 days ago",
     daysPlan: [
@@ -324,15 +343,18 @@ export const itineraries: ItineraryTemplate[] = [
   },
   {
     id: "IT-1004",
+    itineraryNo: "IT-1004",
+    slug: "majestic-himachal-tour-from-chandigarh",
     name: "Majestic Himachal Tour from Chandigarh",
     tourPackage: "Custom / Plan your trip",
     subtitle: "8 Nights / 9 Days · Shimla · Manali · Kasol",
-    nights: 8,
-    days: 9,
+    nights: "8",
+    days: "9",
     overview:
       "Start from Chandigarh and explore Shimla — the Queen of Hills — then Manali, Valley of Gods, and Kasol in Parvati Valley. Built for private cab + hotel packages.",
     inclusions: ["Hotel", "Car / transportation", "Sightseeing", "Driver allowance", "Toll & parking"],
     startingFrom: 21500,
+    discountPercentage: 15,
     status: "Active",
     updatedAt: "3 days ago",
     daysPlan: [
@@ -349,15 +371,18 @@ export const itineraries: ItineraryTemplate[] = [
   },
   {
     id: "IT-1005",
+    itineraryNo: "IT-1005",
+    slug: "custom-himachal-taxi-tour",
     name: "Custom Himachal Taxi Tour",
     tourPackage: "Cab rental only",
     subtitle: "Tailored itinerary · private cab",
-    nights: 2,
-    days: 3,
+    nights: "2",
+    days: "3",
     overview:
       "A flexible custom tour plan based on preferred pickup, drop and sightseeing notes. Refine with the guest before sending the proposal.",
     inclusions: ["Private cab", "Driver", "Fuel", "Toll & parking"],
     startingFrom: 8000,
+    discountPercentage: 0,
     status: "Draft",
     updatedAt: "1 week ago",
     daysPlan: [
@@ -395,6 +420,7 @@ export type HotelTemplateStatus = "Active" | "Draft" | "Archived";
 /** Reusable hotel master — booking stays clone details; masters stay unchanged. */
 export type HotelTemplate = {
   id: string;
+  hotelNo: string;
   name: string;
   city: string;
   address: string;
@@ -461,9 +487,11 @@ export function bookingRoute(b: Pick<Booking, "pickup" | "dropoff" | "tourPackag
   return "—";
 }
 
+/** @deprecated Seed reference only — runtime hotels come from /api/hotels */
 export const hotelTemplates: HotelTemplate[] = [
   {
     id: "HT-1001",
+    hotelNo: "HT-1001",
     name: "Hotel Willow Banks",
     city: "Shimla",
     address: "The Mall, Shimla, HP",
@@ -476,6 +504,7 @@ export const hotelTemplates: HotelTemplate[] = [
   },
   {
     id: "HT-1002",
+    hotelNo: "HT-1002",
     name: "Snow Valley Resorts",
     city: "Manali",
     address: "Log Huts Rd, Manali, HP",
@@ -488,6 +517,7 @@ export const hotelTemplates: HotelTemplate[] = [
   },
   {
     id: "HT-1003",
+    hotelNo: "HT-1003",
     name: "Hotel Mount View",
     city: "Dharamshala",
     address: "McLeod Ganj Road, Dharamshala, HP",
@@ -500,6 +530,7 @@ export const hotelTemplates: HotelTemplate[] = [
   },
   {
     id: "HT-1004",
+    hotelNo: "HT-1004",
     name: "Khajjiar Lake Resort",
     city: "Dalhousie",
     address: "Khajjiar Meadows, Dist. Chamba, HP",
@@ -1234,6 +1265,7 @@ export const bookings: Booking[] = bookingSeed.map((b, index) => ({
 
 export type Driver = {
   id: string;
+  driverNo: string;
   name: string;
   phone: string;
   address?: string;
@@ -1245,7 +1277,7 @@ export type Driver = {
   licenseExpiry?: string;
   rcNumber?: string;
   insuranceExpiry?: string;
-  commission?: number;
+  pollutionExpiry?: string;
   status: "Approved" | "Rejected" | "Deactivated";
   rating: number;
   trips: number;
@@ -1255,12 +1287,12 @@ export type Driver = {
 };
 
 export const drivers: Driver[] = [
-  { id: "DR-011", name: "Suresh Thakur", phone: "+91 94180 22110", address: "Sanjauli, Shimla, HP", vehicle: "HP-01-4521", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "HP0120210004521", licenseExpiry: "2028-04-12", rcNumber: "HP01AB4521", insuranceExpiry: "2027-01-15", commission: 12, status: "Approved", rating: 4.8, trips: 214, documentsVerified: true },
-  { id: "DR-012", name: "Vinod Kumar", phone: "+91 98051 34210", address: "Sector 22, Chandigarh", vehicle: "HR-26-9981", vehicleType: "Ertiga", vehicleCapacity: 6, fuelType: "Petrol", licenseNumber: "HR2620190009981", licenseExpiry: "2026-11-02", rcNumber: "HR26CD9981", insuranceExpiry: "2026-09-30", commission: 10, status: "Approved", rating: 4.6, trips: 152, documentsVerified: true },
-  { id: "DR-013", name: "Rakesh Negi", phone: "+91 90154 88231", address: "Kasauli Road, Solan, HP", vehicle: "HP-08-2210", vehicleType: "Swift Dzire", vehicleCapacity: 4, fuelType: "Diesel", licenseNumber: "HP0820180002210", licenseExpiry: "2027-06-18", rcNumber: "HP08EF2210", insuranceExpiry: "2026-12-05", commission: 10, status: "Approved", rating: 4.9, trips: 301, documentsVerified: true },
-  { id: "DR-014", name: "Deepak Chand", phone: "+91 88172 09441", address: "Kullu, HP", vehicle: "HP-64-1187", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP6420170001187", licenseExpiry: "2025-08-21", rcNumber: "HP64GH1187", insuranceExpiry: "2026-03-11", commission: 14, status: "Approved", rating: 4.7, trips: 98, documentsVerified: true },
-  { id: "DR-015", name: "Mohit Sharma", phone: "+91 97290 11023", address: "Vendor fleet · Zirakpur, PB", vehicle: "PB-65-7712", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "PB6520190007712", licenseExpiry: "2027-02-14", rcNumber: "PB65JK7712", insuranceExpiry: "2026-07-20", commission: 18, status: "Rejected", rating: 4.5, trips: 76, vendor: true, documentsVerified: false, notes: "Pending updated insurance copy" },
-  { id: "DR-016", name: "Ajay Bisht", phone: "+91 96201 44982", address: "Vendor fleet · Kalka, HR", vehicle: "HP-33-5510", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP3320180005510", licenseExpiry: "2028-01-09", rcNumber: "HP33LM5510", insuranceExpiry: "2027-05-17", commission: 16, status: "Deactivated", rating: 4.8, trips: 189, vendor: true, documentsVerified: true },
+  { id: "DR-011", driverNo: "DR-011", name: "Suresh Thakur", phone: "+91 94180 22110", address: "Sanjauli, Shimla, HP", vehicle: "HP-01-4521", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "HP0120210004521", licenseExpiry: "2028-04-12", rcNumber: "HP01AB4521", insuranceExpiry: "2027-01-15", pollutionExpiry: "2026-10-20", status: "Approved", rating: 4.8, trips: 214, documentsVerified: true },
+  { id: "DR-012", driverNo: "DR-012", name: "Vinod Kumar", phone: "+91 98051 34210", address: "Sector 22, Chandigarh", vehicle: "HR-26-9981", vehicleType: "Ertiga", vehicleCapacity: 6, fuelType: "Petrol", licenseNumber: "HR2620190009981", licenseExpiry: "2026-11-02", rcNumber: "HR26CD9981", insuranceExpiry: "2026-09-30", pollutionExpiry: "2026-08-15", status: "Approved", rating: 4.6, trips: 152, documentsVerified: true },
+  { id: "DR-013", driverNo: "DR-013", name: "Rakesh Negi", phone: "+91 90154 88231", address: "Kasauli Road, Solan, HP", vehicle: "HP-08-2210", vehicleType: "Swift Dzire", vehicleCapacity: 4, fuelType: "Diesel", licenseNumber: "HP0820180002210", licenseExpiry: "2027-06-18", rcNumber: "HP08EF2210", insuranceExpiry: "2026-12-05", status: "Approved", rating: 4.9, trips: 301, documentsVerified: true },
+  { id: "DR-014", driverNo: "DR-014", name: "Deepak Chand", phone: "+91 88172 09441", address: "Kullu, HP", vehicle: "HP-64-1187", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP6420170001187", licenseExpiry: "2025-08-21", rcNumber: "HP64GH1187", insuranceExpiry: "2026-03-11", pollutionExpiry: "2026-11-01", status: "Approved", rating: 4.7, trips: 98, documentsVerified: true },
+  { id: "DR-015", driverNo: "DR-015", name: "Mohit Sharma", phone: "+91 97290 11023", address: "Vendor fleet · Zirakpur, PB", vehicle: "PB-65-7712", vehicleType: "Innova Crysta", vehicleCapacity: 7, fuelType: "Diesel", licenseNumber: "PB6520190007712", licenseExpiry: "2027-02-14", rcNumber: "PB65JK7712", insuranceExpiry: "2026-07-20", status: "Rejected", rating: 4.5, trips: 76, vendor: true, documentsVerified: false, notes: "Pending updated insurance copy" },
+  { id: "DR-016", driverNo: "DR-016", name: "Ajay Bisht", phone: "+91 96201 44982", address: "Vendor fleet · Kalka, HR", vehicle: "HP-33-5510", vehicleType: "Tempo Traveller", vehicleCapacity: 14, fuelType: "Diesel", licenseNumber: "HP3320180005510", licenseExpiry: "2028-01-09", rcNumber: "HP33LM5510", insuranceExpiry: "2027-05-17", pollutionExpiry: "2027-02-28", status: "Deactivated", rating: 4.8, trips: 189, vendor: true, documentsVerified: true },
 ];
 
 export type QuoteStage = "Draft" | "Sent" | "Viewed" | "Accepted" | "Expired";
@@ -1580,12 +1612,11 @@ export const rolePermissions: RoleModulePerm[] = permissionModules.map((module) 
 }));
 
 export const statusColor: Record<string, string> = {
-  New: "secondary",
-  Contacted: "violet",
-  Quoted: "marigold",
-  "Follow-up": "signal",
-  Confirmed: "teal",
+  "New Lead": "secondary",
+  Cold: "violet",
+  Hot: "signal",
   Lost: "outline",
+  Booked: "teal",
   "Advance Pending": "signal",
   "Advance Received": "marigold",
   "Balance Pending": "signal",

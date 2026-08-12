@@ -14,10 +14,7 @@ import {
   SystemPermission,
   AdSpendEntry,
   bookings as seedBookings,
-  drivers as seedDrivers,
   quotes as seedQuotes,
-  itineraries as seedItineraries,
-  hotelTemplates as seedHotelTemplates,
   members as seedMembers,
   systemPermissions as seedSystemPermissions,
   adSpends as seedAdSpends,
@@ -44,6 +41,31 @@ import {
   type LeadWritePayload,
   type WebsiteMasterApi,
 } from "@/lib/leads-api";
+import {
+  createHotelApi,
+  deleteHotelApi,
+  fetchHotels,
+  hotelFromApi,
+  hotelToWritePayload,
+  updateHotelApi,
+} from "@/lib/hotels-api";
+import {
+  createItineraryApi,
+  deleteItineraryApi,
+  fetchItineraries,
+  itineraryFromApi,
+  itineraryToWritePayload,
+  updateItineraryApi,
+} from "@/lib/itineraries-api";
+import {
+  createDriverApi,
+  deleteDriverApi,
+  driverFromApi,
+  driverToWritePayload,
+  fetchDrivers,
+  updateDriverApi,
+} from "@/lib/drivers-api";
+import { slugify } from "@/lib/itinerary-utils";
 
 export type LeadFormValues = {
   name: string;
@@ -57,6 +79,8 @@ export type LeadFormValues = {
   drop: string;
   pickupDate: string;
   dropDate: string;
+  nextFollowUpDate: string;
+  nextFollowUpTime: string;
   car: string;
   adults: number;
   kids: number;
@@ -91,10 +115,10 @@ function loadInitial(): State {
   return {
     leads: [],
     bookings: seedBookings,
-    drivers: seedDrivers,
+    drivers: [],
     quotes: seedQuotes,
-    itineraries: seedItineraries,
-    hotelTemplates: seedHotelTemplates,
+    itineraries: [],
+    hotelTemplates: [],
     members: seedMembers,
     systemPermissions: seedSystemPermissions,
     adSpends: seedAdSpends,
@@ -117,7 +141,13 @@ type Ctx = {
   leadSources: LeadSourceOption[];
   websites: WebsiteOption[];
   leadsLoading: boolean;
+  hotelsLoading: boolean;
+  itinerariesLoading: boolean;
+  driversLoading: boolean;
   refreshLeads: () => Promise<void>;
+  refreshHotels: () => Promise<void>;
+  refreshItineraries: () => Promise<void>;
+  refreshDrivers: () => Promise<void>;
   addLead: (l: LeadFormValues) => Promise<Lead>;
   updateLead: (id: string, patch: Partial<Lead> & { assignedToId?: string | null }) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
@@ -129,23 +159,23 @@ type Ctx = {
   deleteBooking: (id: string) => void;
   assignHotel: (bookingId: string, hotel: Hotel) => void;
   removeHotel: (bookingId: string) => void;
-  addDriver: (d: Omit<Driver, "id">) => void;
-  updateDriver: (id: string, patch: Partial<Driver>) => void;
-  deleteDriver: (id: string) => void;
+  addDriver: (d: Omit<Driver, "id" | "driverNo">) => Promise<Driver>;
+  updateDriver: (id: string, patch: Partial<Driver>) => Promise<void>;
+  deleteDriver: (id: string) => Promise<void>;
   addQuote: (q: Omit<Quote, "id">) => void;
   updateQuote: (id: string, patch: Partial<Quote>) => void;
   deleteQuote: (id: string) => void;
-  addItinerary: (t: Omit<ItineraryTemplate, "id" | "updatedAt">) => void;
-  updateItinerary: (id: string, patch: Partial<ItineraryTemplate>) => void;
-  deleteItinerary: (id: string) => void;
-  duplicateItinerary: (id: string) => void;
+  addItinerary: (t: Omit<ItineraryTemplate, "id" | "itineraryNo" | "updatedAt">) => Promise<ItineraryTemplate>;
+  updateItinerary: (id: string, patch: Partial<ItineraryTemplate>) => Promise<void>;
+  deleteItinerary: (id: string) => Promise<void>;
+  duplicateItinerary: (id: string) => Promise<ItineraryTemplate | null>;
   assignLeadItinerary: (leadId: string, templateId: string) => void;
   updateLeadCustomItinerary: (leadId: string, custom: LeadCustomItinerary) => void;
   resetLeadItinerary: (leadId: string) => void;
-  addHotelTemplate: (t: Omit<HotelTemplate, "id" | "updatedAt">) => void;
-  updateHotelTemplate: (id: string, patch: Partial<HotelTemplate>) => void;
-  deleteHotelTemplate: (id: string) => void;
-  duplicateHotelTemplate: (id: string) => void;
+  addHotelTemplate: (t: Omit<HotelTemplate, "id" | "hotelNo" | "updatedAt">) => Promise<HotelTemplate>;
+  updateHotelTemplate: (id: string, patch: Partial<HotelTemplate>) => Promise<void>;
+  deleteHotelTemplate: (id: string) => Promise<void>;
+  duplicateHotelTemplate: (id: string) => Promise<HotelTemplate | null>;
   addMember: (m: Omit<Member, "id">) => void;
   updateMember: (id: string, patch: Partial<Member>) => void;
   deleteMember: (id: string) => void;
@@ -168,6 +198,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [leadSources, setLeadSources] = React.useState<LeadSourceOption[]>([]);
   const [websites, setWebsites] = React.useState<WebsiteOption[]>([]);
   const [leadsLoading, setLeadsLoading] = React.useState(true);
+  const [hotelsLoading, setHotelsLoading] = React.useState(true);
+  const [itinerariesLoading, setItinerariesLoading] = React.useState(true);
+  const [driversLoading, setDriversLoading] = React.useState(true);
 
   React.useEffect(() => {
     try {
@@ -178,10 +211,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ...loadInitial(),
           ...parsed,
           leads: [],
-          itineraries: parsed.itineraries?.length ? parsed.itineraries : seedItineraries,
-          hotelTemplates: parsed.hotelTemplates?.length
-            ? parsed.hotelTemplates
-            : seedHotelTemplates,
+          hotelTemplates: [],
+          itineraries: [],
+          drivers: [],
           members: (parsed.members?.length ? parsed.members : seedMembers).map((m) => ({
             ...m,
             password: m.password ?? "",
@@ -202,7 +234,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!hydrated) return;
     try {
-      const { leads: _leads, ...rest } = state;
+      const {
+        leads: _leads,
+        hotelTemplates: _hotels,
+        itineraries: _itineraries,
+        drivers: _drivers,
+        ...rest
+      } = state;
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
     } catch {
       // storage full or unavailable — ignore
@@ -240,6 +278,199 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     void refreshLeads();
   }, [hydrated, refreshLeads]);
 
+  const refreshHotels = React.useCallback(async () => {
+    setHotelsLoading(true);
+    try {
+      const rows = await fetchHotels();
+      setState((s) => ({
+        ...s,
+        hotelTemplates: rows.map(hotelFromApi),
+      }));
+    } catch {
+      setState((s) => ({ ...s, hotelTemplates: [] }));
+    } finally {
+      setHotelsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void refreshHotels();
+  }, [hydrated, refreshHotels]);
+
+  const refreshItineraries = React.useCallback(async () => {
+    setItinerariesLoading(true);
+    try {
+      const rows = await fetchItineraries();
+      setState((s) => ({
+        ...s,
+        itineraries: rows.map(itineraryFromApi),
+      }));
+    } catch {
+      setState((s) => ({ ...s, itineraries: [] }));
+    } finally {
+      setItinerariesLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void refreshItineraries();
+  }, [hydrated, refreshItineraries]);
+
+  const refreshDrivers = React.useCallback(async () => {
+    setDriversLoading(true);
+    try {
+      const { drivers } = await fetchDrivers();
+      setState((s) => ({
+        ...s,
+        drivers: drivers.map(driverFromApi),
+      }));
+    } catch {
+      setState((s) => ({ ...s, drivers: [] }));
+    } finally {
+      setDriversLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void refreshDrivers();
+  }, [hydrated, refreshDrivers]);
+
+  const addItinerary = React.useCallback(
+    async (input: Omit<ItineraryTemplate, "id" | "itineraryNo" | "updatedAt">) => {
+      const created = await createItineraryApi(itineraryToWritePayload(input));
+      const mapped = itineraryFromApi(created);
+      setState((s) => ({
+        ...s,
+        itineraries: [mapped, ...s.itineraries.filter((item) => item.id !== mapped.id)],
+      }));
+      return mapped;
+    },
+    []
+  );
+
+  const updateItinerary = React.useCallback(async (id: string, patch: Partial<ItineraryTemplate>) => {
+    const payload: Parameters<typeof updateItineraryApi>[1] = {};
+    if (patch.name !== undefined) payload.name = patch.name;
+    if (patch.slug !== undefined) payload.slug = patch.slug;
+    if (patch.tourPackage !== undefined) payload.tour_package = patch.tourPackage;
+    if (patch.subtitle !== undefined) payload.subtitle = patch.subtitle;
+    if (patch.overview !== undefined) payload.overview = patch.overview;
+    if (patch.inclusions !== undefined) payload.inclusions = patch.inclusions;
+    if (patch.startingFrom !== undefined) payload.starting_from = patch.startingFrom;
+    if (patch.discountPercentage !== undefined) {
+      payload.discount_percentage = patch.discountPercentage;
+    }
+    if (patch.nights !== undefined) payload.nights = patch.nights;
+    if (patch.days !== undefined) payload.days = patch.days;
+    if (patch.status !== undefined) payload.status = patch.status;
+    if (patch.daysPlan !== undefined) {
+      payload.days_plan = patch.daysPlan.map((d) => ({
+        day: d.day,
+        title: d.title,
+        detail: d.detail ?? "",
+        ...(d.hotelId ? { hotel_id: d.hotelId } : {}),
+        ...(d.hotelName ? { hotel_name: d.hotelName } : {}),
+      }));
+    }
+
+    if (Object.keys(payload).length === 0) return;
+
+    const updated = await updateItineraryApi(id, payload);
+    const mapped = itineraryFromApi(updated);
+    setState((s) => ({
+      ...s,
+      itineraries: s.itineraries.map((item) => (item.id === id ? mapped : item)),
+    }));
+  }, []);
+
+  const deleteItinerary = React.useCallback(async (id: string) => {
+    await deleteItineraryApi(id);
+    setState((s) => ({
+      ...s,
+      itineraries: s.itineraries.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const addDriver = React.useCallback(async (input: Omit<Driver, "id" | "driverNo">) => {
+    const created = await createDriverApi(driverToWritePayload(input));
+    const mapped = driverFromApi(created);
+    setState((s) => ({
+      ...s,
+      drivers: [mapped, ...s.drivers.filter((item) => item.id !== mapped.id)],
+    }));
+    return mapped;
+  }, []);
+
+  const updateDriver = React.useCallback(async (id: string, patch: Partial<Driver>) => {
+    const payload: Parameters<typeof updateDriverApi>[1] = {};
+    if (patch.name !== undefined) payload.name = patch.name;
+    if (patch.phone !== undefined) payload.phone = patch.phone;
+    if (patch.address !== undefined) payload.address = patch.address;
+    if (patch.licenseNumber !== undefined) payload.license_number = patch.licenseNumber;
+    if (patch.licenseExpiry !== undefined) payload.license_expiry = patch.licenseExpiry || null;
+    if (patch.status !== undefined) payload.status = patch.status;
+    if (patch.rating !== undefined) payload.rating = patch.rating;
+    if (patch.trips !== undefined) payload.trips = patch.trips;
+    if (patch.vendor !== undefined) payload.vendor = patch.vendor;
+    if (patch.documentsVerified !== undefined) {
+      payload.documents_verified = patch.documentsVerified;
+    }
+    if (patch.notes !== undefined) payload.notes = patch.notes;
+    if (patch.vehicle !== undefined) payload.vehicle = patch.vehicle;
+    if (patch.vehicleType !== undefined) payload.vehicle_type = patch.vehicleType;
+    if (patch.vehicleCapacity !== undefined) payload.vehicle_capacity = patch.vehicleCapacity;
+    if (patch.fuelType !== undefined) payload.fuel_type = patch.fuelType ?? "";
+    if (patch.rcNumber !== undefined) payload.rc_number = patch.rcNumber;
+    if (patch.insuranceExpiry !== undefined) {
+      payload.insurance_expiry = patch.insuranceExpiry || null;
+    }
+    if (patch.pollutionExpiry !== undefined) {
+      payload.pollution_expiry = patch.pollutionExpiry || null;
+    }
+
+    if (Object.keys(payload).length === 0) return;
+
+    const updated = await updateDriverApi(id, payload);
+    const mapped = driverFromApi(updated);
+    setState((s) => ({
+      ...s,
+      drivers: s.drivers.map((item) => (item.id === id ? mapped : item)),
+    }));
+  }, []);
+
+  const deleteDriver = React.useCallback(async (id: string) => {
+    await deleteDriverApi(id);
+    setState((s) => ({
+      ...s,
+      drivers: s.drivers.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const duplicateItinerary = React.useCallback(
+    async (id: string) => {
+      const source = state.itineraries.find((x) => x.id === id);
+      if (!source) return null;
+      return addItinerary({
+        name: `${source.name} (Copy)`,
+        slug: `${slugify(source.slug || source.name)}-copy`,
+        tourPackage: source.tourPackage,
+        subtitle: source.subtitle,
+        overview: source.overview,
+        inclusions: [...source.inclusions],
+        startingFrom: source.startingFrom,
+        discountPercentage: source.discountPercentage,
+        nights: source.nights,
+        days: source.days,
+        status: "Draft",
+        daysPlan: source.daysPlan.map((d) => ({ ...d })),
+      });
+    },
+    [addItinerary, state.itineraries]
+  );
+
   const addLead = React.useCallback(async (input: LeadFormValues) => {
     const { lead } = await createLeadApi(leadToWritePayload(input));
     let mapped!: Lead;
@@ -273,6 +504,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (patch.drop !== undefined) payload.drop = patch.drop;
       if (patch.pickupDate !== undefined) payload.pickup_date = patch.pickupDate;
       if (patch.dropDate !== undefined) payload.drop_date = patch.dropDate;
+      if (patch.nextFollowUpDate !== undefined) payload.next_follow_up_date = patch.nextFollowUpDate || null;
+      if (patch.nextFollowUpTime !== undefined) payload.next_follow_up_time = patch.nextFollowUpTime || null;
       if (patch.car !== undefined) payload.car = patch.car;
       if (patch.adults !== undefined) payload.adults = patch.adults;
       if (patch.kids !== undefined) payload.kids = patch.kids;
@@ -356,6 +589,63 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const addHotelTemplate = React.useCallback(
+    async (input: Omit<HotelTemplate, "id" | "hotelNo" | "updatedAt">) => {
+      const created = await createHotelApi(hotelToWritePayload(input));
+      const mapped = hotelFromApi(created);
+      setState((s) => ({
+        ...s,
+        hotelTemplates: [mapped, ...s.hotelTemplates.filter((item) => item.id !== mapped.id)],
+      }));
+      return mapped;
+    },
+    []
+  );
+
+  const updateHotelTemplate = React.useCallback(async (id: string, patch: Partial<HotelTemplate>) => {
+    const payload: Parameters<typeof updateHotelApi>[1] = {};
+    if (patch.name !== undefined) payload.name = patch.name;
+    if (patch.city !== undefined) payload.city = patch.city;
+    if (patch.address !== undefined) payload.address = patch.address;
+    if (patch.contactNumber !== undefined) payload.contact_number = patch.contactNumber;
+    if (patch.defaultRoomType !== undefined) payload.default_room_type = patch.defaultRoomType;
+    if (patch.typicalRate !== undefined) payload.typical_rate = patch.typicalRate;
+    if (patch.notes !== undefined) payload.notes = patch.notes;
+    if (patch.status !== undefined) payload.status = patch.status;
+
+    if (Object.keys(payload).length === 0) return;
+
+    const updated = await updateHotelApi(id, payload);
+    const mapped = hotelFromApi(updated);
+    setState((s) => ({
+      ...s,
+      hotelTemplates: s.hotelTemplates.map((item) => (item.id === id ? mapped : item)),
+    }));
+  }, []);
+
+  const deleteHotelTemplate = React.useCallback(async (id: string) => {
+    await deleteHotelApi(id);
+    setState((s) => ({
+      ...s,
+      hotelTemplates: s.hotelTemplates.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const duplicateHotelTemplate = React.useCallback(async (id: string) => {
+    const source = state.hotelTemplates.find((x) => x.id === id);
+    if (!source) return null;
+    return addHotelTemplate({
+      name: `${source.name} (Copy)`,
+      city: source.city,
+      address: source.address,
+      contactNumber: source.contactNumber,
+      defaultRoomType: source.defaultRoomType,
+      typicalRate: source.typicalRate,
+      notes: source.notes,
+      status: "Draft",
+    });
+  }, [addHotelTemplate, state.hotelTemplates]);
+
   const value = React.useMemo<Ctx>(
     () => ({
       state,
@@ -364,7 +654,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       leadSources,
       websites,
       leadsLoading,
+      hotelsLoading,
+      itinerariesLoading,
+      driversLoading,
       refreshLeads,
+      refreshHotels,
+      refreshItineraries,
+      refreshDrivers,
       addLead,
       updateLead,
       deleteLead,
@@ -421,45 +717,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           }),
         })),
 
-      addDriver: (d) => setState((s) => ({ ...s, drivers: [{ ...d, id: genId("DR") }, ...s.drivers] })),
-      updateDriver: (id, patch) =>
-        setState((s) => ({ ...s, drivers: s.drivers.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
-      deleteDriver: (id) => setState((s) => ({ ...s, drivers: s.drivers.filter((x) => x.id !== id) })),
+      addDriver,
+      updateDriver,
+      deleteDriver,
 
       addQuote: (q) => setState((s) => ({ ...s, quotes: [{ ...q, id: genId("QT") }, ...s.quotes] })),
       updateQuote: (id, patch) =>
         setState((s) => ({ ...s, quotes: s.quotes.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
       deleteQuote: (id) => setState((s) => ({ ...s, quotes: s.quotes.filter((x) => x.id !== id) })),
 
-      addItinerary: (t) =>
-        setState((s) => ({
-          ...s,
-          itineraries: [{ ...t, id: genId("IT"), updatedAt: "Just now" }, ...s.itineraries],
-        })),
-      updateItinerary: (id, patch) =>
-        setState((s) => ({
-          ...s,
-          itineraries: s.itineraries.map((x) =>
-            x.id === id ? { ...x, ...patch, updatedAt: "Just now" } : x
-          ),
-        })),
-      deleteItinerary: (id) =>
-        setState((s) => ({ ...s, itineraries: s.itineraries.filter((x) => x.id !== id) })),
-      duplicateItinerary: (id) =>
-        setState((s) => {
-          const source = s.itineraries.find((x) => x.id === id);
-          if (!source) return s;
-          const copy: ItineraryTemplate = {
-            ...source,
-            id: genId("IT"),
-            name: `${source.name} (Copy)`,
-            status: "Draft",
-            updatedAt: "Just now",
-            inclusions: [...source.inclusions],
-            daysPlan: source.daysPlan.map((d) => ({ ...d })),
-          };
-          return { ...s, itineraries: [copy, ...s.itineraries] };
-        }),
+      addItinerary,
+      updateItinerary,
+      deleteItinerary,
+      duplicateItinerary,
 
       assignLeadItinerary: (leadId, templateId) =>
         setState((s) => {
@@ -535,36 +805,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           };
         }),
 
-      addHotelTemplate: (t) =>
-        setState((s) => ({
-          ...s,
-          hotelTemplates: [{ ...t, id: genId("HT"), updatedAt: "Just now" }, ...s.hotelTemplates],
-        })),
-      updateHotelTemplate: (id, patch) =>
-        setState((s) => ({
-          ...s,
-          hotelTemplates: s.hotelTemplates.map((x) =>
-            x.id === id ? { ...x, ...patch, updatedAt: "Just now" } : x
-          ),
-        })),
-      deleteHotelTemplate: (id) =>
-        setState((s) => ({
-          ...s,
-          hotelTemplates: s.hotelTemplates.filter((x) => x.id !== id),
-        })),
-      duplicateHotelTemplate: (id) =>
-        setState((s) => {
-          const source = s.hotelTemplates.find((x) => x.id === id);
-          if (!source) return s;
-          const copy: HotelTemplate = {
-            ...source,
-            id: genId("HT"),
-            name: `${source.name} (Copy)`,
-            status: "Draft",
-            updatedAt: "Just now",
-          };
-          return { ...s, hotelTemplates: [copy, ...s.hotelTemplates] };
-        }),
+      addHotelTemplate,
+      updateHotelTemplate,
+      deleteHotelTemplate,
+      duplicateHotelTemplate,
 
       addMember: (m) =>
         setState((s) => ({ ...s, members: [{ ...m, id: genId("MB") }, ...s.members] })),
@@ -626,13 +870,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       leadSources,
       websites,
       leadsLoading,
+      hotelsLoading,
+      itinerariesLoading,
+      driversLoading,
       refreshLeads,
+      refreshHotels,
+      refreshItineraries,
+      refreshDrivers,
       addLead,
       updateLead,
       deleteLead,
       addLeadComment,
       loadLeadComments,
       loadLeadActivity,
+      addHotelTemplate,
+      updateHotelTemplate,
+      deleteHotelTemplate,
+      duplicateHotelTemplate,
+      addItinerary,
+      updateItinerary,
+      deleteItinerary,
+      duplicateItinerary,
+      addDriver,
+      updateDriver,
+      deleteDriver,
     ]
   );
 

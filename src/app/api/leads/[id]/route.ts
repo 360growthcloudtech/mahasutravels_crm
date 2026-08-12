@@ -10,7 +10,7 @@ import {
   type PatchLeadInput,
 } from "@/lib/db/leads";
 import { resolveSourceCode, resolveStatusCode, resolveWebsiteDomain } from "@/lib/db/masters";
-import { normalizePhone, parseLeadDate } from "@/lib/lead-utils";
+import { normalizePhone, parseLeadDate, parseLeadTime } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
 
@@ -90,6 +90,24 @@ export async function PATCH(
       const parsed = parseLeadDate(body.drop_date);
       if (!parsed) return NextResponse.json({ error: "drop_date is invalid" }, { status: 400 });
       patch.drop_date = parsed;
+    }
+  }
+  if (body.next_follow_up_date !== undefined) {
+    if (body.next_follow_up_date === null || body.next_follow_up_date === "") {
+      patch.next_follow_up_date = null;
+    } else {
+      const parsed = parseLeadDate(body.next_follow_up_date);
+      if (!parsed) return NextResponse.json({ error: "next_follow_up_date is invalid" }, { status: 400 });
+      patch.next_follow_up_date = parsed;
+    }
+  }
+  if (body.next_follow_up_time !== undefined) {
+    if (body.next_follow_up_time === null || body.next_follow_up_time === "") {
+      patch.next_follow_up_time = null;
+    } else {
+      const parsed = parseLeadTime(body.next_follow_up_time);
+      if (!parsed) return NextResponse.json({ error: "next_follow_up_time is invalid" }, { status: 400 });
+      patch.next_follow_up_time = parsed;
     }
   }
   if (body.price !== undefined) patch.price = readNumber(body.price) ?? 0;

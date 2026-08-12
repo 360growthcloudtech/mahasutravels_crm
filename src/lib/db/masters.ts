@@ -74,19 +74,31 @@ export async function getDefaultStatusCode(): Promise<string> {
      ORDER BY sort_order ASC
      LIMIT 1`
   );
-  return rows[0]?.code ?? "New";
+  return rows[0]?.code ?? "New Lead";
 }
 
 export async function resolveStatusCode(value: unknown): Promise<string | null> {
   if (typeof value !== "string" || !value.trim()) return null;
   const raw = value.trim();
   const lower = raw.toLowerCase().replace(/\s+/g, "-");
+  const legacy: Record<string, string> = {
+    new: "New Lead",
+    "new-lead": "New Lead",
+    contacted: "Cold",
+    quoted: "Hot",
+    "follow-up": "Hot",
+    follow_up: "Hot",
+    followup: "Hot",
+    confirmed: "Booked",
+  };
+  const remapped = legacy[lower] ?? raw;
+  const remappedLower = remapped.toLowerCase().replace(/\s+/g, "-");
   const statuses = await listLeadStatuses(true);
-  const exact = statuses.find((s) => s.code === raw);
+  const exact = statuses.find((s) => s.code === remapped);
   if (exact) return exact.code;
-  const byCode = statuses.find((s) => s.code.toLowerCase().replace(/\s+/g, "-") === lower);
+  const byCode = statuses.find((s) => s.code.toLowerCase().replace(/\s+/g, "-") === remappedLower);
   if (byCode) return byCode.code;
-  const byLabel = statuses.find((s) => s.label.toLowerCase().replace(/\s+/g, "-") === lower);
+  const byLabel = statuses.find((s) => s.label.toLowerCase().replace(/\s+/g, "-") === remappedLower);
   return byLabel?.code ?? null;
 }
 

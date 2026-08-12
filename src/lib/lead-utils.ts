@@ -1,15 +1,14 @@
 export const LEAD_STATUSES = [
-  "New",
-  "Contacted",
-  "Quoted",
-  "Follow-up",
-  "Confirmed",
+  "New Lead",
+  "Cold",
+  "Hot",
   "Lost",
+  "Booked",
 ] as const;
 
 export type LeadStatusValue = (typeof LEAD_STATUSES)[number];
 
-export const CLOSED_LEAD_STATUSES: LeadStatusValue[] = ["Confirmed", "Lost"];
+export const CLOSED_LEAD_STATUSES: LeadStatusValue[] = ["Lost", "Booked"];
 
 export const KNOWN_LEAD_SOURCES = [
   "taxi_calculator",
@@ -72,18 +71,56 @@ export function parseLeadDate(value: unknown): string | null {
   return null;
 }
 
-export function normalizeStatus(value: unknown, fallback: LeadStatusValue = "New"): LeadStatusValue {
+/** Normalize to HH:MM:SS for Postgres time columns; empty → null. */
+export function parseLeadTime(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const m = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  const second = m[3] !== undefined ? Number(m[3]) : 0;
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`;
+}
+
+export function toTimeOnly(value: unknown): string {
+  if (!value) return "";
+  if (value instanceof Date) {
+    const hour = String(value.getHours()).padStart(2, "0");
+    const minute = String(value.getMinutes()).padStart(2, "0");
+    return `${hour}:${minute}`;
+  }
+  const m = String(value).match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : "";
+}
+
+export function formatDisplayTime(value?: string): string {
+  const time = toTimeOnly(value ?? "");
+  if (!time) return "";
+  const [hour, minute] = time.split(":").map(Number);
+  const d = new Date();
+  d.setHours(hour, minute, 0, 0);
+  return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+}
+
+export function normalizeStatus(value: unknown, fallback: LeadStatusValue = "New Lead"): LeadStatusValue {
   if (typeof value !== "string" || !value.trim()) return fallback;
   const lower = value.trim().toLowerCase().replace(/\s+/g, "-");
   const map: Record<string, LeadStatusValue> = {
-    new: "New",
-    contacted: "Contacted",
-    quoted: "Quoted",
-    "follow-up": "Follow-up",
-    follow_up: "Follow-up",
-    followup: "Follow-up",
-    confirmed: "Confirmed",
+    new: "New Lead",
+    "new-lead": "New Lead",
+    new_lead: "New Lead",
+    cold: "Cold",
+    hot: "Hot",
     lost: "Lost",
+    booked: "Booked",
+    // Legacy status codes
+    contacted: "Cold",
+    quoted: "Hot",
+    "follow-up": "Hot",
+    follow_up: "Hot",
+    followup: "Hot",
+    confirmed: "Booked",
   };
   if (map[lower]) return map[lower];
   if ((LEAD_STATUSES as readonly string[]).includes(value.trim())) {

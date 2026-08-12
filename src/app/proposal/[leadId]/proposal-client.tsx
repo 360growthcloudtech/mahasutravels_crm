@@ -146,6 +146,12 @@ export default function ProposalPage() {
               {proposal.nights}N / {proposal.days}D
               <span className="text-white/40">·</span>
               Starting ₹{proposal.startingFrom.toLocaleString("en-IN")}
+              {(proposal.discountPercentage ?? 0) > 0 ? (
+                <>
+                  <span className="text-white/40">·</span>
+                  {proposal.discountPercentage}% off
+                </>
+              ) : null}
             </p>
             <h1 className="mt-4 font-display text-[1.85rem] font-semibold leading-[1.15] tracking-tight sm:text-[2.45rem]">
               {proposal.title}

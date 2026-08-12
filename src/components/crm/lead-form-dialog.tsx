@@ -48,12 +48,14 @@ function emptyForm(defaults?: {
     drop: "",
     pickupDate: "",
     dropDate: "",
+    nextFollowUpDate: "",
+    nextFollowUpTime: "",
     car: "sedan",
     adults: 2,
     kids: 0,
     days: 2,
     notes: "",
-    status: defaults?.status || "New",
+    status: defaults?.status || "New Lead",
     assignedToId: null,
     price: estimateCabPrice("sedan", 2),
   };
@@ -72,6 +74,8 @@ function fromLead(lead: Lead): FormState {
     drop: lead.drop,
     pickupDate: lead.pickupDate,
     dropDate: lead.dropDate,
+    nextFollowUpDate: lead.nextFollowUpDate,
+    nextFollowUpTime: lead.nextFollowUpTime,
     car: lead.car || "sedan",
     adults: lead.adults,
     kids: lead.kids,
@@ -99,7 +103,7 @@ export function LeadFormDialog({
   const [saving, setSaving] = React.useState(false);
   const masterSource = leadSources.find((s) => s.code === "manual")?.code || leadSources[0]?.code || "manual";
   const masterWebsite = websites[0]?.domain || "mahasutravels.com";
-  const masterStatus = leadStatuses.find((s) => s.is_default)?.code || leadStatuses[0]?.code || "New";
+  const masterStatus = leadStatuses.find((s) => s.is_default)?.code || leadStatuses[0]?.code || "New Lead";
   const [form, setForm] = React.useState<FormState>(() =>
     emptyForm({ source: masterSource, website: defaultWebsite || masterWebsite, status: masterStatus })
   );
@@ -342,6 +346,21 @@ export function LeadFormDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </Field>
+
+              <Field label="Next follow-up date">
+                <DatePicker
+                  value={form.nextFollowUpDate}
+                  onChange={(v) => set("nextFollowUpDate", v)}
+                  placeholder="Select follow-up date"
+                />
+              </Field>
+              <Field label="Next follow-up time">
+                <Input
+                  type="time"
+                  value={form.nextFollowUpTime}
+                  onChange={(e) => set("nextFollowUpTime", e.target.value)}
+                />
               </Field>
             </div>
           </section>

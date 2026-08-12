@@ -76,8 +76,8 @@ const seedNotifications: NotificationItem[] = [
   },
   {
     id: "N-5",
-    title: "Lead confirmed",
-    detail: "Ananya Rao moved to Confirmed · advance pending",
+    title: "Lead booked",
+    detail: "Ananya Rao moved to Booked · advance pending",
     time: "Yesterday",
     href: "/leads",
     unread: false,

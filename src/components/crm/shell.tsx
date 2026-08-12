@@ -24,19 +24,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGate>
-    <div className="min-h-dvh bg-paper">
-      <Sidebar collapsed={collapsed} onCollapsedChange={onCollapsedChange} animate={ready} />
-      <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} />
-      <div
-        className={cn(
-          "flex min-h-dvh min-w-0 flex-col",
-          ready && "transition-[padding] duration-200 ease-out",
-          collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"
-        )}
-      >
-        <MobileNavContext.Provider value={openMobileNav}>{children}</MobileNavContext.Provider>
+      <div className="min-h-dvh bg-paper">
+        <Sidebar collapsed={collapsed} onCollapsedChange={onCollapsedChange} animate={ready} />
+        <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} />
+        <div
+          className={cn(
+            "flex min-h-dvh min-w-0 flex-col",
+            ready && "transition-[padding] duration-200 ease-out",
+            collapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"
+          )}
+        >
+          <MobileNavContext.Provider value={openMobileNav}>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+          </MobileNavContext.Provider>
+        </div>
       </div>
-    </div>
     </AuthGate>
   );
 }

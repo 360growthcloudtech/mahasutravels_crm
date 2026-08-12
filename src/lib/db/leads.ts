@@ -5,6 +5,7 @@ import {
   normalizePhone,
   toDateOnly,
   toIso,
+  toTimeOnly,
 } from "@/lib/lead-utils";
 
 export type LeadRow = {
@@ -20,6 +21,8 @@ export type LeadRow = {
   days: number;
   pickup_date: unknown;
   drop_date: unknown;
+  next_follow_up_date: unknown;
+  next_follow_up_time: unknown;
   price: string | number;
   source: string;
   city: string;
@@ -50,6 +53,8 @@ export type LeadDto = {
   days: number;
   pickup_date: string;
   drop_date: string;
+  next_follow_up_date: string;
+  next_follow_up_time: string;
   price: number;
   source: string;
   city: string;
@@ -112,6 +117,8 @@ export type IngestLeadInput = {
   days?: number;
   pickup_date?: string | null;
   drop_date?: string | null;
+  next_follow_up_date?: string | null;
+  next_follow_up_time?: string | null;
   price?: number;
   source: string;
   city?: string;
@@ -146,6 +153,8 @@ const LEAD_SELECT = `
     l.days,
     l.pickup_date::text AS pickup_date,
     l.drop_date::text AS drop_date,
+    l.next_follow_up_date::text AS next_follow_up_date,
+    l.next_follow_up_time::text AS next_follow_up_time,
     l.price,
     l.source,
     l.city,
@@ -179,6 +188,8 @@ export function leadToDto(row: LeadRow): LeadDto {
     days: Number(row.days) || 0,
     pickup_date: toDateOnly(row.pickup_date),
     drop_date: toDateOnly(row.drop_date),
+    next_follow_up_date: toDateOnly(row.next_follow_up_date),
+    next_follow_up_time: toTimeOnly(row.next_follow_up_time),
     price: Number(row.price) || 0,
     source: row.source,
     city: row.city ?? "",
@@ -317,12 +328,12 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
   const { rows } = await query<{ id: string }>(
     `INSERT INTO leads (
       name, phone, phone_normalized, email, pickup, drop_location, car, days,
-      pickup_date, drop_date, price, source, city, website, tour_package,
+      pickup_date, drop_date, next_follow_up_date, next_follow_up_time, price, source, city, website, tour_package,
       adults, kids, notes, status, assigned_to, previous_lead_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8,
-      $9, $10, $11, $12, $13, $14, $15,
-      $16, $17, $18, $19, $20, $21
+      $9, $10, $11, $12, $13, $14, $15, $16, $17,
+      $18, $19, $20, $21, $22, $23
     )
     RETURNING id`,
     [
@@ -336,6 +347,8 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
       Number(input.days) || 0,
       input.pickup_date || null,
       input.drop_date || null,
+      input.next_follow_up_date || null,
+      input.next_follow_up_time || null,
       Number(input.price) || 0,
       input.source,
       input.city?.trim() ?? "",
@@ -486,6 +499,8 @@ export type PatchLeadInput = {
   days?: number;
   pickup_date?: string | null;
   drop_date?: string | null;
+  next_follow_up_date?: string | null;
+  next_follow_up_time?: string | null;
   price?: number;
   source?: string;
   city?: string;
@@ -523,16 +538,18 @@ export async function patchLead(
       days = $9,
       pickup_date = $10,
       drop_date = $11,
-      price = $12,
-      source = $13,
-      city = $14,
-      website = $15,
-      tour_package = $16,
-      adults = $17,
-      kids = $18,
-      notes = $19,
-      status = $20,
-      assigned_to = $21,
+      next_follow_up_date = $12,
+      next_follow_up_time = $13,
+      price = $14,
+      source = $15,
+      city = $16,
+      website = $17,
+      tour_package = $18,
+      adults = $19,
+      kids = $20,
+      notes = $21,
+      status = $22,
+      assigned_to = $23,
       updated_at = now()
      WHERE id = $1`,
     [
@@ -547,6 +564,12 @@ export async function patchLead(
       patch.days !== undefined ? Number(patch.days) || 0 : Number(existing.days) || 0,
       patch.pickup_date !== undefined ? patch.pickup_date || null : toDateOnly(existing.pickup_date) || null,
       patch.drop_date !== undefined ? patch.drop_date || null : toDateOnly(existing.drop_date) || null,
+      patch.next_follow_up_date !== undefined
+        ? patch.next_follow_up_date || null
+        : toDateOnly(existing.next_follow_up_date) || null,
+      patch.next_follow_up_time !== undefined
+        ? patch.next_follow_up_time || null
+        : toTimeOnly(existing.next_follow_up_time) || null,
       patch.price !== undefined ? Number(patch.price) || 0 : Number(existing.price) || 0,
       patch.source !== undefined ? patch.source.trim() : existing.source,
       patch.city !== undefined ? patch.city.trim() : existing.city,

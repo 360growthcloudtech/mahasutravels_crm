@@ -17,6 +17,7 @@ import {
   CALCULATOR_CARS,
   normalizePhone,
   parseLeadDate,
+  parseLeadTime,
 } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
@@ -68,6 +69,21 @@ function parseIngestBody(body: Record<string, unknown>): { ok: true; input: Inge
   if (body.pickup_date && !pickupDate) return { ok: false, error: "pickup_date is invalid" };
   if (body.drop_date && !dropDate) return { ok: false, error: "drop_date is invalid" };
 
+  const followUpDate =
+    body.next_follow_up_date === null || body.next_follow_up_date === ""
+      ? null
+      : parseLeadDate(body.next_follow_up_date);
+  const followUpTime =
+    body.next_follow_up_time === null || body.next_follow_up_time === ""
+      ? null
+      : parseLeadTime(body.next_follow_up_time);
+  if (body.next_follow_up_date && body.next_follow_up_date !== null && !followUpDate) {
+    return { ok: false, error: "next_follow_up_date is invalid" };
+  }
+  if (body.next_follow_up_time && body.next_follow_up_time !== null && !followUpTime) {
+    return { ok: false, error: "next_follow_up_time is invalid" };
+  }
+
   const assignedTo = readString(body.assigned_to)?.trim() || undefined;
 
   return {
@@ -82,6 +98,8 @@ function parseIngestBody(body: Record<string, unknown>): { ok: true; input: Inge
       days: readNumber(body.days) ?? 0,
       pickup_date: pickupDate,
       drop_date: dropDate,
+      next_follow_up_date: followUpDate,
+      next_follow_up_time: followUpTime,
       price: readNumber(body.price) ?? 0,
       source,
       city: readString(body.city)?.trim() ?? "",
