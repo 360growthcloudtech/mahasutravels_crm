@@ -1,4 +1,4 @@
-import { getPool, query } from "@/lib/db";
+import { query } from "@/lib/db";
 import {
   clampCapacity,
   clampRating,
@@ -8,7 +8,6 @@ import {
   isFuelType,
   normalizeDateInput,
   type DriverStatusValue,
-  type FuelTypeValue,
 } from "@/lib/driver-utils";
 import { toIso } from "@/lib/lead-utils";
 
@@ -153,6 +152,18 @@ function normalizeFuelType(value: unknown): string {
   throw new Error("FUEL_TYPE_INVALID");
 }
 
+function patchTouchesVehicle(patch: PatchDriverInput): boolean {
+  return (
+    patch.vehicle !== undefined ||
+    patch.vehicle_type !== undefined ||
+    patch.vehicle_capacity !== undefined ||
+    patch.fuel_type !== undefined ||
+    patch.rc_number !== undefined ||
+    patch.insurance_expiry !== undefined ||
+    patch.pollution_expiry !== undefined
+  );
+}
+
 export function driverToDto(row: DriverJoinedRow): DriverDto {
   return {
     id: row.id,
@@ -239,6 +250,7 @@ export async function getDriverSummary(): Promise<DriverSummary> {
   };
 }
 
+/** Create driver + vehicle and return joined row in one round-trip. */
 export async function createDriver(input: CreateDriverInput): Promise<DriverJoinedRow> {
   const name = input.name.trim();
   const phone = input.phone.trim();
@@ -252,69 +264,147 @@ export async function createDriver(input: CreateDriverInput): Promise<DriverJoin
   const fuelType = normalizeFuelType(input.fuel_type ?? "Diesel");
   const status = input.status ?? "Approved";
 
-  const pool = getPool();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const inserted = await client.query<{ id: string }>(
-      `INSERT INTO drivers (
-        name, phone, address, license_number, license_expiry,
-        status, rating, trips, vendor, documents_verified, notes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-      RETURNING id`,
-      [
-        name,
-        phone,
-        input.address?.trim() ?? "",
-        input.license_number?.trim() ?? "",
-        normalizeDateInput(input.license_expiry),
-        status,
-        clampRating(input.rating ?? 5),
-        clampTrips(input.trips ?? 0),
-        Boolean(input.vendor),
-        Boolean(input.documents_verified),
-        input.notes?.trim() ?? "",
-      ]
-    );
-    const id = inserted.rows[0].id;
-    await client.query(
-      `INSERT INTO vehicles (
-        driver_id, registration_number, vehicle_type, capacity, fuel_type,
-        rc_number, insurance_expiry, pollution_expiry
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        id,
-        vehicle,
-        vehicleType,
-        clampCapacity(input.vehicle_capacity ?? 0),
-        fuelType,
-        input.rc_number?.trim() ?? "",
-        normalizeDateInput(input.insurance_expiry),
-        normalizeDateInput(input.pollution_expiry),
-      ]
-    );
-    await client.query("COMMIT");
+  const { rows } = await query<DriverJoinedRow>(
+    `WITH inserted_driver AS (
+       INSERT INTO drivers (
+         name, phone, address, license_number, license_expiry,
+         status, rating, trips, vendor, documents_verified, notes
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *
+     ),
+     inserted_vehicle AS (
+       INSERT INTO vehicles (
+         driver_id, registration_number, vehicle_type, capacity, fuel_type,
+         rc_number, insurance_expiry, pollution_expiry
+       )
+       SELECT
+         id, $12, $13, $14, $15, $16, $17, $18
+       FROM inserted_driver
+       RETURNING *
+     )
+     SELECT
+       d.id,
+       d.driver_no,
+       d.name,
+       d.phone,
+       d.address,
+       d.license_number,
+       d.license_expiry,
+       d.status,
+       d.rating,
+       d.trips,
+       d.vendor,
+       d.documents_verified,
+       d.notes,
+       d.created_at,
+       d.updated_at,
+       v.id AS vehicle_id,
+       v.registration_number,
+       v.vehicle_type,
+       v.capacity,
+       v.fuel_type,
+       v.rc_number,
+       v.insurance_expiry,
+       v.pollution_expiry
+     FROM inserted_driver d
+     LEFT JOIN inserted_vehicle v ON v.driver_id = d.id`,
+    [
+      name,
+      phone,
+      input.address?.trim() ?? "",
+      input.license_number?.trim() ?? "",
+      normalizeDateInput(input.license_expiry),
+      status,
+      clampRating(input.rating ?? 5),
+      clampTrips(input.trips ?? 0),
+      Boolean(input.vendor),
+      Boolean(input.documents_verified),
+      input.notes?.trim() ?? "",
+      vehicle,
+      vehicleType,
+      clampCapacity(input.vehicle_capacity ?? 0),
+      fuelType,
+      input.rc_number?.trim() ?? "",
+      normalizeDateInput(input.insurance_expiry),
+      normalizeDateInput(input.pollution_expiry),
+    ]
+  );
 
-    const found = await findDriverById(id);
-    if (!found) throw new Error("Failed to load created driver");
-    return found;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  const row = rows[0];
+  if (!row) throw new Error("Failed to load created driver");
+  return row;
 }
 
+/**
+ * Patch driver (and vehicle only when vehicle fields are present).
+ * Uses a single SQL round-trip to avoid remote DB latency stacking.
+ */
 export async function patchDriver(id: string, patch: PatchDriverInput): Promise<DriverJoinedRow> {
+  if (patch.name !== undefined && !patch.name.trim()) throw new Error("NAME_REQUIRED");
+  if (patch.phone !== undefined && !patch.phone.trim()) throw new Error("PHONE_REQUIRED");
+  if (patch.vehicle !== undefined && !patch.vehicle.trim()) throw new Error("VEHICLE_REQUIRED");
+  if (patch.vehicle_type !== undefined && !patch.vehicle_type.trim()) {
+    throw new Error("VEHICLE_TYPE_REQUIRED");
+  }
+  if (patch.fuel_type !== undefined) normalizeFuelType(patch.fuel_type);
+
+  const touchesVehicle = patchTouchesVehicle(patch);
+
+  if (!touchesVehicle) {
+    // Fast path: driver columns only (status toggle, notes, etc.)
+    const { rows } = await query<DriverJoinedRow>(
+      `WITH updated AS (
+         UPDATE drivers SET
+           name = COALESCE($2, name),
+           phone = COALESCE($3, phone),
+           address = COALESCE($4, address),
+           license_number = COALESCE($5, license_number),
+           license_expiry = CASE WHEN $6::boolean THEN $7::date ELSE license_expiry END,
+           status = COALESCE($8, status),
+           rating = COALESCE($9, rating),
+           trips = COALESCE($10, trips),
+           vendor = COALESCE($11, vendor),
+           documents_verified = COALESCE($12, documents_verified),
+           notes = COALESCE($13, notes),
+           updated_at = now()
+         WHERE id = $1
+         RETURNING *
+       )
+       SELECT
+         d.id, d.driver_no, d.name, d.phone, d.address, d.license_number, d.license_expiry,
+         d.status, d.rating, d.trips, d.vendor, d.documents_verified, d.notes,
+         d.created_at, d.updated_at,
+         v.id AS vehicle_id, v.registration_number, v.vehicle_type, v.capacity, v.fuel_type,
+         v.rc_number, v.insurance_expiry, v.pollution_expiry
+       FROM updated d
+       LEFT JOIN vehicles v ON v.driver_id = d.id`,
+      [
+        id,
+        patch.name !== undefined ? patch.name.trim() : null,
+        patch.phone !== undefined ? patch.phone.trim() : null,
+        patch.address !== undefined ? patch.address.trim() : null,
+        patch.license_number !== undefined ? patch.license_number.trim() : null,
+        patch.license_expiry !== undefined,
+        patch.license_expiry !== undefined ? normalizeDateInput(patch.license_expiry) : null,
+        patch.status ?? null,
+        patch.rating !== undefined ? clampRating(patch.rating) : null,
+        patch.trips !== undefined ? clampTrips(patch.trips) : null,
+        patch.vendor !== undefined ? Boolean(patch.vendor) : null,
+        patch.documents_verified !== undefined ? Boolean(patch.documents_verified) : null,
+        patch.notes !== undefined ? patch.notes.trim() : null,
+      ]
+    );
+    const row = rows[0];
+    if (!row) throw new Error("NOT_FOUND");
+    return row;
+  }
+
+  // Full path: update driver + upsert vehicle in one statement
   const existing = await findDriverById(id);
   if (!existing) throw new Error("NOT_FOUND");
 
   const name = patch.name !== undefined ? patch.name.trim() : existing.name;
   const phone = patch.phone !== undefined ? patch.phone.trim() : existing.phone;
-  if (!name) throw new Error("NAME_REQUIRED");
-  if (!phone) throw new Error("PHONE_REQUIRED");
-
   const registration =
     patch.vehicle !== undefined
       ? patch.vehicle.trim()
@@ -331,89 +421,87 @@ export async function patchDriver(id: string, patch: PatchDriverInput): Promise<
       ? normalizeFuelType(patch.fuel_type)
       : normalizeFuelType(existing.fuel_type ?? "");
 
-  const pool = getPool();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      `UPDATE drivers SET
-        name = $2,
-        phone = $3,
-        address = $4,
-        license_number = $5,
-        license_expiry = $6,
-        status = $7,
-        rating = $8,
-        trips = $9,
-        vendor = $10,
-        documents_verified = $11,
-        notes = $12,
-        updated_at = now()
-       WHERE id = $1`,
-      [
-        id,
-        name,
-        phone,
-        patch.address !== undefined ? patch.address.trim() : existing.address,
-        patch.license_number !== undefined
-          ? patch.license_number.trim()
-          : existing.license_number,
-        patch.license_expiry !== undefined
-          ? normalizeDateInput(patch.license_expiry)
-          : normalizeDateInput(dateToIsoString(existing.license_expiry)),
-        patch.status !== undefined ? patch.status : existing.status,
-        patch.rating !== undefined ? clampRating(patch.rating) : Number(existing.rating) || 5,
-        patch.trips !== undefined ? clampTrips(patch.trips) : Number(existing.trips) || 0,
-        patch.vendor !== undefined ? Boolean(patch.vendor) : Boolean(existing.vendor),
-        patch.documents_verified !== undefined
-          ? Boolean(patch.documents_verified)
-          : Boolean(existing.documents_verified),
-        patch.notes !== undefined ? patch.notes.trim() : existing.notes,
-      ]
-    );
+  const { rows } = await query<DriverJoinedRow>(
+    `WITH updated_driver AS (
+       UPDATE drivers SET
+         name = $2,
+         phone = $3,
+         address = $4,
+         license_number = $5,
+         license_expiry = $6,
+         status = $7,
+         rating = $8,
+         trips = $9,
+         vendor = $10,
+         documents_verified = $11,
+         notes = $12,
+         updated_at = now()
+       WHERE id = $1
+       RETURNING *
+     ),
+     upserted_vehicle AS (
+       INSERT INTO vehicles (
+         driver_id, registration_number, vehicle_type, capacity, fuel_type,
+         rc_number, insurance_expiry, pollution_expiry
+       )
+       SELECT
+         id, $13, $14, $15, $16, $17, $18, $19
+       FROM updated_driver
+       ON CONFLICT (driver_id) DO UPDATE SET
+         registration_number = EXCLUDED.registration_number,
+         vehicle_type = EXCLUDED.vehicle_type,
+         capacity = EXCLUDED.capacity,
+         fuel_type = EXCLUDED.fuel_type,
+         rc_number = EXCLUDED.rc_number,
+         insurance_expiry = EXCLUDED.insurance_expiry,
+         pollution_expiry = EXCLUDED.pollution_expiry,
+         updated_at = now()
+       RETURNING *
+     )
+     SELECT
+       d.id, d.driver_no, d.name, d.phone, d.address, d.license_number, d.license_expiry,
+       d.status, d.rating, d.trips, d.vendor, d.documents_verified, d.notes,
+       d.created_at, d.updated_at,
+       v.id AS vehicle_id, v.registration_number, v.vehicle_type, v.capacity, v.fuel_type,
+       v.rc_number, v.insurance_expiry, v.pollution_expiry
+     FROM updated_driver d
+     LEFT JOIN upserted_vehicle v ON v.driver_id = d.id`,
+    [
+      id,
+      name,
+      phone,
+      patch.address !== undefined ? patch.address.trim() : existing.address,
+      patch.license_number !== undefined ? patch.license_number.trim() : existing.license_number,
+      patch.license_expiry !== undefined
+        ? normalizeDateInput(patch.license_expiry)
+        : normalizeDateInput(dateToIsoString(existing.license_expiry)),
+      patch.status !== undefined ? patch.status : existing.status,
+      patch.rating !== undefined ? clampRating(patch.rating) : Number(existing.rating) || 5,
+      patch.trips !== undefined ? clampTrips(patch.trips) : Number(existing.trips) || 0,
+      patch.vendor !== undefined ? Boolean(patch.vendor) : Boolean(existing.vendor),
+      patch.documents_verified !== undefined
+        ? Boolean(patch.documents_verified)
+        : Boolean(existing.documents_verified),
+      patch.notes !== undefined ? patch.notes.trim() : existing.notes,
+      registration,
+      vehicleType,
+      patch.vehicle_capacity !== undefined
+        ? clampCapacity(patch.vehicle_capacity)
+        : Number(existing.capacity) || 0,
+      fuelType,
+      patch.rc_number !== undefined ? patch.rc_number.trim() : existing.rc_number ?? "",
+      patch.insurance_expiry !== undefined
+        ? normalizeDateInput(patch.insurance_expiry)
+        : normalizeDateInput(dateToIsoString(existing.insurance_expiry)),
+      patch.pollution_expiry !== undefined
+        ? normalizeDateInput(patch.pollution_expiry)
+        : normalizeDateInput(dateToIsoString(existing.pollution_expiry)),
+    ]
+  );
 
-    await client.query(
-      `INSERT INTO vehicles (
-        driver_id, registration_number, vehicle_type, capacity, fuel_type,
-        rc_number, insurance_expiry, pollution_expiry
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      ON CONFLICT (driver_id) DO UPDATE SET
-        registration_number = EXCLUDED.registration_number,
-        vehicle_type = EXCLUDED.vehicle_type,
-        capacity = EXCLUDED.capacity,
-        fuel_type = EXCLUDED.fuel_type,
-        rc_number = EXCLUDED.rc_number,
-        insurance_expiry = EXCLUDED.insurance_expiry,
-        pollution_expiry = EXCLUDED.pollution_expiry,
-        updated_at = now()`,
-      [
-        id,
-        registration,
-        vehicleType,
-        patch.vehicle_capacity !== undefined
-          ? clampCapacity(patch.vehicle_capacity)
-          : Number(existing.capacity) || 0,
-        fuelType,
-        patch.rc_number !== undefined ? patch.rc_number.trim() : existing.rc_number ?? "",
-        patch.insurance_expiry !== undefined
-          ? normalizeDateInput(patch.insurance_expiry)
-          : normalizeDateInput(dateToIsoString(existing.insurance_expiry)),
-        patch.pollution_expiry !== undefined
-          ? normalizeDateInput(patch.pollution_expiry)
-          : normalizeDateInput(dateToIsoString(existing.pollution_expiry)),
-      ]
-    );
-
-    await client.query("COMMIT");
-    const found = await findDriverById(id);
-    if (!found) throw new Error("NOT_FOUND");
-    return found;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  const row = rows[0];
+  if (!row) throw new Error("NOT_FOUND");
+  return row;
 }
 
 export async function deleteDriver(id: string): Promise<boolean> {

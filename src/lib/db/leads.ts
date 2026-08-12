@@ -28,6 +28,7 @@ export type LeadRow = {
   city: string;
   website: string | null;
   tour_package: string;
+  itinerary_template_id: string | null;
   adults: number;
   kids: number;
   notes: string;
@@ -60,6 +61,7 @@ export type LeadDto = {
   city: string;
   website: string | null;
   tour_package: string;
+  itinerary_template_id: string | null;
   adults: number;
   kids: number;
   notes: string;
@@ -124,6 +126,7 @@ export type IngestLeadInput = {
   city?: string;
   website?: string | null;
   tour_package?: string;
+  itinerary_template_id?: string | null;
   adults?: number;
   kids?: number;
   notes?: string;
@@ -160,6 +163,7 @@ const LEAD_SELECT = `
     l.city,
     l.website,
     l.tour_package,
+    l.itinerary_template_id,
     l.adults,
     l.kids,
     l.notes,
@@ -195,6 +199,7 @@ export function leadToDto(row: LeadRow): LeadDto {
     city: row.city ?? "",
     website: row.website,
     tour_package: row.tour_package ?? "",
+    itinerary_template_id: row.itinerary_template_id ?? null,
     adults: Number(row.adults) || 0,
     kids: Number(row.kids) || 0,
     notes: row.notes ?? "",
@@ -329,11 +334,11 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
     `INSERT INTO leads (
       name, phone, phone_normalized, email, pickup, drop_location, car, days,
       pickup_date, drop_date, next_follow_up_date, next_follow_up_time, price, source, city, website, tour_package,
-      adults, kids, notes, status, assigned_to, previous_lead_id
+      itinerary_template_id, adults, kids, notes, status, assigned_to, previous_lead_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8,
       $9, $10, $11, $12, $13, $14, $15, $16, $17,
-      $18, $19, $20, $21, $22, $23
+      $18, $19, $20, $21, $22, $23, $24
     )
     RETURNING id`,
     [
@@ -354,6 +359,7 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
       input.city?.trim() ?? "",
       input.website?.trim() || null,
       input.tour_package?.trim() ?? "",
+      input.itinerary_template_id || null,
       Number(input.adults) || 0,
       Number(input.kids) || 0,
       input.notes?.trim() ?? "",
@@ -402,6 +408,10 @@ export async function updateLeadFromInquiry(
   const city = input.city?.trim() ? input.city.trim() : existing.city;
   const website = input.website !== undefined ? input.website?.trim() || null : existing.website;
   const tourPackage = input.tour_package?.trim() ? input.tour_package.trim() : existing.tour_package;
+  const itineraryTemplateId =
+    input.itinerary_template_id !== undefined
+      ? input.itinerary_template_id || null
+      : existing.itinerary_template_id;
   const adults = input.adults != null ? Number(input.adults) || 0 : Number(existing.adults) || 0;
   const kids = input.kids != null ? Number(input.kids) || 0 : Number(existing.kids) || 0;
   const notes = input.notes?.trim() ? input.notes.trim() : existing.notes;
@@ -422,9 +432,10 @@ export async function updateLeadFromInquiry(
       city = $13,
       website = $14,
       tour_package = $15,
-      adults = $16,
-      kids = $17,
-      notes = $18,
+      itinerary_template_id = $16,
+      adults = $17,
+      kids = $18,
+      notes = $19,
       inquiry_count = inquiry_count + 1,
       updated_at = now(),
       last_inquiry_at = now()
@@ -445,6 +456,7 @@ export async function updateLeadFromInquiry(
       city,
       website,
       tourPackage,
+      itineraryTemplateId,
       adults,
       kids,
       notes,
@@ -506,6 +518,7 @@ export type PatchLeadInput = {
   city?: string;
   website?: string | null;
   tour_package?: string;
+  itinerary_template_id?: string | null;
   adults?: number;
   kids?: number;
   notes?: string;
@@ -525,6 +538,12 @@ export async function patchLead(
   const phoneNormalized = patch.phone !== undefined ? normalizePhone(phone) : existing.phone_normalized;
   const nextStatus = patch.status ?? existing.status;
   const nextAssigned = patch.assigned_to !== undefined ? patch.assigned_to || null : existing.assigned_to;
+  const nextItineraryId =
+    patch.itinerary_template_id !== undefined
+      ? patch.itinerary_template_id || null
+      : existing.itinerary_template_id;
+  const nextTourPackage =
+    patch.tour_package !== undefined ? patch.tour_package.trim() : existing.tour_package;
 
   await query(
     `UPDATE leads SET
@@ -545,11 +564,12 @@ export async function patchLead(
       city = $16,
       website = $17,
       tour_package = $18,
-      adults = $19,
-      kids = $20,
-      notes = $21,
-      status = $22,
-      assigned_to = $23,
+      itinerary_template_id = $19,
+      adults = $20,
+      kids = $21,
+      notes = $22,
+      status = $23,
+      assigned_to = $24,
       updated_at = now()
      WHERE id = $1`,
     [
@@ -574,7 +594,8 @@ export async function patchLead(
       patch.source !== undefined ? patch.source.trim() : existing.source,
       patch.city !== undefined ? patch.city.trim() : existing.city,
       patch.website !== undefined ? patch.website?.trim() || null : existing.website,
-      patch.tour_package !== undefined ? patch.tour_package.trim() : existing.tour_package,
+      nextTourPackage,
+      nextItineraryId,
       patch.adults !== undefined ? Number(patch.adults) || 0 : Number(existing.adults) || 0,
       patch.kids !== undefined ? Number(patch.kids) || 0 : Number(existing.kids) || 0,
       patch.notes !== undefined ? patch.notes.trim() : existing.notes,

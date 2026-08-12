@@ -75,6 +75,7 @@ export type LeadFormValues = {
   source: string;
   website?: string;
   tourPackage: string;
+  itineraryTemplateId?: string | null;
   pickup: string;
   drop: string;
   pickupDate: string;
@@ -129,7 +130,8 @@ function loadInitial(): State {
 function mergeLead(dtoLead: Lead, overlay?: LeadItineraryOverlay): Lead {
   return {
     ...dtoLead,
-    itineraryTemplateId: overlay?.itineraryTemplateId ?? dtoLead.itineraryTemplateId,
+    // Prefer DB-backed template id over local overlay.
+    itineraryTemplateId: dtoLead.itineraryTemplateId ?? overlay?.itineraryTemplateId,
     customItinerary: overlay?.customItinerary ?? dtoLead.customItinerary,
   };
 }
@@ -149,7 +151,13 @@ type Ctx = {
   refreshItineraries: () => Promise<void>;
   refreshDrivers: () => Promise<void>;
   addLead: (l: LeadFormValues) => Promise<Lead>;
-  updateLead: (id: string, patch: Partial<Lead> & { assignedToId?: string | null }) => Promise<void>;
+  updateLead: (
+    id: string,
+    patch: Partial<Omit<Lead, "itineraryTemplateId">> & {
+      assignedToId?: string | null;
+      itineraryTemplateId?: string | null;
+    }
+  ) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
   addLeadComment: (leadId: string, text: string) => Promise<void>;
   loadLeadComments: (leadId: string) => Promise<void>;
@@ -251,23 +259,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLeadsLoading(true);
     try {
       const [rows, users, masters] = await Promise.all([
-        fetchLeads(),
-        fetchAssignees().catch(() => []),
-        fetchLeadMasters().catch(() => ({ statuses: [], sources: [], websites: [] })),
+        fetchLeads().catch(() => null),
+        fetchAssignees().catch(() => null),
+        fetchLeadMasters().catch(() => null),
       ]);
-      setAssignees(users);
-      setLeadStatuses(masters.statuses);
-      setLeadSources(masters.sources);
-      setWebsites(masters.websites);
-      setState((s) => ({
-        ...s,
-        leads: rows.map((row) => leadFromApi(row, s.leadItineraries[row.id])),
-      }));
-    } catch {
-      setAssignees([]);
-      setLeadStatuses([]);
-      setLeadSources([]);
-      setWebsites([]);
+
+      if (users) setAssignees(users);
+      if (masters) {
+        setLeadStatuses(masters.statuses);
+        setLeadSources(masters.sources);
+        setWebsites(masters.websites);
+      }
+      if (rows) {
+        setState((s) => ({
+          ...s,
+          leads: rows.map((row) => leadFromApi(row, s.leadItineraries[row.id])),
+        }));
+      }
     } finally {
       setLeadsLoading(false);
     }
@@ -484,7 +492,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return mapped;
   }, []);
 
-  const updateLead = React.useCallback(async (id: string, patch: Partial<Lead> & { assignedToId?: string | null }) => {
+  const updateLead = React.useCallback(async (
+    id: string,
+    patch: Partial<Omit<Lead, "itineraryTemplateId">> & {
+      assignedToId?: string | null;
+      itineraryTemplateId?: string | null;
+    }
+  ) => {
     const itineraryOnly =
       (patch.itineraryTemplateId !== undefined || patch.customItinerary !== undefined) &&
       Object.keys(patch).every((key) =>
@@ -500,6 +514,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (patch.source !== undefined) payload.source = patch.source;
       if (patch.website !== undefined) payload.website = patch.website || null;
       if (patch.tourPackage !== undefined) payload.tour_package = patch.tourPackage;
+      if (patch.itineraryTemplateId !== undefined) {
+        payload.itinerary_template_id = patch.itineraryTemplateId || null;
+      }
       if (patch.pickup !== undefined) payload.pickup = patch.pickup;
       if (patch.drop !== undefined) payload.drop = patch.drop;
       if (patch.pickupDate !== undefined) payload.pickup_date = patch.pickupDate;
@@ -532,7 +549,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const overlay: LeadItineraryOverlay = {
           ...s.leadItineraries[id],
           ...(patch.itineraryTemplateId !== undefined
-            ? { itineraryTemplateId: patch.itineraryTemplateId }
+            ? { itineraryTemplateId: patch.itineraryTemplateId || undefined }
             : {}),
           ...(patch.customItinerary !== undefined ? { customItinerary: patch.customItinerary } : {}),
         };

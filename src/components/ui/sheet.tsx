@@ -29,9 +29,12 @@ function SheetContent({
   className,
   children,
   side = "right",
+  onClose,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   side?: "right" | "left";
+  /** When set, the X button calls this instead of Radix dismiss (for manual-close drawers). */
+  onClose?: () => void;
 }) {
   return (
     <SheetPortal>
@@ -48,10 +51,21 @@ function SheetContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-60 transition-opacity hover:opacity-100 outline-none">
-          <X className="size-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-4 right-4 rounded-xs opacity-60 transition-opacity hover:opacity-100 outline-none"
+          >
+            <X className="size-4" />
+            <span className="sr-only">Close</span>
+          </button>
+        ) : (
+          <DialogPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-60 transition-opacity hover:opacity-100 outline-none">
+            <X className="size-4" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </SheetPortal>
   );

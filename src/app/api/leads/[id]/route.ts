@@ -9,10 +9,13 @@ import {
   userExists,
   type PatchLeadInput,
 } from "@/lib/db/leads";
+import { resolveItineraryPackage } from "@/lib/db/itineraries";
 import { resolveSourceCode, resolveStatusCode, resolveWebsiteDomain } from "@/lib/db/masters";
 import { normalizePhone, parseLeadDate, parseLeadTime } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -128,6 +131,26 @@ export async function PATCH(
     }
   }
   if (body.tour_package !== undefined) patch.tour_package = readString(body.tour_package) ?? "";
+  if (body.itinerary_template_id !== undefined) {
+    const raw = readNullableString(body.itinerary_template_id);
+    if (!raw) {
+      patch.itinerary_template_id = null;
+    } else {
+      const trimmed = raw.trim();
+      if (!UUID_RE.test(trimmed)) {
+        return NextResponse.json({ error: "itinerary_template_id is invalid" }, { status: 400 });
+      }
+      // Allow keeping an already-linked inactive template; new picks must be Active.
+      const existingLead = await findLeadById(id);
+      const allowInactive = existingLead?.itinerary_template_id === trimmed;
+      const pkg = await resolveItineraryPackage(trimmed, { requireActive: !allowInactive });
+      if (!pkg) {
+        return NextResponse.json({ error: "Unknown or inactive itinerary_template_id" }, { status: 400 });
+      }
+      patch.itinerary_template_id = pkg.id;
+      patch.tour_package = pkg.name;
+    }
+  }
   if (body.adults !== undefined) patch.adults = readNumber(body.adults) ?? 0;
   if (body.kids !== undefined) patch.kids = readNumber(body.kids) ?? 0;
   if (body.notes !== undefined) patch.notes = readString(body.notes) ?? "";

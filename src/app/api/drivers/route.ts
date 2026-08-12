@@ -3,7 +3,6 @@ import { requireSession } from "@/lib/api-auth";
 import {
   createDriver,
   driverToDto,
-  getDriverSummary,
   isUniqueViolation,
   listDrivers,
   type CreateDriverInput,
@@ -63,17 +62,13 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const [drivers, summary] = await Promise.all([
-    listDrivers({
-      search: url.searchParams.get("search") ?? undefined,
-      status: csvParam(url.searchParams.get("status")),
-    }),
-    getDriverSummary(),
-  ]);
+  const drivers = await listDrivers({
+    search: url.searchParams.get("search") ?? undefined,
+    status: csvParam(url.searchParams.get("status")),
+  });
 
   return NextResponse.json({
     drivers: drivers.map(driverToDto),
-    summary,
   });
 }
 

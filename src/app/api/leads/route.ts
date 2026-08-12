@@ -7,6 +7,7 @@ import {
   userExists,
   type IngestLeadInput,
 } from "@/lib/db/leads";
+import { resolveItineraryPackage } from "@/lib/db/itineraries";
 import {
   getDefaultStatusCode,
   resolveSourceCode,
@@ -21,6 +22,8 @@ import {
 } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function csvParam(value: string | null): string[] | undefined {
   if (!value?.trim()) return undefined;
@@ -85,6 +88,10 @@ function parseIngestBody(body: Record<string, unknown>): { ok: true; input: Inge
   }
 
   const assignedTo = readString(body.assigned_to)?.trim() || undefined;
+  const rawItineraryId = readString(body.itinerary_template_id)?.trim() || null;
+  if (rawItineraryId && !UUID_RE.test(rawItineraryId)) {
+    return { ok: false, error: "itinerary_template_id is invalid" };
+  }
 
   return {
     ok: true,
@@ -105,6 +112,7 @@ function parseIngestBody(body: Record<string, unknown>): { ok: true; input: Inge
       city: readString(body.city)?.trim() ?? "",
       website: readString(body.website)?.trim() || null,
       tour_package: readString(body.tour_package)?.trim() ?? "",
+      itinerary_template_id: rawItineraryId,
       adults: readNumber(body.adults) ?? 0,
       kids: readNumber(body.kids) ?? 0,
       notes: readString(body.notes)?.trim() ?? "",
@@ -177,6 +185,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unknown or inactive website" }, { status: 400, headers: cors });
     }
     parsed.input.website = website;
+  }
+
+  if (parsed.input.itinerary_template_id) {
+    const pkg = await resolveItineraryPackage(parsed.input.itinerary_template_id, { requireActive: true });
+    if (!pkg) {
+      return NextResponse.json(
+        { error: "Unknown or inactive itinerary_template_id" },
+        { status: 400, headers: cors }
+      );
+    }
+    parsed.input.itinerary_template_id = pkg.id;
+    parsed.input.tour_package = pkg.name;
   }
 
   if (parsed.input.assigned_to && !(await userExists(parsed.input.assigned_to))) {

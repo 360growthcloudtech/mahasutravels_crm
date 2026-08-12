@@ -157,3 +157,15 @@ export async function deleteItineraryApi(id: string): Promise<void> {
     throw new Error(data?.error ?? "Failed to delete itinerary");
   }
 }
+
+export type ItineraryPackageApi = {
+  id: string;
+  name: string;
+};
+
+export async function fetchActiveItineraryPackages(): Promise<ItineraryPackageApi[]> {
+  const res = await fetch("/api/itineraries/packages", { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load tour packages");
+  const data = (await res.json()) as { packages?: ItineraryPackageApi[] };
+  return data.packages ?? [];
+}

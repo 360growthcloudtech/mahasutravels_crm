@@ -21,6 +21,7 @@ export type LeadApi = {
   city: string;
   website: string | null;
   tour_package: string;
+  itinerary_template_id: string | null;
   adults: number;
   kids: number;
   notes: string;
@@ -71,6 +72,7 @@ export type LeadWritePayload = {
   city?: string;
   website?: string | null;
   tour_package?: string;
+  itinerary_template_id?: string | null;
   adults?: number;
   kids?: number;
   notes?: string;
@@ -108,7 +110,7 @@ export function leadFromApi(dto: LeadApi, overlay?: LeadItineraryOverlay): Lead 
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
     lastInquiryAt: dto.last_inquiry_at,
-    itineraryTemplateId: overlay?.itineraryTemplateId,
+    itineraryTemplateId: dto.itinerary_template_id || overlay?.itineraryTemplateId || undefined,
     customItinerary: overlay?.customItinerary,
   };
 }
@@ -141,6 +143,7 @@ export function leadToWritePayload(input: {
   source: string;
   website?: string;
   tourPackage?: string;
+  itineraryTemplateId?: string | null;
   pickup?: string;
   drop?: string;
   pickupDate?: string;
@@ -173,6 +176,7 @@ export function leadToWritePayload(input: {
     city: input.city ?? "",
     website: input.website || null,
     tour_package: input.tourPackage ?? "",
+    itinerary_template_id: input.itineraryTemplateId ?? null,
     adults: input.adults ?? 0,
     kids: input.kids ?? 0,
     notes: input.notes ?? "",

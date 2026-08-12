@@ -39,15 +39,23 @@ export function DatePicker({
   onChange,
   placeholder = "Pick a date",
   className,
+  minDate,
+  maxDate,
 }: {
   value?: string;
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  /** yyyy-MM-dd inclusive lower bound */
+  minDate?: string;
+  /** yyyy-MM-dd inclusive upper bound */
+  maxDate?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [month, setMonth] = React.useState<Date>(() => selectedOrNow(value));
   const selected = parseStoredDate(value);
+  const min = parseStoredDate(minDate);
+  const max = parseStoredDate(maxDate);
 
   React.useEffect(() => {
     if (open) setMonth(selectedOrNow(value));
@@ -76,6 +84,11 @@ export function DatePicker({
           month={month}
           onMonthChange={setMonth}
           selected={selected}
+          disabled={(date) => {
+            if (min && date < startOfDay(min)) return true;
+            if (max && date > startOfDay(max)) return true;
+            return false;
+          }}
           onSelect={(date) => {
             if (!date) {
               onChange("");
@@ -88,6 +101,10 @@ export function DatePicker({
       </PopoverContent>
     </Popover>
   );
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function selectedOrNow(value?: string) {

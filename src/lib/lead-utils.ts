@@ -55,6 +55,31 @@ export function normalizePhone(phone: string): string {
   return digits;
 }
 
+/** Valid Indian mobile: 10 digits starting 6–9. */
+export function isValidMobilePhone(phone: string): boolean {
+  const digits = normalizePhone(phone);
+  return /^[6-9]\d{9}$/.test(digits);
+}
+
+export function todayDateOnly(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Inclusive trip length in days from yyyy-MM-dd pickup/drop (0 if invalid). */
+export function tripDaysFromDates(pickupDate?: string, dropDate?: string): number {
+  if (!pickupDate?.trim() || !dropDate?.trim()) return 0;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(pickupDate) || !/^\d{4}-\d{2}-\d{2}$/.test(dropDate)) return 0;
+  if (dropDate < pickupDate) return 0;
+  const start = Date.parse(`${pickupDate}T00:00:00`);
+  const end = Date.parse(`${dropDate}T00:00:00`);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
+
 export function parseLeadDate(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const v = value.trim();

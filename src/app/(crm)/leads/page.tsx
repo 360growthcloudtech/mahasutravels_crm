@@ -72,12 +72,14 @@ function MultiFilter<T extends string>({
   selected,
   onChange,
   formatOption,
+  emptyText = "No options",
 }: {
   label: string;
   options: readonly T[];
   selected: T[];
   onChange: (next: T[]) => void;
   formatOption?: (value: T) => string;
+  emptyText?: string;
 }) {
   const count = selected.length;
   return (
@@ -95,19 +97,25 @@ function MultiFilter<T extends string>({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[11rem]">
+      <DropdownMenuContent align="start" className="min-w-[14rem]">
         <DropdownMenuLabel>{label}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {options.map((option) => (
-          <DropdownMenuCheckboxItem
-            key={option}
-            checked={selected.includes(option)}
-            onCheckedChange={() => onChange(toggleValue(selected, option))}
-            onSelect={(e) => e.preventDefault()}
-          >
-            {formatOption ? formatOption(option) : option}
-          </DropdownMenuCheckboxItem>
-        ))}
+        {options.length === 0 ? (
+          <DropdownMenuItem disabled className="text-muted-foreground">
+            {emptyText}
+          </DropdownMenuItem>
+        ) : (
+          options.map((option) => (
+            <DropdownMenuCheckboxItem
+              key={option}
+              checked={selected.includes(option)}
+              onCheckedChange={() => onChange(toggleValue(selected, option))}
+              onSelect={(e) => e.preventDefault()}
+            >
+              {formatOption ? formatOption(option) : option}
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
         {count > 0 && (
           <>
             <DropdownMenuSeparator />
@@ -147,6 +155,7 @@ export default function LeadsPage() {
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([]);
+  /** Agent filter stores assignee user ids, plus `"unassigned"`. */
   const [agentFilter, setAgentFilter] = React.useState<string[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null);
@@ -172,12 +181,30 @@ export default function LeadsPage() {
     if (historyLeadId) void loadLeadActivity(historyLeadId);
   }, [historyLeadId, loadLeadActivity]);
 
-  const assigneeNames = ["Unassigned", ...assignees.map((a) => a.name)];
+  // Master-backed filter options from /api/leads/masters + /api/users
   const statusCodes = leadStatuses.map((s) => s.code);
   const sourceCodes = leadSources.map((s) => s.code);
   const websiteDomains = websites.map((w) => w.domain);
+  const agentOptions = React.useMemo(
+    () => ["unassigned", ...assignees.map((a) => a.id)],
+    [assignees]
+  );
   const closedStatusCodes = new Set(leadStatuses.filter((s) => s.is_closed).map((s) => s.code));
   const bookedCount = state.leads.filter((l) => l.status === "Booked").length;
+
+  // Drop stale selections if masters/users change (e.g. deactivated website).
+  React.useEffect(() => {
+    setWebsiteFilter((prev) => prev.filter((d) => websiteDomains.includes(d)));
+  }, [websiteDomains.join("|")]);
+  React.useEffect(() => {
+    setStatusFilter((prev) => prev.filter((c) => statusCodes.includes(c)));
+  }, [statusCodes.join("|")]);
+  React.useEffect(() => {
+    setSourceFilter((prev) => prev.filter((c) => sourceCodes.includes(c)));
+  }, [sourceCodes.join("|")]);
+  React.useEffect(() => {
+    setAgentFilter((prev) => prev.filter((id) => agentOptions.includes(id)));
+  }, [agentOptions.join("|")]);
 
   const hasFilters =
     query.trim().length > 0 ||
@@ -197,8 +224,8 @@ export default function LeadsPage() {
     if (statusFilter.length > 0 && !statusFilter.includes(l.status)) return false;
     if (sourceFilter.length > 0 && !sourceFilter.includes(l.source)) return false;
     if (agentFilter.length > 0) {
-      const agentName = l.assignedTo?.name || "Unassigned";
-      if (!agentFilter.includes(agentName)) return false;
+      const agentId = l.assignedTo?.id || "unassigned";
+      if (!agentFilter.includes(agentId)) return false;
     }
     if (websiteFilter.length > 0 && (!l.website || !websiteFilter.includes(l.website))) return false;
     return true;
@@ -291,12 +318,18 @@ export default function LeadsPage() {
                 options={websiteDomains}
                 selected={websiteFilter}
                 onChange={setWebsiteFilter}
+                emptyText={leadsLoading ? "Loading websites…" : "No websites"}
+                formatOption={(domain) => {
+                  const w = websites.find((item) => item.domain === domain);
+                  return w ? `${w.label} · ${w.domain}` : domain;
+                }}
               />
               <MultiFilter
                 label="Status"
                 options={statusCodes}
                 selected={statusFilter}
                 onChange={setStatusFilter}
+                emptyText={leadsLoading ? "Loading statuses…" : "No statuses"}
                 formatOption={(code) => leadStatuses.find((s) => s.code === code)?.label ?? code}
               />
               <MultiFilter
@@ -304,13 +337,20 @@ export default function LeadsPage() {
                 options={sourceCodes}
                 selected={sourceFilter}
                 onChange={setSourceFilter}
+                emptyText={leadsLoading ? "Loading sources…" : "No sources"}
                 formatOption={(code) => sourceLabel(code, leadSources)}
               />
               <MultiFilter
                 label="Agent"
-                options={assigneeNames}
+                options={agentOptions}
                 selected={agentFilter}
                 onChange={setAgentFilter}
+                emptyText={leadsLoading ? "Loading agents…" : "No agents"}
+                formatOption={(id) =>
+                  id === "unassigned"
+                    ? "Unassigned"
+                    : assignees.find((a) => a.id === id)?.name ?? id
+                }
               />
               {hasFilters && (
                 <Button

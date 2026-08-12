@@ -158,7 +158,7 @@ export function cloneItineraryFromTemplate(template: ItineraryTemplate): LeadCus
 
 export function matchItineraryTemplate(
   templates: ItineraryTemplate[],
-  opts: { templateId?: string; tourPackage?: string }
+  opts: { templateId?: string | null; tourPackage?: string }
 ): ItineraryTemplate | undefined {
   const active = templates.filter((t) => t.status !== "Archived");
   if (opts.templateId) {

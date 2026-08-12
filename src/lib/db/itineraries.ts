@@ -464,6 +464,38 @@ export async function deleteItineraryTemplate(id: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
+export type ItineraryPackageOption = {
+  id: string;
+  name: string;
+};
+
+export async function listActiveItineraryPackages(): Promise<ItineraryPackageOption[]> {
+  const { rows } = await query<ItineraryPackageOption>(
+    `SELECT id, name
+     FROM itinerary_templates
+     WHERE status = 'Active'
+     ORDER BY name ASC`
+  );
+  return rows;
+}
+
+/** Resolve package by id. When requireActive is true, only Active templates match. */
+export async function resolveItineraryPackage(
+  id: string,
+  opts?: { requireActive?: boolean }
+): Promise<ItineraryPackageOption | null> {
+  const requireActive = opts?.requireActive ?? true;
+  const { rows } = await query<ItineraryPackageOption>(
+    `SELECT id, name
+     FROM itinerary_templates
+     WHERE id = $1::uuid
+       ${requireActive ? "AND status = 'Active'" : ""}
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
 export function isUniqueViolation(error: unknown) {
   return (
     typeof error === "object" &&
