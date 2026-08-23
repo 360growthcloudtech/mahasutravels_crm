@@ -91,10 +91,9 @@ export const trackedWebsites = [
 export type TrackedWebsiteName = typeof trackedWebsites[number]["name"];
 
 export const leadSources = [
-  "taxi_calculator",
-  "quick_inquiry",
-  "plan_your_trip",
-  "request_callback",
+  "google_ads",
+  "meta_ads",
+  "website",
   "manual",
 ] as const;
 
@@ -123,6 +122,7 @@ export type Lead = {
   nextFollowUpDate: string;
   nextFollowUpTime: string;
   car: string;
+  vehicleId?: string;
   adults: number;
   kids: number;
   days: number;
@@ -432,8 +432,15 @@ export type HotelTemplate = {
   updatedAt: string;
 };
 
+export type BookingDriverAssignment = {
+  driver: string;
+  vehicle: string;
+};
+
 export type Booking = {
   id: string;
+  bookingNo?: string;
+  leadId?: string | null;
   customer: string;
   email: string;
   city: string;
@@ -451,13 +458,19 @@ export type Booking = {
   days: number;
   tourPlan: string;
   agent: string;
+  /** Primary / first driver (for lists & filters). */
   driver: string;
   vehicle: string;
+  /** All driver–vehicle assignments for the trip. */
+  drivers?: BookingDriverAssignment[];
   total: number;
   advance: number;
   balance: number;
   status: BookingStatus;
+  /** Primary / first hotel stay (backward compatible). */
   hotel?: Hotel;
+  /** All hotel stays for the trip. */
+  hotels?: Hotel[];
   comments?: LeadComment[];
   history?: LeadHistoryEvent[];
 };

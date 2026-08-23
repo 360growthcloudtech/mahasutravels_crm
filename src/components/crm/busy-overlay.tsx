@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export function BusyOverlay({
@@ -23,12 +24,10 @@ export function BusyOverlay({
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card px-6 py-5 shadow-lg">
-        <div
-          className="size-8 animate-spin rounded-full border-2 border-border-soft border-t-marigold"
-          aria-hidden
-        />
-        <p className="text-sm font-medium text-ink-text">{label}</p>
+      <div className="flex w-56 flex-col gap-2 rounded-lg border border-border bg-card px-5 py-4 shadow-lg">
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="h-3 w-40" />
+        <p className="mt-1 text-sm font-medium text-ink-text">{label}</p>
       </div>
     </div>
   );

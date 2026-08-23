@@ -18,9 +18,9 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Field } from "@/components/crm/field";
+import { DrawerFormSkeleton, useDrawerReady } from "@/components/crm/skeletons";
 import { DatePicker } from "@/components/crm/date-picker";
 import { Driver } from "@/lib/data";
-import { Loader2 } from "lucide-react";
 
 const statuses: Driver["status"][] = ["Approved", "Rejected", "Deactivated"];
 const fuelTypes: NonNullable<Driver["fuelType"]>[] = ["Petrol", "Diesel", "CNG", "Electric"];
@@ -53,15 +53,22 @@ export function DriverFormDialog({
   trigger,
   driver,
   onSubmit,
+  open: controlledOpen,
+  onOpenChange,
 }: {
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
   driver?: Driver;
   onSubmit: (data: DriverFormState) => void | Promise<void>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [form, setForm] = React.useState<DriverFormState>(empty);
   const [error, setError] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const ready = useDrawerReady(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -126,9 +133,11 @@ export function DriverFormDialog({
         setOpen(next);
       }}
     >
-      <SheetTrigger asChild>{trigger}</SheetTrigger>
-      <SheetContent className="sm:max-w-lg">
-        <SheetHeader>
+      {trigger ? <SheetTrigger asChild>{trigger}</SheetTrigger> : null}
+      <SheetContent
+        className="sm:max-w-lg"
+        onFocusOutside={(e) => e.preventDefault()}
+      >        <SheetHeader>
           <SheetTitle>{driver ? "Edit driver & vehicle" : "Add driver & vehicle"}</SheetTitle>
           <SheetDescription>
             {driver
@@ -138,6 +147,10 @@ export function DriverFormDialog({
         </SheetHeader>
 
         <SheetBody className="space-y-4">
+          {!ready ? (
+            <DrawerFormSkeleton sections={3} fieldsPerSection={4} />
+          ) : (
+            <>
           <p className="font-mono-data text-[11px] uppercase tracking-wide text-slate-soft">
             Driver details
           </p>
@@ -285,14 +298,15 @@ export function DriverFormDialog({
           </Field>
 
           {error ? <p className="text-xs text-signal">{error}</p> : null}
+            </>
+          )}
         </SheetBody>
 
         <SheetFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={!ready || saving}>
             Cancel
           </Button>
-          <Button variant="marigold" onClick={() => void submit()} disabled={saving}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          <Button variant="marigold" onClick={() => void submit()} disabled={!ready || saving}>
             {saving ? "Saving…" : driver ? "Save changes" : "Add driver"}
           </Button>
         </SheetFooter>

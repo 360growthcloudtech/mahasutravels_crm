@@ -1,6 +1,8 @@
 "use client";
 
 import type { ComponentType } from "react";
+import { DrawerTimelineSkeleton } from "@/components/crm/skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Copy,
   History,
@@ -45,10 +47,12 @@ export function LeadHistoryDrawer({
   lead,
   open,
   onOpenChange,
+  loading = false,
 }: {
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  loading?: boolean;
 }) {
   const history = lead?.history ?? [];
 
@@ -60,7 +64,15 @@ export function LeadHistoryDrawer({
             <History className="size-4 text-slate" />
             Tracking history
           </SheetTitle>
-          {lead && (
+          {loading ? (
+            <>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </div>
+              <Skeleton className="mt-1 h-3 w-40" />
+            </>
+          ) : lead ? (
             <>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-ink-text">{lead.name}</span>
@@ -70,11 +82,13 @@ export function LeadHistoryDrawer({
                 {lead.leadNo} · Activity log
               </SheetDescription>
             </>
-          )}
+          ) : null}
         </SheetHeader>
 
         <SheetBody>
-          {history.length === 0 ? (
+          {loading ? (
+            <DrawerTimelineSkeleton items={4} />
+          ) : history.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-10 text-center">
               <History className="mx-auto size-5 text-slate-soft" />
               <p className="mt-2 text-sm text-muted-foreground">No history yet</p>

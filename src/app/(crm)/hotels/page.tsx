@@ -45,6 +45,11 @@ import {
   PagePagination,
 } from "@/components/crm/list-pagination";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { useListPagination } from "@/lib/use-list-pagination";
@@ -175,34 +180,38 @@ export default function HotelsPage() {
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col">
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Master templates</p>
-              <p className="mt-1 font-display text-xl font-semibold">{state.hotelTemplates.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Active</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">{activeMasters}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Drafts</p>
-              <p className="mt-1 font-display text-xl font-semibold">{draftMasters}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Avg typical rate / day</p>
-              <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
-                ₹{avgRate.toLocaleString("en-IN")}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {hotelsLoading ? (
+          <StatCardsSkeleton />
+        ) : (
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Master templates</p>
+                <p className="mt-1 font-display text-xl font-semibold">{state.hotelTemplates.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Active</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">{activeMasters}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Drafts</p>
+                <p className="mt-1 font-display text-xl font-semibold">{draftMasters}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Avg typical rate / day</p>
+                <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
+                  ₹{avgRate.toLocaleString("en-IN")}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="sticky top-0 z-10 -mx-4 mb-3 border-b border-border-soft bg-paper px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-wrap items-center gap-2">
@@ -274,12 +283,12 @@ export default function HotelsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pagination.desktopItems.length === 0 ? (
+                  {hotelsLoading ? (
+                    <TableRowsSkeleton columns={7} rows={5} />
+                  ) : pagination.desktopItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="py-10 text-center text-sm text-slate-soft">
-                        {hotelsLoading
-                          ? "Loading hotel templates…"
-                          : "No hotel templates match. Create a master template to get started."}
+                        No hotel templates match. Create a master template to get started.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -361,11 +370,11 @@ export default function HotelsPage() {
           </div>
 
           <div className="space-y-3 p-3 md:hidden">
-            {pagination.mobileItems.length === 0 ? (
+            {hotelsLoading ? (
+              <RecordCardsSkeleton count={4} />
+            ) : pagination.mobileItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-soft">
-                {hotelsLoading
-                  ? "Loading hotel templates…"
-                  : "No hotel templates match. Create a master template to get started."}
+                No hotel templates match. Create a master template to get started.
               </p>
             ) : (
               <>

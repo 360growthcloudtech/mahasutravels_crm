@@ -16,21 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
+import { DrawerFormSkeleton } from "@/components/crm/skeletons";
 import { DatePicker } from "@/components/crm/date-picker";
 import {
   Lead,
   pickupLocations,
-  cabFleet,
   estimateCabPrice,
-  leadCars,
 } from "@/lib/data";
 import { fetchActiveItineraryPackages, type ItineraryPackageApi } from "@/lib/itineraries-api";
+import { fetchVehicleOptions, type VehicleOptionApi } from "@/lib/leads-api";
 import { isValidMobilePhone, todayDateOnly, tripDaysFromDates } from "@/lib/lead-utils";
 import { useData, type LeadFormValues } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
-
-const carOptions = [...leadCars, ...cabFleet.map((c) => c.name)];
 
 type FormState = LeadFormValues;
 
@@ -41,6 +38,11 @@ type FormErrors = {
   dropDate?: string;
   nextFollowUpDate?: string;
 };
+
+function vehicleLabel(v: VehicleOptionApi) {
+  const seats = v.capacity > 0 ? ` · ${v.capacity} seats` : "";
+  return `${v.vehicle_type} · ${v.registration_number}${seats}`;
+}
 
 function applyTripDates(next: FormState, pickupDate: string, dropDate: string): FormState {
   const days = tripDaysFromDates(pickupDate, dropDate);
@@ -94,20 +96,21 @@ function emptyForm(defaults?: {
     website: defaults?.website || "mahasutravels.com",
     tourPackage: "",
     itineraryTemplateId: null,
+    vehicleId: null,
     pickup: "",
     drop: "",
     pickupDate: "",
     dropDate: "",
     nextFollowUpDate: "",
     nextFollowUpTime: "",
-    car: "sedan",
+    car: "",
     adults: 2,
     kids: 0,
     days: 2,
     notes: "",
     status: defaults?.status || "New Lead",
     assignedToId: null,
-    price: estimateCabPrice("sedan", 2),
+    price: 0,
   };
 }
 
@@ -127,7 +130,8 @@ function fromLead(lead: Lead): FormState {
     dropDate: lead.dropDate,
     nextFollowUpDate: lead.nextFollowUpDate,
     nextFollowUpTime: lead.nextFollowUpTime,
-    car: lead.car || "sedan",
+    car: lead.car || "",
+    vehicleId: lead.vehicleId || null,
     adults: lead.adults,
     kids: lead.kids,
     days: lead.days,
@@ -143,17 +147,25 @@ export function LeadFormDialog({
   lead,
   defaultWebsite,
   onSubmit,
+  open: controlledOpen,
+  onOpenChange,
 }: {
-  trigger: React.ReactNode;
+  trigger?: React.ReactNode;
   lead?: Lead;
   defaultWebsite?: string;
   onSubmit: (data: FormState) => void | Promise<void>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { assignees, leadStatuses, leadSources, websites, state } = useData();
-  const [open, setOpen] = React.useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [saving, setSaving] = React.useState(false);
   const [errors, setErrors] = React.useState<FormErrors>({});
   const [packages, setPackages] = React.useState<ItineraryPackageApi[]>([]);
+  const [vehicles, setVehicles] = React.useState<VehicleOptionApi[]>([]);
+  const [optionsLoading, setOptionsLoading] = React.useState(false);
   const masterSource = leadSources.find((s) => s.code === "manual")?.code || leadSources[0]?.code || "manual";
   const masterWebsite = websites[0]?.domain || "mahasutravels.com";
   const masterStatus = leadStatuses.find((s) => s.is_default)?.code || leadStatuses[0]?.code || "New Lead";
@@ -164,28 +176,46 @@ export function LeadFormDialog({
 
   React.useEffect(() => {
     if (!open) return;
+    const fromStore = state.itineraries
+      .filter((t) => t.status === "Active")
+      .map((t) => ({ id: t.id, name: t.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (fromStore.length > 0) setPackages(fromStore);
+  }, [open, state.itineraries]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setOptionsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setOptionsLoading(true);
 
     const fromStore = state.itineraries
       .filter((t) => t.status === "Active")
       .map((t) => ({ id: t.id, name: t.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    if (fromStore.length > 0) {
-      setPackages(fromStore);
-      return;
-    }
 
-    let cancelled = false;
-    void fetchActiveItineraryPackages()
-      .then((rows) => {
-        if (!cancelled) setPackages(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setPackages([]);
-      });
+    const packagesPromise =
+      fromStore.length > 0
+        ? Promise.resolve(fromStore)
+        : fetchActiveItineraryPackages().catch(() => [] as ItineraryPackageApi[]);
+
+    void Promise.all([
+      packagesPromise,
+      fetchVehicleOptions().catch(() => [] as VehicleOptionApi[]),
+    ]).then(([pkgs, vehs]) => {
+      if (cancelled) return;
+      setPackages(pkgs);
+      setVehicles(vehs);
+      setOptionsLoading(false);
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [open, state.itineraries]);
+  }, [open]);
 
   React.useEffect(() => {
     if (!open || packages.length === 0) return;
@@ -264,6 +294,20 @@ export function LeadFormDialog({
     }));
   }
 
+  function setVehicle(vehicleId: string) {
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    setForm((f) => {
+      const car = vehicle?.vehicle_type ?? f.car;
+      const days = f.days || 1;
+      return {
+        ...f,
+        vehicleId,
+        car,
+        price: estimateCabPrice(car, days),
+      };
+    });
+  }
+
   async function submit() {
     const nextErrors = validateLeadForm(form);
     setErrors(nextErrors);
@@ -283,9 +327,11 @@ export function LeadFormDialog({
     setErrors({});
   }
 
-  const rate =
-    cabFleet.find((c) => c.name === form.car)?.ratePerDay ??
-    (form.car === "sedan" ? 2100 : form.car === "suv" ? 2800 : form.car === "innova" ? 4000 : undefined);
+  const selectedVehicle =
+    vehicles.find((v) => v.id === form.vehicleId) ||
+    vehicles.find((v) => v.vehicle_type === form.car && !form.vehicleId);
+  const vehicleSelectValue =
+    selectedVehicle?.id || (form.car && !form.vehicleId ? `legacy:${form.car}` : "");
 
   const packageSelectValue = form.itineraryTemplateId || "";
   const legacyPackageLabel =
@@ -305,11 +351,12 @@ export function LeadFormDialog({
     <Sheet
       open={open}
       onOpenChange={(next) => {
-        // Only allow opening via trigger; dismiss is manual (X / Cancel).
+        // Opening via trigger; dismiss is manual (X / Cancel) except controlled close from parent.
         if (next) setOpen(true);
+        else if (!trigger) setOpen(false);
       }}
     >
-      <SheetTrigger asChild>{trigger}</SheetTrigger>
+      {trigger ? <SheetTrigger asChild>{trigger}</SheetTrigger> : null}
       <SheetContent
         className="sm:max-w-lg"
         onClose={closeDrawer}
@@ -328,6 +375,10 @@ export function LeadFormDialog({
         </SheetHeader>
 
         <SheetBody className="space-y-5">
+          {optionsLoading ? (
+            <DrawerFormSkeleton sections={3} fieldsPerSection={4} />
+          ) : (
+            <>
           <section className="space-y-3">
             <p className="text-xs font-semibold tracking-wide text-slate uppercase">About yourself</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -336,6 +387,8 @@ export function LeadFormDialog({
                   value={form.name}
                   onChange={(e) => set("name", e.target.value)}
                   placeholder="Rahul Sharma"
+                  name="lead_customer_name"
+                  autoComplete="name"
                   className={cn(errors.name && "border-signal focus-visible:border-signal focus-visible:ring-signal/25")}
                 />
               </Field>
@@ -345,15 +398,24 @@ export function LeadFormDialog({
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
                   placeholder="rahul@gmail.com"
+                  name="lead_customer_email"
+                  autoComplete="email"
                 />
               </Field>
               <Field label="City">
-                <Input value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="Delhi" />
+                <Input
+                  value={form.city}
+                  onChange={(e) => set("city", e.target.value)}
+                  placeholder="Delhi"
+                  name="lead_customer_city"
+                  autoComplete="address-level2"
+                />
               </Field>
               <Field label="Phone number" error={errors.phone}>
                 <Input
                   value={form.phone}
                   inputMode="numeric"
+                  name="lead_customer_phone"
                   autoComplete="tel"
                   maxLength={15}
                   onChange={(e) => {
@@ -449,14 +511,25 @@ export function LeadFormDialog({
               </Field>
 
               <Field label="Car" className="sm:col-span-2">
-                <Select value={form.car} onValueChange={(v) => set("car", v)}>
-                  <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
+                <Select
+                  value={vehicleSelectValue || undefined}
+                  onValueChange={(v) => {
+                    if (v.startsWith("legacy:")) return;
+                    setVehicle(v);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={vehicles.length ? "Select vehicle" : "Loading vehicles…"} />
+                  </SelectTrigger>
                   <SelectContent>
-                    {carOptions.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c === "sedan" || c === "suv" || c === "innova"
-                          ? c.charAt(0).toUpperCase() + c.slice(1)
-                          : c}
+                    {form.car && !selectedVehicle ? (
+                      <SelectItem value={`legacy:${form.car}`} disabled>
+                        {form.car} (legacy)
+                      </SelectItem>
+                    ) : null}
+                    {vehicles.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {vehicleLabel(v)} · {v.driver_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -479,10 +552,10 @@ export function LeadFormDialog({
                   value={form.price}
                   onChange={(e) => set("price", Number(e.target.value))}
                 />
-                {rate && form.days > 0 ? (
+                {form.days > 0 && form.pickupDate && form.dropDate ? (
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    ₹{rate.toLocaleString("en-IN")}/day × {form.days} day{form.days === 1 ? "" : "s"}
-                    {form.pickupDate && form.dropDate ? " (from trip dates)" : ""}
+                    {form.days} day{form.days === 1 ? "" : "s"} from trip dates
+                    {form.car ? ` · ${form.car}` : ""}
                   </p>
                 ) : null}
               </Field>
@@ -553,14 +626,15 @@ export function LeadFormDialog({
               </Field>
             </div>
           </section>
+            </>
+          )}
         </SheetBody>
 
         <SheetFooter>
-          <Button variant="outline" onClick={closeDrawer} disabled={saving}>
+          <Button variant="outline" onClick={closeDrawer} disabled={saving || optionsLoading}>
             Cancel
           </Button>
-          <Button variant="marigold" disabled={saving} onClick={() => void submit()}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          <Button variant="marigold" disabled={saving || optionsLoading} onClick={() => void submit()}>
             {saving ? "Saving…" : lead ? "Save changes" : "Add lead"}
           </Button>
         </SheetFooter>

@@ -14,7 +14,6 @@ import {
   Search,
   Filter,
   ChevronDown,
-  Loader2,
   MoreHorizontal,
   Archive,
 } from "lucide-react";
@@ -42,6 +41,11 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { DriverFormDialog, DriverFormState } from "@/components/crm/driver-form-dialog";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import {
   InfiniteScrollSentinel,
@@ -80,7 +84,7 @@ function DriverCard({
 }: {
   d: Driver;
   statusBusy?: boolean;
-  onEdit: (data: DriverFormState) => Promise<void>;
+  onEdit: () => void;
   onToggleStatus: () => Promise<void>;
   onDelete: () => void;
 }) {
@@ -108,15 +112,9 @@ function DriverCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DriverFormDialog
-                  driver={d}
-                  trigger={
-                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                      <Pencil className="size-3.5" /> Edit profile
-                    </DropdownMenuItem>
-                  }
-                  onSubmit={onEdit}
-                />
+                <DropdownMenuItem onSelect={() => onEdit()}>
+                  <Pencil className="size-3.5" /> Edit profile
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-signal focus:bg-signal-soft"
@@ -181,15 +179,15 @@ function DriverCard({
         ) : null}
 
         <div className="grid grid-cols-2 gap-2 border-t border-border-soft pt-3">
-          <DriverFormDialog
-            driver={d}
-            trigger={
-              <Button variant="outline" size="sm" className="w-full" disabled={statusBusy}>
-                <Pencil className="size-3.5" /> Edit
-              </Button>
-            }
-            onSubmit={onEdit}
-          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={statusBusy}
+            onClick={onEdit}
+          >
+            <Pencil className="size-3.5" /> Edit
+          </Button>
           <Button
             variant="secondary"
             size="sm"
@@ -197,7 +195,6 @@ function DriverCard({
             disabled={statusBusy}
             onClick={() => void onToggleStatus()}
           >
-            {statusBusy ? <Loader2 className="size-3.5 animate-spin" /> : null}
             {statusBusy
               ? "Updating…"
               : d.status === "Approved"
@@ -214,12 +211,16 @@ export default function DriversPage() {
   const { state, driversLoading, addDriver, updateDriver, deleteDriver } = useData();
   const { toast } = useToast();
   const [deleteTarget, setDeleteTarget] = React.useState<Driver | null>(null);
+  const [editingDriverId, setEditingDriverId] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [statusBusyId, setStatusBusyId] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<Driver["status"][]>([]);
 
   const { drivers } = state;
+  const editingDriver = editingDriverId
+    ? drivers.find((d) => d.id === editingDriverId) ?? null
+    : null;
 
   const filtered = drivers.filter((d) => {
     const q = search.trim().toLowerCase();
@@ -336,40 +337,44 @@ export default function DriversPage() {
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col">
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Approved</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">
-                {drivers.filter((d) => d.status === "Approved").length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Rejected</p>
-              <p className="mt-1 font-display text-xl font-semibold text-signal">
-                {drivers.filter((d) => d.status === "Rejected").length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Deactivated</p>
-              <p className="mt-1 font-display text-xl font-semibold text-slate-soft">
-                {drivers.filter((d) => d.status === "Deactivated").length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Docs pending</p>
-              <p className="mt-1 font-display text-xl font-semibold text-signal">
-                {drivers.filter((d) => !d.documentsVerified).length}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {driversLoading ? (
+          <StatCardsSkeleton />
+        ) : (
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Approved</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">
+                  {drivers.filter((d) => d.status === "Approved").length}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Rejected</p>
+                <p className="mt-1 font-display text-xl font-semibold text-signal">
+                  {drivers.filter((d) => d.status === "Rejected").length}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Deactivated</p>
+                <p className="mt-1 font-display text-xl font-semibold text-slate-soft">
+                  {drivers.filter((d) => d.status === "Deactivated").length}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Docs pending</p>
+                <p className="mt-1 font-display text-xl font-semibold text-signal">
+                  {drivers.filter((d) => !d.documentsVerified).length}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="sticky top-0 z-10 -mx-4 mb-3 border-b border-border-soft bg-paper px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-wrap items-center gap-2">
@@ -442,12 +447,12 @@ export default function DriversPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pagination.desktopItems.length === 0 ? (
+                  {driversLoading ? (
+                    <TableRowsSkeleton columns={8} rows={5} avatar />
+                  ) : pagination.desktopItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="py-10 text-center text-sm text-slate-soft">
-                        {driversLoading
-                          ? "Loading drivers…"
-                          : "No drivers match your filters. Add a driver to get started."}
+                        No drivers match your filters. Add a driver to get started.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -521,21 +526,16 @@ export default function DriversPage() {
                           </TableCell>
                           <TableCell className={stickyActionCell}>
                             <div className="flex items-center gap-1">
-                              <DriverFormDialog
-                                driver={d}
-                                trigger={
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-8"
-                                    disabled={statusBusy}
-                                    aria-label={`Edit ${d.name}`}
-                                  >
-                                    <Pencil className="size-3.5" />
-                                  </Button>
-                                }
-                                onSubmit={(data) => handleEdit(d, data)}
-                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-8"
+                                disabled={statusBusy}
+                                aria-label={`Edit ${d.name}`}
+                                onClick={() => setEditingDriverId(d.id)}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -543,11 +543,7 @@ export default function DriversPage() {
                                 disabled={statusBusy}
                                 onClick={() => void handleToggleStatus(d)}
                               >
-                                {statusBusy ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Archive className="size-3.5" />
-                                )}
+                                <Archive className="size-3.5" />
                                 {statusBusy
                                   ? "…"
                                   : d.status === "Approved"
@@ -566,15 +562,9 @@ export default function DriversPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DriverFormDialog
-                                    driver={d}
-                                    trigger={
-                                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                        <Pencil className="size-3.5" /> Edit profile
-                                      </DropdownMenuItem>
-                                    }
-                                    onSubmit={(data) => handleEdit(d, data)}
-                                  />
+                                  <DropdownMenuItem onSelect={() => setEditingDriverId(d.id)}>
+                                    <Pencil className="size-3.5" /> Edit profile
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onSelect={() => void handleToggleStatus(d)}
                                   >
@@ -610,11 +600,11 @@ export default function DriversPage() {
           </div>
 
           <div className="space-y-3 p-3 md:hidden">
-            {pagination.mobileItems.length === 0 ? (
+            {driversLoading ? (
+              <RecordCardsSkeleton count={4} />
+            ) : pagination.mobileItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-soft">
-                {driversLoading
-                  ? "Loading drivers…"
-                  : "No drivers match your filters. Add a driver to get started."}
+                No drivers match your filters. Add a driver to get started.
               </p>
             ) : (
               <>
@@ -623,7 +613,7 @@ export default function DriversPage() {
                     key={d.id}
                     d={d}
                     statusBusy={statusBusyId === d.id}
-                    onEdit={(data) => handleEdit(d, data)}
+                    onEdit={() => setEditingDriverId(d.id)}
                     onToggleStatus={() => handleToggleStatus(d)}
                     onDelete={() => setDeleteTarget(d)}
                   />
@@ -639,6 +629,19 @@ export default function DriversPage() {
           </div>
         </Card>
       </main>
+
+      <DriverFormDialog
+        driver={editingDriver ?? undefined}
+        open={!!editingDriver}
+        onOpenChange={(open) => {
+          if (!open) setEditingDriverId(null);
+        }}
+        onSubmit={async (data) => {
+          if (!editingDriver) return;
+          await handleEdit(editingDriver, data);
+          setEditingDriverId(null);
+        }}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}

@@ -49,6 +49,11 @@ import { useToast } from "@/lib/toast";
 import { useListPagination } from "@/lib/use-list-pagination";
 import { ItineraryStatus, ItineraryTemplate, itineraryPriceAfterDiscount } from "@/lib/data";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 
 const statuses: ItineraryStatus[] = ["Active", "Draft", "Archived"];
 
@@ -195,32 +200,36 @@ export default function ItinerariesPage() {
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col">
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Templates</p>
-              <p className="mt-1 font-display text-xl font-semibold">{state.itineraries.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Active</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">{activeCount}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Drafts</p>
-              <p className="mt-1 font-display text-xl font-semibold">{draftCount}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total days planned</p>
-              <p className="mt-1 font-display text-xl font-semibold">{totalDays}</p>
-            </CardContent>
-          </Card>
-        </div>
+        {itinerariesLoading ? (
+          <StatCardsSkeleton />
+        ) : (
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Templates</p>
+                <p className="mt-1 font-display text-xl font-semibold">{state.itineraries.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Active</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">{activeCount}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Drafts</p>
+                <p className="mt-1 font-display text-xl font-semibold">{draftCount}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Total days planned</p>
+                <p className="mt-1 font-display text-xl font-semibold">{totalDays}</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="sticky top-0 z-10 -mx-4 mb-3 border-b border-border-soft bg-paper px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex flex-wrap items-center gap-2">
@@ -293,12 +302,12 @@ export default function ItinerariesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pagination.desktopItems.length === 0 ? (
+                  {itinerariesLoading ? (
+                    <TableRowsSkeleton columns={8} rows={6} />
+                  ) : pagination.desktopItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="py-10 text-center text-sm text-slate-soft">
-                        {itinerariesLoading
-                          ? "Loading itinerary templates…"
-                          : "No itinerary templates match your filters."}
+                        No itinerary templates match your filters.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -398,11 +407,11 @@ export default function ItinerariesPage() {
           </div>
 
           <div className="space-y-3 p-3 md:hidden">
-            {pagination.mobileItems.length === 0 ? (
+            {itinerariesLoading ? (
+              <RecordCardsSkeleton count={4} />
+            ) : pagination.mobileItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-soft">
-                {itinerariesLoading
-                  ? "Loading itinerary templates…"
-                  : "No itinerary templates match your filters."}
+                No itinerary templates match your filters.
               </p>
             ) : (
               <>

@@ -10,6 +10,7 @@ import {
   type PatchLeadInput,
 } from "@/lib/db/leads";
 import { resolveItineraryPackage } from "@/lib/db/itineraries";
+import { resolveVehicleOption } from "@/lib/db/drivers";
 import { resolveSourceCode, resolveStatusCode, resolveWebsiteDomain } from "@/lib/db/masters";
 import { normalizePhone, parseLeadDate, parseLeadTime } from "@/lib/lead-utils";
 
@@ -76,6 +77,25 @@ export async function PATCH(
   if (body.pickup !== undefined) patch.pickup = readString(body.pickup) ?? "";
   if (body.drop !== undefined) patch.drop = readString(body.drop) ?? "";
   if (body.car !== undefined) patch.car = readString(body.car) ?? "";
+  if (body.vehicle_id !== undefined) {
+    const raw = readNullableString(body.vehicle_id);
+    if (!raw) {
+      patch.vehicle_id = null;
+    } else {
+      const trimmed = raw.trim();
+      if (!UUID_RE.test(trimmed)) {
+        return NextResponse.json({ error: "vehicle_id is invalid" }, { status: 400 });
+      }
+      const existingLead = await findLeadById(id);
+      const allowExisting = existingLead?.vehicle_id === trimmed;
+      const vehicle = await resolveVehicleOption(trimmed, { requireApproved: !allowExisting });
+      if (!vehicle) {
+        return NextResponse.json({ error: "Unknown or unavailable vehicle_id" }, { status: 400 });
+      }
+      patch.vehicle_id = vehicle.id;
+      patch.car = vehicle.vehicle_type;
+    }
+  }
   if (body.days !== undefined) patch.days = readNumber(body.days) ?? 0;
   if (body.pickup_date !== undefined) {
     if (body.pickup_date === null || body.pickup_date === "") {

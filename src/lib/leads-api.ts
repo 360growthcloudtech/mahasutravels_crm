@@ -22,6 +22,7 @@ export type LeadApi = {
   website: string | null;
   tour_package: string;
   itinerary_template_id: string | null;
+  vehicle_id: string | null;
   adults: number;
   kids: number;
   notes: string;
@@ -29,6 +30,13 @@ export type LeadApi = {
   assigned_to: LeadApiAssignee;
   inquiry_count: number;
   previous_lead_id: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  page_url?: string | null;
+  form_type?: string | null;
   created_at: string;
   updated_at: string;
   last_inquiry_at: string;
@@ -73,6 +81,7 @@ export type LeadWritePayload = {
   website?: string | null;
   tour_package?: string;
   itinerary_template_id?: string | null;
+  vehicle_id?: string | null;
   adults?: number;
   kids?: number;
   notes?: string;
@@ -98,6 +107,7 @@ export function leadFromApi(dto: LeadApi, overlay?: LeadItineraryOverlay): Lead 
     nextFollowUpDate: dto.next_follow_up_date ?? "",
     nextFollowUpTime: dto.next_follow_up_time ?? "",
     car: dto.car ?? "",
+    vehicleId: dto.vehicle_id || undefined,
     adults: dto.adults ?? 0,
     kids: dto.kids ?? 0,
     days: dto.days ?? 0,
@@ -144,6 +154,7 @@ export function leadToWritePayload(input: {
   website?: string;
   tourPackage?: string;
   itineraryTemplateId?: string | null;
+  vehicleId?: string | null;
   pickup?: string;
   drop?: string;
   pickupDate?: string;
@@ -177,6 +188,7 @@ export function leadToWritePayload(input: {
     website: input.website || null,
     tour_package: input.tourPackage ?? "",
     itinerary_template_id: input.itineraryTemplateId ?? null,
+    vehicle_id: input.vehicleId ?? null,
     adults: input.adults ?? 0,
     kids: input.kids ?? 0,
     notes: input.notes ?? "",
@@ -259,6 +271,24 @@ export async function fetchLeadActivity(id: string): Promise<LeadActivityApi[]> 
   return data.activity ?? [];
 }
 
+export async function createLeadActivityApi(
+  id: string,
+  payload: { action: string; label: string; detail?: string }
+): Promise<LeadActivityApi[]> {
+  const res = await fetch(`/api/leads/${id}/activity`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to record activity");
+  }
+  const data = (await res.json()) as { activity?: LeadActivityApi[] };
+  return data.activity ?? [];
+}
+
 export async function fetchAssignees(): Promise<{ id: string; name: string; email: string; role: string }[]> {
   const res = await fetch("/api/users", { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load users");
@@ -311,4 +341,20 @@ export async function fetchLeadMasters(): Promise<{
     sources: data.sources ?? [],
     websites: data.websites ?? [],
   };
+}
+
+export type VehicleOptionApi = {
+  id: string;
+  vehicle_type: string;
+  registration_number: string;
+  capacity: number;
+  driver_name: string;
+  driver_status: string;
+};
+
+export async function fetchVehicleOptions(): Promise<VehicleOptionApi[]> {
+  const res = await fetch("/api/vehicles/options", { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to load vehicles");
+  const data = (await res.json()) as { vehicles?: VehicleOptionApi[] };
+  return data.vehicles ?? [];
 }

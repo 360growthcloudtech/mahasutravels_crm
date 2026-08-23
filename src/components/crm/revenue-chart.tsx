@@ -8,30 +8,54 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
-import { revenueTrend } from "@/lib/data";
+
+const SOURCE_SERIES = [
+  { key: "Google Ads", color: "#f5a524" },
+  { key: "Meta Ads", color: "#8b5cf6" },
+  { key: "Website", color: "#0d9488" },
+  { key: "Manual", color: "#64748b" },
+] as const;
+
+export type RevenueTrendPoint = {
+  day: string;
+  date?: string;
+  revenue: number;
+  leads?: number;
+  "Google Ads"?: number;
+  "Meta Ads"?: number;
+  Website?: number;
+  Manual?: number;
+};
 
 interface RevenueChartProps {
-  data?: Array<{ day: string; revenue: number; leads: number }>;
+  data?: RevenueTrendPoint[];
   color?: string;
   sourceName?: string | null;
 }
 
 export function RevenueChart({
-  data = revenueTrend,
+  data = [],
   color = "#f5a524",
   sourceName,
 }: RevenueChartProps) {
-  const gradientId = `revFill-${color.replace("#", "")}`;
+  const showAllSources = !sourceName;
+  const series = showAllSources
+    ? SOURCE_SERIES
+    : SOURCE_SERIES.filter((s) => s.key === sourceName);
+  const activeSeries = series.length ? series : [{ key: "revenue" as const, color }];
 
   return (
     <ResponsiveContainer width="100%" height={220}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
         <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={color} stopOpacity={0} />
-          </linearGradient>
+          {activeSeries.map((s) => (
+            <linearGradient key={s.key} id={`revFill-${s.key.replace(/\s+/g, "")}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity={0.3} />
+              <stop offset="100%" stopColor={s.color} stopOpacity={0} />
+            </linearGradient>
+          ))}
         </defs>
         <CartesianGrid vertical={false} stroke="var(--border)" />
         <XAxis
@@ -57,18 +81,31 @@ export function RevenueChart({
             fontFamily: "var(--font-sans)",
             boxShadow: "0 4px 14px rgba(18,23,43,0.08)",
           }}
-          formatter={(value) => [
+          formatter={(value, name) => [
             `₹${Number(value).toLocaleString("en-IN")}`,
-            sourceName ? `Revenue (${sourceName})` : "Revenue",
+            String(name),
           ]}
         />
-        <Area
-          type="monotone"
-          dataKey="revenue"
-          stroke={color}
-          strokeWidth={2.5}
-          fill={`url(#${gradientId})`}
-        />
+        {showAllSources ? (
+          <Legend
+            verticalAlign="top"
+            align="right"
+            iconType="circle"
+            wrapperStyle={{ fontSize: 11, paddingBottom: 4 }}
+          />
+        ) : null}
+        {activeSeries.map((s) => (
+          <Area
+            key={s.key}
+            type="monotone"
+            dataKey={s.key === "revenue" ? "revenue" : s.key}
+            name={s.key === "revenue" ? sourceName || "Revenue" : s.key}
+            stroke={s.color}
+            strokeWidth={2.5}
+            fill={`url(#revFill-${s.key.replace(/\s+/g, "")})`}
+            stackId={showAllSources ? undefined : "one"}
+          />
+        ))}
       </AreaChart>
     </ResponsiveContainer>
   );

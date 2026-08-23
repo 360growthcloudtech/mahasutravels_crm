@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
+import { DrawerFormSkeleton, useDrawerReady } from "@/components/crm/skeletons";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { HotelTemplateFormDialog } from "@/components/crm/hotel-template-form-dialog";
 import { useData } from "@/lib/store";
@@ -70,6 +71,7 @@ export function ItineraryFormDialog({
   const [saving, setSaving] = React.useState(false);
   const [addHotelOpen, setAddHotelOpen] = React.useState(false);
   const [targetDayIndex, setTargetDayIndex] = React.useState<number | null>(null);
+  const ready = useDrawerReady(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -194,6 +196,10 @@ export function ItineraryFormDialog({
         </SheetHeader>
 
         <SheetBody className="space-y-4">
+          {!ready ? (
+            <DrawerFormSkeleton sections={3} fieldsPerSection={4} />
+          ) : (
+            <>
           <Field label="Template name">
             <Input
               value={form.name}
@@ -420,13 +426,15 @@ export function ItineraryFormDialog({
           </div>
 
           {error ? <p className="text-xs text-signal">{error}</p> : null}
+            </>
+          )}
         </SheetBody>
 
         <SheetFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={!ready || saving}>
             Cancel
           </Button>
-          <Button variant="marigold" onClick={() => void handleSubmit()} disabled={saving}>
+          <Button variant="marigold" onClick={() => void handleSubmit()} disabled={!ready || saving}>
             {saving ? "Saving…" : itinerary ? "Save template" : "Create template"}
           </Button>
         </SheetFooter>

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
+import { DrawerFormSkeleton, useDrawerReady } from "@/components/crm/skeletons";
 import { HotelTemplate, HotelTemplateStatus } from "@/lib/data";
 
 const statuses: HotelTemplateStatus[] = ["Active", "Draft", "Archived"];
@@ -46,6 +47,7 @@ export function HotelTemplateFormDialog({
   const [form, setForm] = React.useState<HotelTemplateFormState>(emptyHotelTemplateForm);
   const [error, setError] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const ready = useDrawerReady(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -96,6 +98,10 @@ export function HotelTemplateFormDialog({
         </SheetHeader>
 
         <SheetBody className="space-y-4">
+          {!ready ? (
+            <DrawerFormSkeleton sections={2} fieldsPerSection={4} />
+          ) : (
+            <>
           <Field label="Hotel name">
             <Input
               value={form.name}
@@ -169,13 +175,15 @@ export function HotelTemplateFormDialog({
             />
           </Field>
           {error ? <p className="text-xs text-signal">{error}</p> : null}
+            </>
+          )}
         </SheetBody>
 
         <SheetFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={!ready || saving}>
             Cancel
           </Button>
-          <Button variant="marigold" disabled={saving} onClick={() => void submit()}>
+          <Button variant="marigold" disabled={!ready || saving} onClick={() => void submit()}>
             {template ? "Save template" : "Create template"}
           </Button>
         </SheetFooter>

@@ -20,6 +20,14 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Lead webhook (website forms)
+
+All marketing sites POST to one endpoint:
+
+`POST /api/webhooks/leads` with header `x-api-key: <LEADS_INGEST_API_KEY>`
+
+Field aliases, `form_type` codes, and curl examples: **[docs/lead-webhook.md](docs/lead-webhook.md)**.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

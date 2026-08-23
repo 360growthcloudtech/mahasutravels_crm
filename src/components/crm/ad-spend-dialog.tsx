@@ -25,7 +25,7 @@ const platforms: AdPlatform[] = [
   "Other",
 ];
 
-type FormState = Omit<AdSpendEntry, "id" | "createdAt">;
+export type AdSpendFormState = Omit<AdSpendEntry, "id" | "createdAt">;
 
 function todayISO() {
   const d = new Date();
@@ -35,7 +35,7 @@ function todayISO() {
   return `${y}-${m}-${day}`;
 }
 
-const empty: FormState = {
+const empty: AdSpendFormState = {
   platform: "Google Ads",
   website: "mahasutravels.com",
   amount: 10000,
@@ -52,23 +52,38 @@ export function AdSpendDialog({
 }: {
   trigger: React.ReactNode;
   spend?: AdSpendEntry;
-  onSubmit: (data: FormState) => void;
+  onSubmit: (data: AdSpendFormState) => void | Promise<void>;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(spend ?? empty);
+  const [form, setForm] = React.useState<AdSpendFormState>(spend ?? empty);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState("");
 
   React.useEffect(() => {
-    if (open) setForm(spend ?? empty);
+    if (!open) return;
+    setForm(spend ?? empty);
+    setError("");
   }, [open, spend]);
 
-  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
+  function set<K extends keyof AdSpendFormState>(key: K, value: AdSpendFormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function submit() {
-    if (form.amount <= 0) return;
-    onSubmit(form);
-    setOpen(false);
+  async function submit() {
+    if (form.amount <= 0) {
+      setError("Amount must be greater than 0");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit(form);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save ad spend");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -76,7 +91,7 @@ export function AdSpendDialog({
       <span onClick={() => setOpen(true)} className="inline-block cursor-pointer">
         {trigger}
       </span>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => !saving && setOpen(next)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{spend ? "Edit Ad Spend Entry" : "Log New Ad Spend"}</DialogTitle>
@@ -155,12 +170,14 @@ export function AdSpendDialog({
             </Field>
           </div>
 
+          {error ? <p className="text-sm text-signal">{error}</p> : null}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" disabled={saving} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button variant="marigold" onClick={submit}>
-              {spend ? "Save Changes" : "Log Ad Spend"}
+            <Button variant="marigold" disabled={saving} onClick={() => void submit()}>
+              {saving ? "Saving…" : spend ? "Save Changes" : "Log Ad Spend"}
             </Button>
           </DialogFooter>
         </DialogContent>

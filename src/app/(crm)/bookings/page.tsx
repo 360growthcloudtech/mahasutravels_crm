@@ -41,11 +41,38 @@ import { BookingFormDialog } from "@/components/crm/booking-form-dialog";
 import { BookingCommentsDrawer } from "@/components/crm/booking-comments-drawer";
 import { BookingHistoryDrawer } from "@/components/crm/booking-history-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
+import { bookingDrivers, bookingHotels } from "@/lib/booking-utils";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+
+function formatDriversLabel(b: Booking) {
+  const list = bookingDrivers(b);
+  if (!list.length) return "—";
+  if (list.length === 1) return list[0].driver;
+  return `${list[0].driver} +${list.length - 1}`;
+}
+
+function formatVehiclesLabel(b: Booking) {
+  const list = bookingDrivers(b);
+  if (!list.length) return "—";
+  if (list.length === 1) return list[0].vehicle || "—";
+  return `${list[0].vehicle || "—"} +${list.length - 1}`;
+}
+
+function formatHotelsLabel(b: Booking) {
+  const list = bookingHotels(b);
+  if (!list.length) return null;
+  if (list.length === 1) return list[0].hotelName;
+  return `${list[0].hotelName} +${list.length - 1}`;
+}
 
 const websiteNames = trackedWebsites.map((w) => w.name);
 
@@ -121,9 +148,10 @@ function MultiFilter<T extends string>({
 }
 
 export default function BookingsPage() {
-  const { state, addBooking, updateBooking, deleteBooking } = useData();
+  const { state, bookingsLoading, addBooking, updateBooking, deleteBooking } = useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
+  const [searchUnlocked, setSearchUnlocked] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<BookingStatus[]>([]);
   const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
   const [hotelFilter, setHotelFilter] = React.useState<Array<"With hotel" | "No hotel">>([]);
@@ -131,11 +159,18 @@ export default function BookingsPage() {
   const [travelFrom, setTravelFrom] = React.useState("");
   const [travelTo, setTravelTo] = React.useState("");
   const [deleteTarget, setDeleteTarget] = React.useState<Booking | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
   const [commentBookingId, setCommentBookingId] = React.useState<string | null>(null);
   const [historyBookingId, setHistoryBookingId] = React.useState<string | null>(null);
+  const [editingBookingId, setEditingBookingId] = React.useState<string | null>(null);
 
   const driverNames = React.useMemo(
-    () => [...new Set(state.bookings.map((b) => b.driver).filter(Boolean))].sort(),
+    () =>
+      [
+        ...new Set(
+          state.bookings.flatMap((b) => bookingDrivers(b).map((d) => d.driver)).filter(Boolean)
+        ),
+      ].sort(),
     [state.bookings]
   );
 
@@ -145,6 +180,9 @@ export default function BookingsPage() {
   const historyBooking = historyBookingId
     ? state.bookings.find((b) => b.id === historyBookingId) ?? null
     : null;
+  const editingBooking = editingBookingId
+    ? state.bookings.find((b) => b.id === editingBookingId) ?? null
+    : null;
 
   function track(
     booking: Booking,
@@ -153,6 +191,113 @@ export default function BookingsPage() {
     detail?: string
   ) {
     return [...(booking.history ?? []), makeLeadHistoryEvent(action, label, { detail })];
+  }
+
+  async function handleCreate(data: Omit<Booking, "id" | "bookingNo">) {
+    try {
+      await addBooking({
+        ...data,
+        history: [
+          makeLeadHistoryEvent("created", "Booking created", {
+            detail: bookingRoute(data),
+          }),
+          ...(bookingDrivers(data).length
+            ? [
+                makeLeadHistoryEvent("assigned", "Driver assigned", {
+                  detail: bookingDrivers(data)
+                    .map((d) => `${d.driver}${d.vehicle ? ` · ${d.vehicle}` : ""}`)
+                    .join(", "),
+                }),
+              ]
+            : []),
+        ],
+      });
+      toast({
+        variant: "success",
+        title: "Booking created",
+        description: `${data.customer}'s trip is on the books.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not create booking",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      throw error;
+    }
+  }
+
+  async function handleUpdate(id: string, data: Omit<Booking, "id" | "bookingNo">, existing: Booking) {
+    try {
+      await updateBooking(id, {
+        ...data,
+        history: track(
+          existing,
+          "updated",
+          "Booking details updated",
+          data.hotels?.length || data.hotel
+            ? `Hotel ${bookingHotels(data)
+                .map((h) => h.hotelName)
+                .filter(Boolean)
+                .join(", ") || "assigned"}`
+            : "Details updated"
+        ),
+      });
+      toast({
+        variant: "success",
+        title: "Booking updated",
+        description: `${existing.bookingNo ?? existing.id} saved successfully.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not update booking",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      throw error;
+    }
+  }
+
+  async function handleStatusChange(b: Booking, s: BookingStatus) {
+    try {
+      await updateBooking(b.id, {
+        status: s,
+        history: track(b, "status_changed", `Payment status changed to ${s}`, `${b.status} → ${s}`),
+      });
+      toast({
+        variant: "success",
+        title: "Payment status updated",
+        description: `${b.bookingNo ?? b.id} moved to ${s}.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not update status",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteBooking(deleteTarget.id);
+      toast({
+        variant: "info",
+        title: "Booking deleted",
+        description: `${deleteTarget.bookingNo ?? deleteTarget.id} was removed.`,
+      });
+      setDeleteTarget(null);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not delete booking",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const hasFilters =
@@ -170,14 +315,18 @@ export default function BookingsPage() {
       const matchesCustomer = b.customer.toLowerCase().includes(q);
       const matchesEmail = b.email.toLowerCase().includes(q);
       const matchesPhone = (b.phone ?? "").toLowerCase().includes(q);
-      const matchesId = b.id.toLowerCase().includes(q);
+      const matchesId =
+        b.id.toLowerCase().includes(q) || (b.bookingNo ?? "").toLowerCase().includes(q);
       if (!matchesCustomer && !matchesEmail && !matchesPhone && !matchesId) return false;
     }
     if (statusFilter.length > 0 && !statusFilter.includes(b.status)) return false;
-    if (driverFilter.length > 0 && !driverFilter.includes(b.driver)) return false;
+    if (driverFilter.length > 0) {
+      const names = bookingDrivers(b).map((d) => d.driver);
+      if (!names.some((name) => driverFilter.includes(name))) return false;
+    }
     if (websiteFilter.length > 0 && (!b.website || !websiteFilter.includes(b.website))) return false;
     if (hotelFilter.length > 0) {
-      const withHotel = !!b.hotel;
+      const withHotel = bookingHotels(b).length > 0;
       const ok =
         (hotelFilter.includes("With hotel") && withHotel) ||
         (hotelFilter.includes("No hotel") && !withHotel);
@@ -202,7 +351,7 @@ export default function BookingsPage() {
     .filter((b) => b.status !== "Cancelled" && b.status !== "Refunded")
     .reduce((s, b) => s + b.total, 0);
   const pendingBalance = state.bookings.reduce((s, b) => s + b.balance, 0);
-  const withHotel = state.bookings.filter((b) => b.hotel).length;
+  const withHotel = state.bookings.filter((b) => bookingHotels(b).length > 0).length;
 
   return (
     <>
@@ -216,33 +365,15 @@ export default function BookingsPage() {
               </Button>
             }
             drivers={state.drivers}
-            onSubmit={(data) => {
-              addBooking({
-                ...data,
-                history: [
-                  makeLeadHistoryEvent("created", "Booking created", {
-                    detail: `Dummy · ${bookingRoute(data)}`,
-                  }),
-                  ...(data.driver
-                    ? [
-                        makeLeadHistoryEvent("assigned", "Driver assigned", {
-                          detail: `${data.driver} · ${data.vehicle}`,
-                        }),
-                      ]
-                    : []),
-                ],
-              });
-              toast({
-                variant: "success",
-                title: "Booking created",
-                description: `${data.customer}'s trip is on the books.`,
-              });
-            }}
+            onSubmit={handleCreate}
           />
         }
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
+        {bookingsLoading ? (
+          <StatCardsSkeleton />
+        ) : (
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -273,6 +404,7 @@ export default function BookingsPage() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 flex-col gap-3 border-b border-border-soft bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -284,6 +416,14 @@ export default function BookingsPage() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search by name, email, phone or ID…"
                   className="h-8 pl-8 text-xs"
+                  type="search"
+                  name="bookings-list-search"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
+                  readOnly={!searchUnlocked}
+                  onFocus={() => setSearchUnlocked(true)}
                 />
               </div>
               <MultiFilter
@@ -370,7 +510,9 @@ export default function BookingsPage() {
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 text-sm font-medium text-ink-text">
                         <span className="truncate">{b.customer}</span>
-                        {b.hotel && <BedDouble className="size-3.5 shrink-0 text-marigold-ink" />}
+                        {bookingHotels(b).length > 0 && (
+                          <BedDouble className="size-3.5 shrink-0 text-marigold-ink" />
+                        )}
                       </p>
                       <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
                     </div>
@@ -392,8 +534,8 @@ export default function BookingsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <p className="text-sm text-ink-text">{b.driver || "—"}</p>
-                    <p className="font-mono-data text-[11px] text-slate-soft">{b.vehicle || "—"}</p>
+                    <p className="text-sm text-ink-text">{formatDriversLabel(b)}</p>
+                    <p className="font-mono-data text-[11px] text-slate-soft">{formatVehiclesLabel(b)}</p>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text">
                     ₹{b.total.toLocaleString("en-IN")}
@@ -424,20 +566,7 @@ export default function BookingsPage() {
                             key={s}
                             disabled={s === b.status}
                             onSelect={() => {
-                              updateBooking(b.id, {
-                                status: s,
-                                history: track(
-                                  b,
-                                  "status_changed",
-                                  `Payment status changed to ${s}`,
-                                  `${b.status} → ${s} · Dummy tracking`
-                                ),
-                              });
-                              toast({
-                                variant: "success",
-                                title: "Payment status updated",
-                                description: `${b.id} moved to ${s}.`,
-                              });
+                              void handleStatusChange(b, s);
                             }}
                           >
                             <StatusBadge status={s} />
@@ -473,33 +602,13 @@ export default function BookingsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <BookingFormDialog
-                            booking={b}
-                            drivers={state.drivers}
-                            trigger={
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                <Pencil className="size-3.5" /> Edit booking
-                              </DropdownMenuItem>
-                            }
-                            onSubmit={(data) => {
-                              updateBooking(b.id, {
-                                ...data,
-                                history: track(
-                                  b,
-                                  "updated",
-                                  "Booking details updated",
-                                  data.hotel
-                                    ? `Dummy · hotel ${data.hotel.hotelName || "assigned"}`
-                                    : "Dummy · edited by Priya"
-                                ),
-                              });
-                              toast({
-                                variant: "success",
-                                title: "Booking updated",
-                                description: `${b.id} saved successfully.`,
-                              });
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setEditingBookingId(b.id);
                             }}
-                          />
+                          >
+                            <Pencil className="size-3.5" /> Edit booking
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-signal focus:bg-signal-soft"
@@ -539,7 +648,9 @@ export default function BookingsPage() {
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 text-base font-semibold break-words text-ink-text">
                         {b.customer}
-                        {b.hotel ? <BedDouble className="size-3.5 shrink-0 text-marigold-ink" /> : null}
+                        {bookingHotels(b).length > 0 ? (
+                          <BedDouble className="size-3.5 shrink-0 text-marigold-ink" />
+                        ) : null}
                       </p>
                       <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
                     </div>
@@ -558,20 +669,7 @@ export default function BookingsPage() {
                             key={s}
                             disabled={s === b.status}
                             onSelect={() => {
-                              updateBooking(b.id, {
-                                status: s,
-                                history: track(
-                                  b,
-                                  "status_changed",
-                                  `Payment status changed to ${s}`,
-                                  `${b.status} → ${s} · Dummy tracking`
-                                ),
-                              });
-                              toast({
-                                variant: "success",
-                                title: "Payment status updated",
-                                description: `${b.id} moved to ${s}.`,
-                              });
+                              void handleStatusChange(b, s);
                             }}
                           >
                             <StatusBadge status={s} />
@@ -594,16 +692,16 @@ export default function BookingsPage() {
                     <InfoItem label="Cab / pax / days">
                       {b.cabType} · {b.adults}A{b.kids > 0 ? `+${b.kids}K` : ""} · {b.days}d
                     </InfoItem>
-                    <InfoItem label="Driver">{b.driver || "—"}</InfoItem>
-                    <InfoItem label="Vehicle">{b.vehicle || "—"}</InfoItem>
+                    <InfoItem label="Driver">{formatDriversLabel(b)}</InfoItem>
+                    <InfoItem label="Vehicle">{formatVehiclesLabel(b)}</InfoItem>
                     <InfoItem label="Total">₹{b.total.toLocaleString("en-IN")}</InfoItem>
                     <InfoItem label="Advance">₹{b.advance.toLocaleString("en-IN")}</InfoItem>
                     <InfoItem label="Balance">
                       {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
                     </InfoItem>
-                    {b.hotel ? (
+                    {formatHotelsLabel(b) ? (
                       <InfoItem label="Hotel" className="sm:col-span-2">
-                        {b.hotel.hotelName}
+                        {formatHotelsLabel(b)}
                       </InfoItem>
                     ) : null}
                   </InfoGrid>
@@ -614,33 +712,9 @@ export default function BookingsPage() {
                     <Button size="sm" variant="outline" onClick={() => setCommentBookingId(b.id)}>
                       <MessageCircle className="size-3.5" /> Comments
                     </Button>
-                    <BookingFormDialog
-                      booking={b}
-                      drivers={state.drivers}
-                      trigger={
-                        <Button size="sm" variant="outline">
-                          <Pencil className="size-3.5" /> Edit
-                        </Button>
-                      }
-                      onSubmit={(data) => {
-                        updateBooking(b.id, {
-                          ...data,
-                          history: track(
-                            b,
-                            "updated",
-                            "Booking details updated",
-                            data.hotel
-                              ? `Dummy · hotel ${data.hotel.hotelName || "assigned"}`
-                              : "Dummy · edited by Priya"
-                          ),
-                        });
-                        toast({
-                          variant: "success",
-                          title: "Booking updated",
-                          description: `${b.id} saved successfully.`,
-                        });
-                      }}
-                    />
+                    <Button size="sm" variant="outline" onClick={() => setEditingBookingId(b.id)}>
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
                     <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(b)}>
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
@@ -657,22 +731,44 @@ export default function BookingsPage() {
         </Card>
       </main>
 
+      <BookingFormDialog
+        booking={editingBooking ?? undefined}
+        drivers={state.drivers}
+        open={!!editingBooking}
+        onOpenChange={(open) => {
+          if (!open) setEditingBookingId(null);
+        }}
+        onSubmit={async (data) => {
+          if (!editingBooking) return;
+          await handleUpdate(editingBooking.id, data, editingBooking);
+          setEditingBookingId(null);
+        }}
+      />
+
       <BookingCommentsDrawer
         booking={commentBooking}
         open={!!commentBookingId}
         onOpenChange={(v) => !v && setCommentBookingId(null)}
-        onAddComment={(bookingId, comment) => {
+        onAddComment={async (bookingId, comment) => {
           const current = state.bookings.find((b) => b.id === bookingId);
           if (!current) return;
-          updateBooking(bookingId, {
-            comments: [...(current.comments ?? []), comment],
-            history: track(current, "comment_added", "Comment added", comment.text),
-          });
-          toast({
-            variant: "success",
-            title: "Comment added",
-            description: `Note saved on ${current.customer}.`,
-          });
+          try {
+            await updateBooking(bookingId, {
+              comments: [...(current.comments ?? []), comment],
+              history: track(current, "comment_added", "Comment added", comment.text),
+            });
+            toast({
+              variant: "success",
+              title: "Comment added",
+              description: `Note saved on ${current.customer}.`,
+            });
+          } catch (error) {
+            toast({
+              variant: "error",
+              title: "Could not add comment",
+              description: error instanceof Error ? error.message : "Please try again.",
+            });
+          }
         }}
       />
 
@@ -684,19 +780,12 @@ export default function BookingsPage() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}
         title="Delete this booking?"
-        description={`${deleteTarget?.customer ?? ""} (${deleteTarget?.id ?? ""}) and its hotel details, if any, will be removed.`}
-        onConfirm={() => {
-          if (deleteTarget) {
-            deleteBooking(deleteTarget.id);
-            toast({
-              variant: "info",
-              title: "Booking deleted",
-              description: `${deleteTarget.id} was removed.`,
-            });
-          }
-        }}
+        description={`${deleteTarget?.customer ?? ""} (${deleteTarget?.bookingNo ?? deleteTarget?.id ?? ""}) and its hotel details, if any, will be removed.`}
+        confirming={deleting}
+        closeOnConfirm={false}
+        onConfirm={() => void handleDelete()}
       />
     </>
   );

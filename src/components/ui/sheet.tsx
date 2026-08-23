@@ -30,6 +30,7 @@ function SheetContent({
   children,
   side = "right",
   onClose,
+  onFocusOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   side?: "right" | "left";
@@ -48,6 +49,11 @@ function SheetContent({
             "inset-y-0 left-0 max-w-full border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-md",
           className
         )}
+        onFocusOutside={(e) => {
+          // Keep drawers open when the browser tab loses focus (new tab, app switch).
+          e.preventDefault();
+          onFocusOutside?.(e);
+        }}
         {...props}
       >
         {children}

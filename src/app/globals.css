@@ -185,6 +185,24 @@
     font-family: var(--font-mono);
   }
 
+  .skeleton-block {
+    position: relative;
+    overflow: hidden;
+  }
+  .skeleton-block::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--ink-text) 8%, transparent),
+      transparent
+    );
+    animation: skeleton-shimmer 1.2s ease-in-out infinite;
+  }
+
   .page-pad {
     @apply px-4 py-4 sm:px-6 lg:px-8;
   }
@@ -212,6 +230,48 @@
     );
     width: 2px;
   }
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Guest brochure is always light, even when CRM is in dark mode. */
+.proposal-print {
+  color-scheme: light;
+  color: #12172b;
+  --ink: #12172b;
+  --ink-soft: #1b2138;
+  --ink-text: #12172b;
+  --slate: #5b6478;
+  --slate-soft: #8991a3;
+  --marigold-ink: #7a4c05;
+  --marigold-soft: #fdf1da;
+  --teal: #0c8f8f;
+  --teal-soft: #e0f5f3;
+  --foreground: #12172b;
+  --muted-foreground: #5b6478;
+  --card: #ffffff;
+  --border: #d9cbb3;
+  --secondary: #f3eadc;
+  --secondary-foreground: #12172b;
+  --color-ink: #12172b;
+  --color-ink-soft: #1b2138;
+  --color-ink-text: #12172b;
+  --color-slate: #5b6478;
+  --color-slate-soft: #8991a3;
+  --color-marigold-ink: #7a4c05;
+  --color-marigold-soft: #fdf1da;
+  --color-teal: #0c8f8f;
+  --color-teal-soft: #e0f5f3;
+  --color-foreground: #12172b;
+  --color-muted-foreground: #5b6478;
+  --color-card: #ffffff;
+  --color-border: #d9cbb3;
+  --color-secondary: #f3eadc;
+  --color-secondary-foreground: #12172b;
 }
 
 @media print {

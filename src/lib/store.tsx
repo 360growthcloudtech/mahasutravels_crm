@@ -13,11 +13,9 @@ import {
   Member,
   SystemPermission,
   AdSpendEntry,
-  bookings as seedBookings,
   quotes as seedQuotes,
   members as seedMembers,
   systemPermissions as seedSystemPermissions,
-  adSpends as seedAdSpends,
   genId,
   makeLeadHistoryEvent,
 } from "@/lib/data";
@@ -65,6 +63,22 @@ import {
   fetchDrivers,
   updateDriverApi,
 } from "@/lib/drivers-api";
+import {
+  adSpendFromApi,
+  adSpendToWritePayload,
+  createAdSpendApi,
+  deleteAdSpendApi,
+  fetchAdSpends,
+  updateAdSpendApi,
+} from "@/lib/ad-spends-api";
+import {
+  bookingFromApi,
+  bookingToWritePayload,
+  createBookingApi,
+  deleteBookingApi,
+  fetchBookings,
+  updateBookingApi,
+} from "@/lib/bookings-api";
 import { slugify } from "@/lib/itinerary-utils";
 
 export type LeadFormValues = {
@@ -76,6 +90,7 @@ export type LeadFormValues = {
   website?: string;
   tourPackage: string;
   itineraryTemplateId?: string | null;
+  vehicleId?: string | null;
   pickup: string;
   drop: string;
   pickupDate: string;
@@ -115,14 +130,14 @@ const STORAGE_KEY = "mahasu-crm-state-v19";
 function loadInitial(): State {
   return {
     leads: [],
-    bookings: seedBookings,
+    bookings: [],
     drivers: [],
     quotes: seedQuotes,
     itineraries: [],
     hotelTemplates: [],
     members: seedMembers,
     systemPermissions: seedSystemPermissions,
-    adSpends: seedAdSpends,
+    adSpends: [],
     leadItineraries: {},
   };
 }
@@ -146,27 +161,35 @@ type Ctx = {
   hotelsLoading: boolean;
   itinerariesLoading: boolean;
   driversLoading: boolean;
+  adSpendsLoading: boolean;
+  bookingsLoading: boolean;
   refreshLeads: () => Promise<void>;
   refreshHotels: () => Promise<void>;
   refreshItineraries: () => Promise<void>;
   refreshDrivers: () => Promise<void>;
+  refreshAdSpends: () => Promise<void>;
+  refreshBookings: () => Promise<void>;
   addLead: (l: LeadFormValues) => Promise<Lead>;
   updateLead: (
     id: string,
-    patch: Partial<Omit<Lead, "itineraryTemplateId">> & {
+    patch: Partial<Omit<Lead, "itineraryTemplateId" | "vehicleId">> & {
       assignedToId?: string | null;
       itineraryTemplateId?: string | null;
+      vehicleId?: string | null;
     }
   ) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
   addLeadComment: (leadId: string, text: string) => Promise<void>;
   loadLeadComments: (leadId: string) => Promise<void>;
   loadLeadActivity: (leadId: string) => Promise<void>;
-  addBooking: (b: Omit<Booking, "id">) => void;
-  updateBooking: (id: string, patch: Partial<Booking>) => void;
-  deleteBooking: (id: string) => void;
-  assignHotel: (bookingId: string, hotel: Hotel) => void;
-  removeHotel: (bookingId: string) => void;
+  addBooking: (b: Omit<Booking, "id" | "bookingNo">) => Promise<Booking>;
+  updateBooking: (
+    id: string,
+    patch: Partial<Omit<Booking, "hotel">> & { hotel?: Hotel | null }
+  ) => Promise<void>;
+  deleteBooking: (id: string) => Promise<void>;
+  assignHotel: (bookingId: string, hotel: Hotel) => Promise<void>;
+  removeHotel: (bookingId: string) => Promise<void>;
   addDriver: (d: Omit<Driver, "id" | "driverNo">) => Promise<Driver>;
   updateDriver: (id: string, patch: Partial<Driver>) => Promise<void>;
   deleteDriver: (id: string) => Promise<void>;
@@ -190,9 +213,9 @@ type Ctx = {
   addSystemPermission: (p: Omit<SystemPermission, "id">) => void;
   updateSystemPermission: (id: string, patch: Partial<SystemPermission>) => void;
   deleteSystemPermission: (id: string) => void;
-  addAdSpend: (s: Omit<AdSpendEntry, "id" | "createdAt">) => void;
-  updateAdSpend: (id: string, patch: Partial<AdSpendEntry>) => void;
-  deleteAdSpend: (id: string) => void;
+  addAdSpend: (s: Omit<AdSpendEntry, "id" | "createdAt">) => Promise<AdSpendEntry>;
+  updateAdSpend: (id: string, patch: Partial<AdSpendEntry>) => Promise<void>;
+  deleteAdSpend: (id: string) => Promise<void>;
   resetDemoData: () => void;
 };
 
@@ -209,6 +232,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [hotelsLoading, setHotelsLoading] = React.useState(true);
   const [itinerariesLoading, setItinerariesLoading] = React.useState(true);
   const [driversLoading, setDriversLoading] = React.useState(true);
+  const [adSpendsLoading, setAdSpendsLoading] = React.useState(true);
+  const [bookingsLoading, setBookingsLoading] = React.useState(true);
 
   React.useEffect(() => {
     try {
@@ -222,6 +247,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           hotelTemplates: [],
           itineraries: [],
           drivers: [],
+          adSpends: [],
+          bookings: [],
           members: (parsed.members?.length ? parsed.members : seedMembers).map((m) => ({
             ...m,
             password: m.password ?? "",
@@ -229,7 +256,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           systemPermissions: parsed.systemPermissions?.length
             ? parsed.systemPermissions
             : seedSystemPermissions,
-          adSpends: parsed.adSpends?.length ? parsed.adSpends : seedAdSpends,
           leadItineraries: parsed.leadItineraries ?? {},
         });
       }
@@ -247,6 +273,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         hotelTemplates: _hotels,
         itineraries: _itineraries,
         drivers: _drivers,
+        adSpends: _adSpends,
+        bookings: _bookings,
         ...rest
       } = state;
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
@@ -345,6 +373,196 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated) return;
     void refreshDrivers();
   }, [hydrated, refreshDrivers]);
+
+  const refreshAdSpends = React.useCallback(async () => {
+    setAdSpendsLoading(true);
+    try {
+      const rows = await fetchAdSpends();
+      setState((s) => ({
+        ...s,
+        adSpends: rows.map(adSpendFromApi),
+      }));
+    } catch {
+      setState((s) => ({ ...s, adSpends: [] }));
+    } finally {
+      setAdSpendsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void refreshAdSpends();
+  }, [hydrated, refreshAdSpends]);
+
+  const refreshBookings = React.useCallback(async () => {
+    setBookingsLoading(true);
+    try {
+      const rows = await fetchBookings();
+      setState((s) => ({
+        ...s,
+        bookings: rows.map(bookingFromApi),
+      }));
+    } catch {
+      setState((s) => ({ ...s, bookings: [] }));
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    void refreshBookings();
+  }, [hydrated, refreshBookings]);
+
+  const addBooking = React.useCallback(async (input: Omit<Booking, "id" | "bookingNo">) => {
+    const created = await createBookingApi(bookingToWritePayload(input));
+    const mapped = bookingFromApi(created);
+    setState((s) => ({
+      ...s,
+      bookings: [mapped, ...s.bookings.filter((item) => item.id !== mapped.id)],
+    }));
+    return mapped;
+  }, []);
+
+  const updateBooking = React.useCallback(
+    async (id: string, patch: Partial<Omit<Booking, "hotel" | "hotels">> & {
+      hotel?: Hotel | null;
+      hotels?: Hotel[] | null;
+    }) => {
+    const payload: Parameters<typeof updateBookingApi>[1] = {};
+    if (patch.leadId !== undefined) payload.lead_id = patch.leadId;
+    if (patch.customer !== undefined) payload.customer = patch.customer;
+    if (patch.email !== undefined) payload.email = patch.email;
+    if (patch.city !== undefined) payload.city = patch.city;
+    if (patch.phone !== undefined) payload.phone = patch.phone ?? "";
+    if (patch.source !== undefined) payload.source = patch.source;
+    if (patch.website !== undefined) payload.website = patch.website ?? "";
+    if (patch.tourPackage !== undefined) payload.tour_package = patch.tourPackage;
+    if (patch.pickup !== undefined) payload.pickup = patch.pickup;
+    if (patch.dropoff !== undefined) payload.dropoff = patch.dropoff;
+    if (patch.travelDate !== undefined) payload.travel_date = patch.travelDate || null;
+    if (patch.returnDate !== undefined) payload.return_date = patch.returnDate || null;
+    if (patch.cabType !== undefined) payload.cab_type = patch.cabType;
+    if (patch.adults !== undefined) payload.adults = patch.adults;
+    if (patch.kids !== undefined) payload.kids = patch.kids;
+    if (patch.days !== undefined) payload.days = patch.days;
+    if (patch.tourPlan !== undefined) payload.tour_plan = patch.tourPlan;
+    if (patch.agent !== undefined) payload.agent = patch.agent;
+    if (patch.driver !== undefined) payload.driver = patch.driver;
+    if (patch.vehicle !== undefined) payload.vehicle = patch.vehicle;
+    if (patch.drivers !== undefined) payload.drivers = patch.drivers ?? [];
+    if (patch.total !== undefined) payload.total = patch.total;
+    if (patch.advance !== undefined) payload.advance = patch.advance;
+    if (patch.balance !== undefined) payload.balance = patch.balance;
+    if (patch.status !== undefined) payload.status = patch.status;
+    if ("hotel" in patch) payload.hotel = patch.hotel ?? null;
+    if (patch.hotels !== undefined) payload.hotels = patch.hotels ?? [];
+    if (patch.comments !== undefined) payload.comments = patch.comments ?? [];
+    if (patch.history !== undefined) payload.history = patch.history ?? [];
+
+    if (Object.keys(payload).length === 0) return;
+
+    const updated = await updateBookingApi(id, payload);
+    const mapped = bookingFromApi(updated);
+    setState((s) => ({
+      ...s,
+      bookings: s.bookings.map((item) => (item.id === id ? mapped : item)),
+    }));
+  },
+  []
+  );
+
+  const deleteBooking = React.useCallback(async (id: string) => {
+    await deleteBookingApi(id);
+    setState((s) => ({
+      ...s,
+      bookings: s.bookings.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const assignHotel = React.useCallback(
+    async (bookingId: string, hotel: Hotel) => {
+      const booking = state.bookings.find((x) => x.id === bookingId);
+      if (!booking) return;
+      const wasAssigned = Boolean(booking.hotel);
+      await updateBooking(bookingId, {
+        hotel,
+        hotels: [hotel],
+        history: [
+          makeLeadHistoryEvent(
+            "note",
+            wasAssigned ? "Hotel stay updated" : "Hotel assigned",
+            {
+              detail: `${hotel.hotelName} · ${hotel.roomCount} room(s)${
+                hotel.referenceNumber ? ` · ${hotel.referenceNumber}` : ""
+              }`,
+            }
+          ),
+          ...(booking.history ?? []),
+        ],
+      });
+    },
+    [state.bookings, updateBooking]
+  );
+
+  const removeHotel = React.useCallback(
+    async (bookingId: string) => {
+      const booking = state.bookings.find((x) => x.id === bookingId);
+      if (!booking) return;
+      const name = booking.hotel?.hotelName;
+      await updateBooking(bookingId, {
+        hotel: null,
+        hotels: [],
+        history: [
+          makeLeadHistoryEvent("note", "Hotel removed", {
+            detail: name
+              ? `${name} detached from booking · optional stay cleared`
+              : "Hotel detached from booking",
+          }),
+          ...(booking.history ?? []),
+        ],
+      });
+    },
+    [state.bookings, updateBooking]
+  );
+
+  const addAdSpend = React.useCallback(async (input: Omit<AdSpendEntry, "id" | "createdAt">) => {
+    const created = await createAdSpendApi(adSpendToWritePayload(input));
+    const mapped = adSpendFromApi(created);
+    setState((s) => ({
+      ...s,
+      adSpends: [mapped, ...(s.adSpends || []).filter((item) => item.id !== mapped.id)],
+    }));
+    return mapped;
+  }, []);
+
+  const updateAdSpend = React.useCallback(async (id: string, patch: Partial<AdSpendEntry>) => {
+    const payload: Parameters<typeof updateAdSpendApi>[1] = {};
+    if (patch.platform !== undefined) payload.platform = patch.platform;
+    if (patch.website !== undefined) payload.website = patch.website ?? "";
+    if (patch.amount !== undefined) payload.amount = patch.amount;
+    if (patch.date !== undefined) payload.spend_date = patch.date;
+    if (patch.campaignName !== undefined) payload.campaign_name = patch.campaignName ?? "";
+    if (patch.leadsGenerated !== undefined) payload.leads_generated = patch.leadsGenerated ?? 0;
+    if (patch.notes !== undefined) payload.notes = patch.notes ?? "";
+
+    if (Object.keys(payload).length === 0) return;
+
+    const updated = await updateAdSpendApi(id, payload);
+    const mapped = adSpendFromApi(updated);
+    setState((s) => ({
+      ...s,
+      adSpends: (s.adSpends || []).map((item) => (item.id === id ? mapped : item)),
+    }));
+  }, []);
+
+  const deleteAdSpend = React.useCallback(async (id: string) => {
+    await deleteAdSpendApi(id);
+    setState((s) => ({
+      ...s,
+      adSpends: (s.adSpends || []).filter((item) => item.id !== id),
+    }));
+  }, []);
 
   const addItinerary = React.useCallback(
     async (input: Omit<ItineraryTemplate, "id" | "itineraryNo" | "updatedAt">) => {
@@ -494,9 +712,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateLead = React.useCallback(async (
     id: string,
-    patch: Partial<Omit<Lead, "itineraryTemplateId">> & {
+    patch: Partial<Omit<Lead, "itineraryTemplateId" | "vehicleId">> & {
       assignedToId?: string | null;
       itineraryTemplateId?: string | null;
+      vehicleId?: string | null;
     }
   ) => {
     const itineraryOnly =
@@ -517,13 +736,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (patch.itineraryTemplateId !== undefined) {
         payload.itinerary_template_id = patch.itineraryTemplateId || null;
       }
+      if (patch.vehicleId !== undefined) payload.vehicle_id = patch.vehicleId || null;
+      if (patch.car !== undefined) payload.car = patch.car;
       if (patch.pickup !== undefined) payload.pickup = patch.pickup;
       if (patch.drop !== undefined) payload.drop = patch.drop;
       if (patch.pickupDate !== undefined) payload.pickup_date = patch.pickupDate;
       if (patch.dropDate !== undefined) payload.drop_date = patch.dropDate;
       if (patch.nextFollowUpDate !== undefined) payload.next_follow_up_date = patch.nextFollowUpDate || null;
       if (patch.nextFollowUpTime !== undefined) payload.next_follow_up_time = patch.nextFollowUpTime || null;
-      if (patch.car !== undefined) payload.car = patch.car;
       if (patch.adults !== undefined) payload.adults = patch.adults;
       if (patch.kids !== undefined) payload.kids = patch.kids;
       if (patch.days !== undefined) payload.days = patch.days;
@@ -674,10 +894,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       hotelsLoading,
       itinerariesLoading,
       driversLoading,
+      adSpendsLoading,
+      bookingsLoading,
       refreshLeads,
       refreshHotels,
       refreshItineraries,
       refreshDrivers,
+      refreshAdSpends,
+      refreshBookings,
       addLead,
       updateLead,
       deleteLead,
@@ -685,54 +909,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       loadLeadComments,
       loadLeadActivity,
 
-      addBooking: (b) => setState((s) => ({ ...s, bookings: [{ ...b, id: genId("BK") }, ...s.bookings] })),
-      updateBooking: (id, patch) =>
-        setState((s) => ({ ...s, bookings: s.bookings.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
-      deleteBooking: (id) => setState((s) => ({ ...s, bookings: s.bookings.filter((x) => x.id !== id) })),
-      assignHotel: (bookingId, hotel) =>
-        setState((s) => ({
-          ...s,
-          bookings: s.bookings.map((x) => {
-            if (x.id !== bookingId) return x;
-            const wasAssigned = Boolean(x.hotel);
-            return {
-              ...x,
-              hotel,
-              history: [
-                makeLeadHistoryEvent(
-                  "note",
-                  wasAssigned ? "Hotel stay updated" : "Hotel assigned",
-                  {
-                    detail: `${hotel.hotelName} · ${hotel.roomCount} room(s)${
-                      hotel.referenceNumber ? ` · ${hotel.referenceNumber}` : ""
-                    }`,
-                  }
-                ),
-                ...(x.history ?? []),
-              ],
-            };
-          }),
-        })),
-      removeHotel: (bookingId) =>
-        setState((s) => ({
-          ...s,
-          bookings: s.bookings.map((x) => {
-            if (x.id !== bookingId) return x;
-            const name = x.hotel?.hotelName;
-            return {
-              ...x,
-              hotel: undefined,
-              history: [
-                makeLeadHistoryEvent("note", "Hotel removed", {
-                  detail: name
-                    ? `${name} detached from booking · optional stay cleared`
-                    : "Hotel detached from booking",
-                }),
-                ...(x.history ?? []),
-              ],
-            };
-          }),
-        })),
+      addBooking,
+      updateBooking,
+      deleteBooking,
+      assignHotel,
+      removeHotel,
 
       addDriver,
       updateDriver,
@@ -855,28 +1036,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           systemPermissions: s.systemPermissions.filter((x) => x.id !== id),
         })),
 
-      addAdSpend: (spend) =>
-        setState((s) => ({
-          ...s,
-          adSpends: [
-            {
-              ...spend,
-              id: genId("SP"),
-              createdAt: new Date().toISOString().split("T")[0],
-            },
-            ...(s.adSpends || []),
-          ],
-        })),
-      updateAdSpend: (id, patch) =>
-        setState((s) => ({
-          ...s,
-          adSpends: (s.adSpends || []).map((x) => (x.id === id ? { ...x, ...patch } : x)),
-        })),
-      deleteAdSpend: (id) =>
-        setState((s) => ({
-          ...s,
-          adSpends: (s.adSpends || []).filter((x) => x.id !== id),
-        })),
+      addAdSpend,
+      updateAdSpend,
+      deleteAdSpend,
 
       resetDemoData: () => setState(loadInitial()),
     }),
@@ -890,10 +1052,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       hotelsLoading,
       itinerariesLoading,
       driversLoading,
+      adSpendsLoading,
+      bookingsLoading,
       refreshLeads,
       refreshHotels,
       refreshItineraries,
       refreshDrivers,
+      refreshAdSpends,
+      refreshBookings,
       addLead,
       updateLead,
       deleteLead,
@@ -911,6 +1077,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addDriver,
       updateDriver,
       deleteDriver,
+      addAdSpend,
+      updateAdSpend,
+      deleteAdSpend,
+      addBooking,
+      updateBooking,
+      deleteBooking,
+      assignHotel,
+      removeHotel,
     ]
   );
 

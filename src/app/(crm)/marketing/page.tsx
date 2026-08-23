@@ -1,18 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  X,
-  IndianRupee,
-  Target,
-  TrendingUp,
-  Globe,
-  Megaphone,
-} from "lucide-react";
+import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +26,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AdSpendDialog } from "@/components/crm/ad-spend-dialog";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { AdPlatform, AdSpendEntry, trackedWebsites } from "@/lib/data";
@@ -112,12 +106,13 @@ function MultiFilter<T extends string>({
 }
 
 export default function MarketingPage() {
-  const { state, addAdSpend, updateAdSpend, deleteAdSpend } = useData();
+  const { state, adSpendsLoading, addAdSpend, updateAdSpend, deleteAdSpend } = useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
   const [platformFilter, setPlatformFilter] = React.useState<AdPlatform[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<AdSpendEntry | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   const adSpends = state.adSpends || [];
 
@@ -154,6 +149,64 @@ export default function MarketingPage() {
   const costPerLead = state.leads.length > 0 ? Math.round(totalSpendSum / state.leads.length) : 0;
   const roasRatio = totalSpendSum > 0 ? (confirmedRevenue / totalSpendSum).toFixed(1) : "0.0";
 
+  async function handleCreate(data: Omit<AdSpendEntry, "id" | "createdAt">) {
+    try {
+      await addAdSpend(data);
+      toast({
+        variant: "success",
+        title: "Ad Spend Logged",
+        description: `Recorded ₹${data.amount.toLocaleString("en-IN")} for ${data.platform}.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not log ad spend",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      throw error;
+    }
+  }
+
+  async function handleUpdate(id: string, data: Omit<AdSpendEntry, "id" | "createdAt">) {
+    try {
+      await updateAdSpend(id, data);
+      toast({
+        variant: "success",
+        title: "Ad Spend Updated",
+        description: `Updated entry for ${data.platform}.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not update ad spend",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      throw error;
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteAdSpend(deleteTarget.id);
+      toast({
+        variant: "info",
+        title: "Ad Spend Deleted",
+        description: "The spend entry was removed.",
+      });
+      setDeleteTarget(null);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not delete ad spend",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <Topbar
@@ -165,57 +218,56 @@ export default function MarketingPage() {
                 <Plus className="size-4" /> Log Ad Spend
               </Button>
             }
-            onSubmit={(data) => {
-              addAdSpend(data);
-              toast({
-                variant: "success",
-                title: "Ad Spend Logged",
-                description: `Recorded ₹${data.amount.toLocaleString("en-IN")} for ${data.platform}.`,
-              });
-            }}
+            onSubmit={handleCreate}
           />
         }
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total Recorded Spend</p>
-              <p className="mt-1 font-display text-xl font-semibold text-ink-text">
-                ₹{totalSpendSum.toLocaleString("en-IN")}
-              </p>
-            </CardContent>
-          </Card>
+        {adSpendsLoading ? (
+          <StatCardsSkeleton />
+        ) : (
+          <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Total Recorded Spend</p>
+                <p className="mt-1 font-display text-xl font-semibold text-ink-text">
+                  ₹{totalSpendSum.toLocaleString("en-IN")}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Google Ads Spend</p>
-              <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
-                ₹{googleSpendSum.toLocaleString("en-IN")}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Google Ads Spend</p>
+                <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
+                  ₹{googleSpendSum.toLocaleString("en-IN")}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Meta Ads Spend</p>
-              <p className="mt-1 font-display text-xl font-semibold text-violet">
-                ₹{metaSpendSum.toLocaleString("en-IN")}
-              </p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Meta Ads Spend</p>
+                <p className="mt-1 font-display text-xl font-semibold text-violet">
+                  ₹{metaSpendSum.toLocaleString("en-IN")}
+                </p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Cost Per Lead / ROAS</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">
-                ₹{costPerLead.toLocaleString("en-IN")}{" "}
-                <span className="text-xs font-normal text-muted-foreground">({roasRatio}x ROAS)</span>
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Cost Per Lead / ROAS</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">
+                  ₹{costPerLead.toLocaleString("en-IN")}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({roasRatio}x ROAS)
+                  </span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 flex-col gap-3 border-b border-border-soft bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -262,105 +314,100 @@ export default function MarketingPage() {
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
-          <Table containerClassName="min-h-0 flex-1 overflow-auto">
-            <TableHeader>
-              <TableRow className="group hover:bg-transparent">
-                <TableHead className="sticky top-0 z-20 bg-card">Platform</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Website Domain</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Campaign Name & Details</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Date</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card text-right">Amount (₹)</TableHead>
-                <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-
-            <TableBody>
-              {visibleSpends.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                    No ad spend records match the current filters.
-                  </TableCell>
+            <Table containerClassName="min-h-0 flex-1 overflow-auto">
+              <TableHeader>
+                <TableRow className="group hover:bg-transparent">
+                  <TableHead className="sticky top-0 z-20 bg-card">Platform</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Website Domain</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Campaign Name & Details</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card">Date</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-card text-right">Amount (₹)</TableHead>
+                  <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
                 </TableRow>
-              ) : (
-                visibleSpends.map((s) => (
-                  <TableRow key={s.id} className="group">
-                    <TableCell>
-                      <Badge
-                        variant={
-                          s.platform === "Google Ads"
-                            ? "marigold"
-                            : s.platform === "Meta Ads"
-                            ? "violet"
-                            : "teal"
-                        }
-                      >
-                        {s.platform}
-                      </Badge>
-                    </TableCell>
+              </TableHeader>
 
-                    <TableCell className="text-sm text-slate">
-                      {s.website ? (
-                        <span className="inline-flex items-center gap-1">
-                          🌐 {s.website}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-
-                    <TableCell className="min-w-0 max-w-xs">
-                      <p className="truncate text-sm font-medium text-ink-text">
-                        {s.campaignName || "General Marketing Budget"}
-                      </p>
-                      {s.notes && (
-                        <p className="truncate text-[11px] text-slate-soft">{s.notes}</p>
-                      )}
-                    </TableCell>
-
-                    <TableCell className="text-sm text-slate">{s.date}</TableCell>
-
-                    <TableCell className="whitespace-nowrap text-right font-mono-data text-sm font-semibold text-ink-text">
-                      ₹{s.amount.toLocaleString("en-IN")}
-                    </TableCell>
-
-                    <TableCell className={`text-right ${stickyActionCell}`}>
-                      <div className="flex items-center justify-end gap-1">
-                        <AdSpendDialog
-                          spend={s}
-                          trigger={
-                            <Button variant="ghost" size="icon" className="size-8">
-                              <Pencil className="size-4 text-slate" />
-                            </Button>
-                          }
-                          onSubmit={(data) => {
-                            updateAdSpend(s.id, data);
-                            toast({
-                              variant: "success",
-                              title: "Ad Spend Updated",
-                              description: `Updated entry for ${data.platform}.`,
-                            });
-                          }}
-                        />
-
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 hover:text-signal"
-                          onClick={() => setDeleteTarget(s)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
+              <TableBody>
+                {adSpendsLoading ? (
+                  <TableRowsSkeleton columns={6} rows={5} />
+                ) : visibleSpends.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                      No ad spend records match the current filters.
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  visibleSpends.map((s) => (
+                    <TableRow key={s.id} className="group">
+                      <TableCell>
+                        <Badge
+                          variant={
+                            s.platform === "Google Ads"
+                              ? "marigold"
+                              : s.platform === "Meta Ads"
+                                ? "violet"
+                                : "teal"
+                          }
+                        >
+                          {s.platform}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell className="text-sm text-slate">
+                        {s.website ? (
+                          <span className="inline-flex items-center gap-1">🌐 {s.website}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="min-w-0 max-w-xs">
+                        <p className="truncate text-sm font-medium text-ink-text">
+                          {s.campaignName || "General Marketing Budget"}
+                        </p>
+                        {s.notes && (
+                          <p className="truncate text-[11px] text-slate-soft">{s.notes}</p>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="text-sm text-slate">{s.date}</TableCell>
+
+                      <TableCell className="whitespace-nowrap text-right font-mono-data text-sm font-semibold text-ink-text">
+                        ₹{s.amount.toLocaleString("en-IN")}
+                      </TableCell>
+
+                      <TableCell className={`text-right ${stickyActionCell}`}>
+                        <div className="flex items-center justify-end gap-1">
+                          <AdSpendDialog
+                            spend={s}
+                            trigger={
+                              <Button variant="ghost" size="icon" className="size-8">
+                                <Pencil className="size-4 text-slate" />
+                              </Button>
+                            }
+                            onSubmit={(data) => handleUpdate(s.id, data)}
+                          />
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 hover:text-signal"
+                            onClick={() => setDeleteTarget(s)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
-            {visibleSpends.length === 0 ? (
+            {adSpendsLoading ? (
+              <RecordCardsSkeleton count={4} />
+            ) : visibleSpends.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 No ad spend records match the current filters.
               </p>
@@ -401,16 +448,14 @@ export default function MarketingPage() {
                           <Pencil className="size-3.5" /> Edit
                         </Button>
                       }
-                      onSubmit={(data) => {
-                        updateAdSpend(s.id, data);
-                        toast({
-                          variant: "success",
-                          title: "Ad Spend Updated",
-                          description: `Updated entry for ${data.platform}.`,
-                        });
-                      }}
+                      onSubmit={(data) => handleUpdate(s.id, data)}
                     />
-                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(s)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-signal"
+                      onClick={() => setDeleteTarget(s)}
+                    >
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
                   </div>
@@ -424,22 +469,14 @@ export default function MarketingPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(op) => {
-          if (!op) setDeleteTarget(null);
+          if (!op && !deleting) setDeleteTarget(null);
         }}
         title="Delete Ad Spend Entry"
         description={`Are you sure you want to remove the ad spend record for ₹${deleteTarget?.amount.toLocaleString("en-IN")} (${deleteTarget?.platform})?`}
         confirmLabel="Delete"
-        onConfirm={() => {
-          if (deleteTarget) {
-            deleteAdSpend(deleteTarget.id);
-            toast({
-              variant: "info",
-              title: "Ad Spend Deleted",
-              description: "The spend entry was removed.",
-            });
-            setDeleteTarget(null);
-          }
-        }}
+        confirming={deleting}
+        closeOnConfirm={false}
+        onConfirm={() => void handleDelete()}
       />
     </>
   );

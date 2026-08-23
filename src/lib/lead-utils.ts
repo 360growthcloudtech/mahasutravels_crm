@@ -11,21 +11,24 @@ export type LeadStatusValue = (typeof LEAD_STATUSES)[number];
 export const CLOSED_LEAD_STATUSES: LeadStatusValue[] = ["Lost", "Booked"];
 
 export const KNOWN_LEAD_SOURCES = [
-  "taxi_calculator",
-  "quick_inquiry",
-  "plan_your_trip",
-  "request_callback",
+  "google_ads",
+  "meta_ads",
+  "website",
   "manual",
 ] as const;
 
 export const CALCULATOR_CARS = ["sedan", "suv", "innova"] as const;
 
 export const LEAD_SOURCE_LABELS: Record<string, string> = {
+  google_ads: "Google Ads",
+  meta_ads: "Meta Ads",
+  website: "Website",
+  manual: "Manual",
+  // Legacy form types (stored on form_type after migration)
   taxi_calculator: "Taxi Calculator",
   quick_inquiry: "Quick Inquiry",
   plan_your_trip: "Plan Your Trip",
   request_callback: "Request Callback",
-  manual: "Manual",
 };
 
 export function sourceLabel(

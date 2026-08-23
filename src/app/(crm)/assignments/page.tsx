@@ -41,8 +41,14 @@ import {
   bookingRoute,
   makeLeadHistoryEvent,
 } from "@/lib/data";
+import { bookingDrivers } from "@/lib/booking-utils";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -108,9 +114,57 @@ function findDriver(drivers: Driver[], name: string, vehicle?: string) {
   );
 }
 
+function AssignDriverMenu({
+  booking,
+  assignableDrivers,
+  onAssign,
+}: {
+  booking: Booking;
+  assignableDrivers: Driver[];
+  onAssign: (driver: Driver) => void;
+}) {
+  const assigned = bookingDrivers(booking);
+  const hasDriver = assigned.length > 0;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 w-full">
+          {hasDriver ? "Reassign" : "Assign"}
+          <ChevronDown className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[15rem]">
+        <DropdownMenuLabel>Approved drivers</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {assignableDrivers.length === 0 ? (
+          <DropdownMenuItem disabled>No approved drivers</DropdownMenuItem>
+        ) : (
+          assignableDrivers.map((d) => (
+            <DropdownMenuItem
+              key={d.id}
+              disabled={d.name === assigned[0]?.driver && d.vehicle === assigned[0]?.vehicle}
+              onSelect={() => onAssign(d)}
+            >
+              <Car className="size-3.5" />
+              <span className="min-w-0">
+                <span className="block text-sm">{d.name}</span>
+                <span className="block font-mono-data text-[10px] text-slate-soft">
+                  {d.vehicle} · {d.vehicleType}
+                </span>
+              </span>
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function AssignmentsPage() {
-  const { state, updateBooking } = useData();
+  const { state, bookingsLoading, driversLoading, updateBooking } = useData();
   const { toast } = useToast();
+  const pageLoading = bookingsLoading || driversLoading;
 
   const [query, setQuery] = React.useState("");
   const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
@@ -119,35 +173,41 @@ export default function AssignmentsPage() {
   const activeBookings = state.bookings.filter(
     (b) => b.status !== "Cancelled" && b.status !== "Refunded"
   );
-  const assigned = activeBookings.filter((b) => b.driver?.trim());
-  const unassigned = activeBookings.filter((b) => !b.driver?.trim());
+  const assigned = activeBookings.filter((b) => bookingDrivers(b).length > 0);
+  const unassigned = activeBookings.filter((b) => bookingDrivers(b).length === 0);
 
   const driverNames = React.useMemo(
     () =>
-      [...new Set(state.bookings.map((b) => b.driver).filter(Boolean))].sort() as string[],
+      [
+        ...new Set(
+          state.bookings.flatMap((b) => bookingDrivers(b).map((d) => d.driver)).filter(Boolean)
+        ),
+      ].sort() as string[],
     [state.bookings]
   );
 
   const assignableDrivers = state.drivers.filter((d) => d.status === "Approved");
 
   const visible = state.bookings.filter((b) => {
+    const drivers = bookingDrivers(b);
     const q = query.trim().toLowerCase();
     if (q) {
       const hay = [
         b.customer,
         b.id,
-        b.driver,
-        b.vehicle,
+        b.bookingNo ?? "",
         b.tourPackage,
         bookingRoute(b),
         b.phone ?? "",
+        ...drivers.map((d) => d.driver),
+        ...drivers.map((d) => d.vehicle),
       ]
         .join(" ")
         .toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (driverFilter.length > 0) {
-      if (!b.driver || !driverFilter.includes(b.driver)) return false;
+      if (!drivers.some((d) => driverFilter.includes(d.driver))) return false;
     }
     return true;
   });
@@ -155,13 +215,27 @@ export default function AssignmentsPage() {
   const byDriver = React.useMemo(() => {
     const map = new Map<string, { driver?: Driver; bookings: Booking[] }>();
     for (const b of visible) {
-      const key = b.driver?.trim() || "Unassigned";
-      const entry = map.get(key) ?? {
-        driver: key === "Unassigned" ? undefined : findDriver(state.drivers, key, b.vehicle),
-        bookings: [],
-      };
-      entry.bookings.push(b);
-      map.set(key, entry);
+      const drivers = bookingDrivers(b);
+      if (drivers.length === 0) {
+        const entry = map.get("Unassigned") ?? { driver: undefined, bookings: [] };
+        entry.bookings.push(b);
+        map.set("Unassigned", entry);
+        continue;
+      }
+      for (const assignment of drivers) {
+        const key = assignment.driver.trim() || "Unassigned";
+        const entry = map.get(key) ?? {
+          driver:
+            key === "Unassigned"
+              ? undefined
+              : findDriver(state.drivers, key, assignment.vehicle),
+          bookings: [],
+        };
+        if (!entry.bookings.some((item) => item.id === b.id)) {
+          entry.bookings.push(b);
+        }
+        map.set(key, entry);
+      }
     }
     return [...map.entries()].sort(([a], [b]) => {
       if (a === "Unassigned") return 1;
@@ -170,26 +244,39 @@ export default function AssignmentsPage() {
     });
   }, [visible, state.drivers]);
 
-  const driversWithWorkSet = new Set(assigned.map((b) => b.driver).filter(Boolean));
+  const driversWithWorkSet = new Set(
+    assigned.flatMap((b) => bookingDrivers(b).map((d) => d.driver)).filter(Boolean)
+  );
   const driversWithWork = driversWithWorkSet.size;
   const freeApproved = assignableDrivers.filter((d) => !driversWithWorkSet.has(d.name)).length;
 
-  function assignDriver(booking: Booking, driver: Driver) {
-    updateBooking(booking.id, {
-      driver: driver.name,
-      vehicle: driver.vehicle,
-      history: [
-        ...(booking.history ?? []),
-        makeLeadHistoryEvent("assigned", "Driver assigned", {
-          detail: `${driver.name} · ${driver.vehicle}`,
-        }),
-      ],
-    });
-    toast({
-      variant: "success",
-      title: "Driver assigned",
-      description: `${driver.name} linked to ${booking.id}.`,
-    });
+  async function assignDriver(booking: Booking, driver: Driver) {
+    const drivers = [{ driver: driver.name, vehicle: driver.vehicle }];
+
+    try {
+      await updateBooking(booking.id, {
+        drivers,
+        driver: driver.name,
+        vehicle: driver.vehicle,
+        history: [
+          ...(booking.history ?? []),
+          makeLeadHistoryEvent("assigned", "Driver assigned", {
+            detail: `${driver.name} · ${driver.vehicle}`,
+          }),
+        ],
+      });
+      toast({
+        variant: "success",
+        title: "Driver assigned",
+        description: `${driver.name} → ${booking.customer}`,
+      });
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not assign driver",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    }
   }
 
   const hasFilters = query.trim().length > 0 || driverFilter.length > 0;
@@ -201,6 +288,9 @@ export default function AssignmentsPage() {
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col">
+        {pageLoading ? (
+          <StatCardsSkeleton />
+        ) : (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -233,6 +323,7 @@ export default function AssignmentsPage() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         <Card className="mb-4 border-dashed">
           <CardContent className="flex items-start gap-3 p-4">
@@ -255,6 +346,9 @@ export default function AssignmentsPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search booking, guest, driver…"
               className="h-8 pl-8"
+              type="search"
+              name="assignments-list-search"
+              autoComplete="off"
             />
           </div>
           <MultiFilter
@@ -312,11 +406,13 @@ export default function AssignmentsPage() {
                     <TableHead className="sticky top-0 z-20 bg-card">Package / Route</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-card">Driver</TableHead>
                     <TableHead className="sticky top-0 z-20 bg-card">Vehicle</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card w-[9rem]">Assign</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-card w-[10rem]">Assign</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visible.length === 0 ? (
+                  {pageLoading ? (
+                    <TableRowsSkeleton columns={6} rows={5} />
+                  ) : visible.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="py-10 text-center text-sm text-slate-soft">
                         No booking–driver rows match your filters.
@@ -324,12 +420,14 @@ export default function AssignmentsPage() {
                     </TableRow>
                   ) : (
                     visible.map((b) => {
-                      const driver = findDriver(state.drivers, b.driver, b.vehicle);
+                      const assignments = bookingDrivers(b);
                       return (
                         <TableRow key={b.id} className="group">
                           <TableCell>
                             <p className="text-sm font-medium text-ink-text">{b.customer}</p>
-                            <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
+                            <p className="font-mono-data text-[11px] text-slate-soft">
+                              {b.bookingNo ?? b.id}
+                            </p>
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-sm">
                             {formatDisplayDate(b.travelDate)}
@@ -343,56 +441,52 @@ export default function AssignmentsPage() {
                             </p>
                           </TableCell>
                           <TableCell>
-                            {b.driver ? (
-                              <div>
-                                <p className="text-sm font-medium text-ink-text">{b.driver}</p>
-                                {driver ? (
-                                  <p className="font-mono-data text-[11px] text-slate-soft">
-                                    {driver.id} · {driver.status}
-                                  </p>
-                                ) : (
-                                  <p className="text-[11px] text-signal">Not in driver master</p>
-                                )}
+                            {assignments.length > 0 ? (
+                              <div className="space-y-1">
+                                {assignments.map((a, i) => {
+                                  const d = findDriver(state.drivers, a.driver, a.vehicle);
+                                  return (
+                                    <div key={`${a.driver}-${a.vehicle}-${i}`}>
+                                      <p className="text-sm font-medium text-ink-text">
+                                        {a.driver}
+                                        {i === 0 && assignments.length > 1 ? (
+                                          <span className="ml-1 text-[10px] font-normal text-slate-soft">
+                                            primary
+                                          </span>
+                                        ) : null}
+                                      </p>
+                                      {d ? (
+                                        <p className="font-mono-data text-[11px] text-slate-soft">
+                                          {d.driverNo ?? d.id} · {d.status}
+                                        </p>
+                                      ) : (
+                                        <p className="text-[11px] text-signal">Not in driver master</p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <Badge variant="outline">Unassigned</Badge>
                             )}
                           </TableCell>
                           <TableCell className="font-mono-data text-sm">
-                            {b.vehicle || "—"}
+                            {assignments.length > 0 ? (
+                              <div className="space-y-1">
+                                {assignments.map((a, i) => (
+                                  <p key={`${a.vehicle}-${i}`}>{a.vehicle || "—"}</p>
+                                ))}
+                              </div>
+                            ) : (
+                              "—"
+                            )}
                           </TableCell>
                           <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="h-8 w-full">
-                                  {b.driver ? "Reassign" : "Assign"}
-                                  <ChevronDown className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="min-w-[14rem]">
-                                <DropdownMenuLabel>Approved drivers</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {assignableDrivers.length === 0 ? (
-                                  <DropdownMenuItem disabled>No approved drivers</DropdownMenuItem>
-                                ) : (
-                                  assignableDrivers.map((d) => (
-                                    <DropdownMenuItem
-                                      key={d.id}
-                                      disabled={d.name === b.driver && d.vehicle === b.vehicle}
-                                      onSelect={() => assignDriver(b, d)}
-                                    >
-                                      <Car className="size-3.5" />
-                                      <span className="min-w-0">
-                                        <span className="block text-sm">{d.name}</span>
-                                        <span className="block font-mono-data text-[10px] text-slate-soft">
-                                          {d.vehicle} · {d.vehicleType}
-                                        </span>
-                                      </span>
-                                    </DropdownMenuItem>
-                                  ))
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <AssignDriverMenu
+                              booking={b}
+                              assignableDrivers={assignableDrivers}
+                              onAssign={(d) => void assignDriver(b, d)}
+                            />
                           </TableCell>
                         </TableRow>
                       );
@@ -403,19 +497,23 @@ export default function AssignmentsPage() {
             </div>
 
             <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
-              {visible.length === 0 ? (
+              {pageLoading ? (
+                <RecordCardsSkeleton count={4} />
+              ) : visible.length === 0 ? (
                 <p className="py-10 text-center text-sm text-slate-soft">
                   No booking–driver rows match your filters.
                 </p>
               ) : (
                 visible.map((b) => {
-                  const driver = findDriver(state.drivers, b.driver, b.vehicle);
+                  const assignments = bookingDrivers(b);
                   return (
                     <RecordCard key={b.id}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-base font-semibold break-words text-ink-text">{b.customer}</p>
-                          <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
+                          <p className="font-mono-data text-[11px] text-slate-soft">
+                            {b.bookingNo ?? b.id}
+                          </p>
                         </div>
                         <StatusBadge status={b.status} />
                       </div>
@@ -428,49 +526,32 @@ export default function AssignmentsPage() {
                         <InfoItem label="Route" className="sm:col-span-2">
                           {bookingRoute(b)}
                         </InfoItem>
-                        <InfoItem label="Driver">
-                          {b.driver || "Unassigned"}
-                          {driver ? ` · ${driver.status}` : b.driver ? " · not in master" : ""}
+                        <InfoItem label="Drivers" className="sm:col-span-2">
+                          {assignments.length
+                            ? assignments
+                                .map(
+                                  (a, i) =>
+                                    `${a.driver}${a.vehicle ? ` · ${a.vehicle}` : ""}${
+                                      i === 0 && assignments.length > 1 ? " (primary)" : ""
+                                    }`
+                                )
+                                .join(", ")
+                            : "Unassigned"}
                         </InfoItem>
-                        <InfoItem label="Vehicle">{b.vehicle || "—"}</InfoItem>
                       </InfoGrid>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm" className="w-full">
-                            {b.driver ? "Reassign driver" : "Assign driver"}
-                            <ChevronDown className="size-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[14rem]">
-                          <DropdownMenuLabel>Approved drivers</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {assignableDrivers.length === 0 ? (
-                            <DropdownMenuItem disabled>No approved drivers</DropdownMenuItem>
-                          ) : (
-                            assignableDrivers.map((d) => (
-                              <DropdownMenuItem
-                                key={d.id}
-                                disabled={d.name === b.driver && d.vehicle === b.vehicle}
-                                onSelect={() => assignDriver(b, d)}
-                              >
-                                <Car className="size-3.5" />
-                                <span className="min-w-0">
-                                  <span className="block text-sm">{d.name}</span>
-                                  <span className="block font-mono-data text-[10px] text-slate-soft">
-                                    {d.vehicle} · {d.vehicleType}
-                                  </span>
-                                </span>
-                              </DropdownMenuItem>
-                            ))
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <AssignDriverMenu
+                        booking={b}
+                        assignableDrivers={assignableDrivers}
+                        onAssign={(d) => void assignDriver(b, d)}
+                      />
                     </RecordCard>
                   );
                 })
               )}
             </div>
           </Card>
+        ) : pageLoading ? (
+          <RecordCardsSkeleton count={4} />
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {byDriver.map(([name, group]) => (
@@ -522,31 +603,18 @@ export default function AssignmentsPage() {
                             {b.customer}
                           </p>
                           <p className="font-mono-data text-[11px] text-slate-soft">
-                            {b.id} · {formatDisplayDate(b.travelDate)}
+                            {b.bookingNo ?? b.id} · {formatDisplayDate(b.travelDate)}
                             {b.returnDate ? ` → ${formatDisplayDate(b.returnDate)}` : ""}
                           </p>
                           <p className="truncate text-[11px] text-slate">{bookingRoute(b)}</p>
                         </div>
                         {name === "Unassigned" || !group.driver ? (
                           <div className="mt-2">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="h-7">
-                                  Assign driver
-                                  <ChevronDown className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start">
-                                {assignableDrivers.map((d) => (
-                                  <DropdownMenuItem
-                                    key={d.id}
-                                    onSelect={() => assignDriver(b, d)}
-                                  >
-                                    {d.name} · {d.vehicle}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <AssignDriverMenu
+                              booking={b}
+                              assignableDrivers={assignableDrivers}
+                              onAssign={(d) => void assignDriver(b, d)}
+                            />
                           </div>
                         ) : null}
                       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -61,7 +61,6 @@ export function ConfirmDialog({
               });
             }}
           >
-            {confirming ? <Loader2 className="size-3.5 animate-spin" /> : null}
             {confirming ? "Deleting…" : confirmLabel}
           </Button>
         </SheetFooter>

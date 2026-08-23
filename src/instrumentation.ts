@@ -2,6 +2,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   try {
+    const { initDbPool } = await import("./lib/db");
+    await initDbPool();
+
     const { runMigrations } = await import("./lib/db/migrate");
     const { seedDemoUsers } = await import("./lib/db/seed");
 

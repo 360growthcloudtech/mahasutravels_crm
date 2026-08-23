@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { DrawerCommentsSkeleton } from "@/components/crm/skeletons";
 import { StatusBadge } from "@/components/crm/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Lead } from "@/lib/data";
 import { formatDateTime } from "@/lib/lead-utils";
 
@@ -22,11 +24,13 @@ export function LeadCommentsDrawer({
   open,
   onOpenChange,
   onAddComment,
+  loading = false,
 }: {
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddComment: (leadId: string, text: string) => void | Promise<void>;
+  loading?: boolean;
 }) {
   const [text, setText] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -56,7 +60,15 @@ export function LeadCommentsDrawer({
             <MessageCircle className="size-4 text-slate" />
             Comments
           </SheetTitle>
-          {lead && (
+          {loading ? (
+            <>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </div>
+              <Skeleton className="mt-1 h-3 w-44" />
+            </>
+          ) : lead ? (
             <>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-ink-text">{lead.name}</span>
@@ -66,11 +78,13 @@ export function LeadCommentsDrawer({
                 {lead.leadNo} · {lead.phone}
               </SheetDescription>
             </>
-          )}
+          ) : null}
         </SheetHeader>
 
         <SheetBody className="space-y-3">
-          {comments.length === 0 ? (
+          {loading ? (
+            <DrawerCommentsSkeleton count={3} />
+          ) : comments.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-10 text-center">
               <MessageCircle className="mx-auto size-5 text-slate-soft" />
               <p className="mt-2 text-sm text-muted-foreground">No comments yet</p>
@@ -90,23 +104,34 @@ export function LeadCommentsDrawer({
         </SheetBody>
 
         <SheetFooter className="flex-col gap-2 sm:flex-col">
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Write a comment…"
-            rows={3}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-          />
-          <div className="flex justify-end">
-            <Button variant="marigold" disabled={!text.trim() || saving} onClick={() => void submit()}>
-              <Send className="size-3.5" /> Add comment
-            </Button>
-          </div>
+          {loading ? (
+            <>
+              <Skeleton className="h-20 w-full" />
+              <div className="flex justify-end">
+                <Skeleton className="h-9 w-32" />
+              </div>
+            </>
+          ) : (
+            <>
+              <Textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Write a comment…"
+                rows={3}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    void submit();
+                  }
+                }}
+              />
+              <div className="flex justify-end">
+                <Button variant="marigold" disabled={!text.trim() || saving} onClick={() => void submit()}>
+                  <Send className="size-3.5" /> Add comment
+                </Button>
+              </div>
+            </>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>

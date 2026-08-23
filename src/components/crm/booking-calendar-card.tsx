@@ -18,14 +18,19 @@ import {
 } from "@/components/ui/sheet";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { toStoredDate } from "@/components/crm/date-picker";
-import { Booking, bookingRoute } from "@/lib/data";
+import type { DashboardBookingSummary } from "@/lib/db/dashboard";
 import { cn } from "@/lib/utils";
 
-function isLiveBooking(b: Booking) {
+function routeLabel(b: DashboardBookingSummary) {
+  if (b.pickup && b.dropoff) return `${b.pickup} → ${b.dropoff}`;
+  return "—";
+}
+
+function isLiveBooking(b: DashboardBookingSummary) {
   return b.status !== "Cancelled" && b.status !== "Refunded";
 }
 
-function bookingsOnDay(bookings: Booking[], iso: string) {
+function bookingsOnDay(bookings: DashboardBookingSummary[], iso: string) {
   return bookings.filter(
     (b) => isLiveBooking(b) && b.travelDate <= iso && b.returnDate >= iso
   );
@@ -35,12 +40,21 @@ function formatTripDate(iso: string) {
   return format(new Date(`${iso}T12:00:00`), "d MMM");
 }
 
-export function BookingCalendarCard({ bookings }: { bookings: Booking[] }) {
+export function BookingCalendarCard({
+  bookings,
+  calendar,
+}: {
+  bookings: DashboardBookingSummary[];
+  calendar?: Array<{ date: string; count: number }>;
+}) {
   const [month, setMonth] = React.useState(() => new Date());
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null);
   const [open, setOpen] = React.useState(false);
 
   const counts = React.useMemo(() => {
+    if (calendar?.length) {
+      return new Map(calendar.map((c) => [c.date, c.count]));
+    }
     const map = new Map<string, number>();
     for (const b of bookings) {
       if (!isLiveBooking(b)) continue;
@@ -52,7 +66,7 @@ export function BookingCalendarCard({ bookings }: { bookings: Booking[] }) {
       }
     }
     return map;
-  }, [bookings]);
+  }, [bookings, calendar]);
 
   const selectedIso = selectedDay ? toStoredDate(selectedDay) : null;
   const dayBookings = selectedIso
@@ -172,11 +186,11 @@ export function BookingCalendarCard({ bookings }: { bookings: Booking[] }) {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-ink-text">{b.customer}</p>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {bookingRoute(b)}
+                          {routeLabel(b)}
                         </p>
                       </div>
                       <span className="shrink-0 font-mono-data text-[11px] text-slate-soft">
-                        {b.id}
+                        {b.bookingNo || b.id}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -190,15 +204,8 @@ export function BookingCalendarCard({ bookings }: { bookings: Booking[] }) {
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-soft">
                       {b.driver ? <span>Driver · {b.driver}</span> : null}
-                      {b.vehicle ? <span>{b.vehicle}</span> : null}
                       <span>₹{b.total.toLocaleString("en-IN")}</span>
-                      {b.agent ? <span>{b.agent}</span> : null}
                     </div>
-                    {b.tourPackage ? (
-                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                        {b.tourPackage}
-                      </p>
-                    ) : null}
                   </li>
                 ))}
               </ul>

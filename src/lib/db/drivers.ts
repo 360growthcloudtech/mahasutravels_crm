@@ -509,6 +509,60 @@ export async function deleteDriver(id: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
+export type VehicleOption = {
+  id: string;
+  vehicle_type: string;
+  registration_number: string;
+  capacity: number;
+  driver_name: string;
+  driver_status: string;
+};
+
+export async function listApprovedVehicles(): Promise<VehicleOption[]> {
+  const { rows } = await query<VehicleOption>(
+    `SELECT
+       v.id,
+       v.vehicle_type,
+       v.registration_number,
+       v.capacity,
+       d.name AS driver_name,
+       d.status AS driver_status
+     FROM vehicles v
+     JOIN drivers d ON d.id = v.driver_id
+     WHERE d.status = 'Approved'
+     ORDER BY v.vehicle_type ASC, v.registration_number ASC`
+  );
+  return rows.map((row) => ({
+    ...row,
+    capacity: Number(row.capacity) || 0,
+  }));
+}
+
+export async function resolveVehicleOption(
+  id: string,
+  opts?: { requireApproved?: boolean }
+): Promise<VehicleOption | null> {
+  const requireApproved = opts?.requireApproved ?? true;
+  const { rows } = await query<VehicleOption>(
+    `SELECT
+       v.id,
+       v.vehicle_type,
+       v.registration_number,
+       v.capacity,
+       d.name AS driver_name,
+       d.status AS driver_status
+     FROM vehicles v
+     JOIN drivers d ON d.id = v.driver_id
+     WHERE v.id = $1::uuid
+       ${requireApproved ? "AND d.status = 'Approved'" : ""}
+     LIMIT 1`,
+    [id]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return { ...row, capacity: Number(row.capacity) || 0 };
+}
+
 export function isUniqueViolation(error: unknown) {
   return (
     typeof error === "object" &&

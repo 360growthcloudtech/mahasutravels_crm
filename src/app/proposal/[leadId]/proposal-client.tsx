@@ -6,7 +6,6 @@ import {
   BedDouble,
   Car,
   Camera,
-  Check,
   Compass,
   Download,
   MapPin,
@@ -45,7 +44,7 @@ function MetaTile({
         <Icon className="size-3.5" />
         <p className="font-mono-data text-[10px] uppercase tracking-[0.16em]">{label}</p>
       </div>
-      <p className="mt-1.5 text-sm font-semibold leading-snug text-ink-text">{value}</p>
+      <p className="mt-1.5 text-sm font-semibold leading-snug text-[#12172b]">{value}</p>
     </div>
   );
 }
@@ -61,7 +60,7 @@ export default function ProposalPage() {
   if (!lead) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#ebe4d6] p-8">
-        <p className="text-sm text-muted-foreground">Lead not found for this proposal.</p>
+        <p className="text-sm text-[#5c5346]">Lead not found for this proposal.</p>
       </main>
     );
   }
@@ -79,14 +78,19 @@ export default function ProposalPage() {
   }`;
 
   return (
-    <div className="proposal-print min-h-screen bg-[#e8dfcf] text-ink-text print:bg-white">
+    <div className="proposal-print min-h-screen bg-[#e8dfcf] text-[#12172b] print:bg-white">
       <div className="sticky top-0 z-20 flex items-center justify-between border-b border-[#d9cbb3]/80 bg-[#f7f1e6]/90 px-4 py-3 backdrop-blur-md print:hidden">
         <div>
-          <p className="text-sm font-semibold tracking-tight">Proposal preview</p>
+          <p className="text-sm font-semibold tracking-tight text-[#12172b]">Proposal preview</p>
           <p className="text-[11px] text-[#8a7a62]">Mahasu Travels · guest brochure</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-[#d9cbb3] bg-white text-[#12172b] hover:bg-[#f3eadc]"
+            onClick={() => window.print()}
+          >
             <Printer className="size-3.5" /> Print
           </Button>
           <Button variant="marigold" size="sm" onClick={() => window.print()}>
@@ -121,7 +125,7 @@ export default function ProposalPage() {
 
           <div className="relative flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-marigold text-ink shadow-[0_8px_20px_rgba(245,165,36,0.35)]">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-marigold text-[#12172b] shadow-[0_8px_20px_rgba(245,165,36,0.35)]">
                 <Compass className="size-6" />
               </div>
               <div>
@@ -193,8 +197,8 @@ export default function ProposalPage() {
           </svg>
 
           <div className="absolute bottom-5 right-6 z-10 sm:bottom-6 sm:right-8">
-            <div className="rounded-[22px] border border-marigold/40 bg-marigold px-4 py-3 text-ink shadow-[0_12px_30px_rgba(245,165,36,0.35)] sm:px-5">
-              <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-marigold-ink/80">
+            <div className="rounded-[22px] border border-marigold/40 bg-marigold px-4 py-3 text-[#12172b] shadow-[0_12px_30px_rgba(245,165,36,0.35)] sm:px-5">
+              <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#7a4c05]/80">
                 Quoted for this guest
               </p>
               <p className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -211,20 +215,20 @@ export default function ProposalPage() {
             </p>
             <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="font-display text-2xl font-semibold tracking-tight text-ink-text sm:text-3xl">
+                <h2 className="font-display text-2xl font-semibold tracking-tight text-[#12172b] sm:text-3xl">
                   {proposal.customer}
                 </h2>
                 <p className="mt-1 text-sm text-[#7a6b55]">
                   {proposal.leadId} · Planned with {proposal.agent}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2 text-xs text-ink-text">
+              <div className="flex flex-wrap gap-2 text-xs text-[#12172b]">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 ring-1 ring-[#eadfcb]">
-                  <Phone className="size-3.5 text-marigold-ink" />
+                  <Phone className="size-3.5 text-[#7a4c05]" />
                   {proposal.phone || "—"}
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 ring-1 ring-[#eadfcb]">
-                  <Mail className="size-3.5 text-marigold-ink" />
+                  <Mail className="size-3.5 text-[#7a4c05]" />
                   {proposal.email || "—"}
                 </span>
               </div>
@@ -241,7 +245,7 @@ export default function ProposalPage() {
 
         <section className="px-6 py-7 sm:px-8">
           <div className="flex items-center gap-3">
-            <h2 className="font-display text-xl font-semibold tracking-tight">Tour overview</h2>
+            <h2 className="font-display text-xl font-semibold tracking-tight text-[#12172b]">Tour overview</h2>
             <span className="h-px flex-1 bg-[linear-gradient(90deg,#d9cbb3,transparent)]" />
           </div>
           <div
@@ -249,7 +253,7 @@ export default function ProposalPage() {
             dangerouslySetInnerHTML={{ __html: proposal.overview }}
           />
           {proposal.tourPlan ? (
-            <blockquote className="mt-5 rounded-2xl border-l-4 border-marigold bg-white/70 px-4 py-3.5 text-sm text-ink-text shadow-[inset_0_0_0_1px_#eadfcb]">
+            <blockquote className="mt-5 rounded-2xl border-l-4 border-marigold bg-white/70 px-4 py-3.5 text-sm text-[#12172b] shadow-[inset_0_0_0_1px_#eadfcb]">
               <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#9a8668]">
                 Guest note
               </p>
@@ -261,7 +265,7 @@ export default function ProposalPage() {
         <section className="px-6 pb-8 sm:px-8">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h2 className="font-display text-xl font-semibold tracking-tight">Day-wise itinerary</h2>
+              <h2 className="font-display text-xl font-semibold tracking-tight text-[#12172b]">Day-wise itinerary</h2>
               <p className="mt-1 text-xs text-[#8a7a62]">
                 {proposal.isCustomized
                   ? "Customized for this guest · master template unchanged"
@@ -288,13 +292,13 @@ export default function ProposalPage() {
                     Day {stop.day}
                     {index === 0 ? " · Start" : index === proposal.itinerary.length - 1 ? " · Return" : ""}
                   </p>
-                  <p className="mt-1 font-display text-base font-semibold text-ink-text">{stop.title}</p>
+                  <p className="mt-1 font-display text-base font-semibold text-[#12172b]">{stop.title}</p>
                   <div
                     className="proposal-copy mt-1.5 text-sm leading-relaxed text-[#5c5346]"
                     dangerouslySetInnerHTML={{ __html: stop.detail }}
                   />
                   {(stop.hotelName || stop.hotelId) && (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-teal-soft px-3 py-1.5 text-xs text-teal">
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#e0f5f3] px-3 py-1.5 text-xs text-[#0c8f8f]">
                       <BedDouble className="size-3.5 shrink-0" />
                       <span className="font-medium">Overnight</span>
                       <span>{stop.hotelName || stop.hotelId}</span>
@@ -306,21 +310,7 @@ export default function ProposalPage() {
           </ol>
         </section>
 
-        <section className="grid gap-4 px-6 pb-8 sm:grid-cols-[1.1fr_0.9fr] sm:px-8">
-          <div className="rounded-[24px] border border-[#eadfcb] bg-white px-5 py-5">
-            <h2 className="font-display text-lg font-semibold tracking-tight">What’s included</h2>
-            <ul className="mt-4 space-y-2.5">
-              {proposal.inclusions.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm text-[#5c5346]">
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-teal-soft text-teal">
-                    <Check className="size-3" />
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-
+        <section className="px-6 pb-8 sm:px-8">
           <div className="relative overflow-hidden rounded-[24px] bg-[#101628] px-5 py-5 text-white">
             <div
               aria-hidden

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  CalendarPlus,
   ChevronDown,
   Copy,
   Filter,
@@ -21,6 +22,12 @@ import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Table,
   TableHeader,
@@ -42,12 +49,19 @@ import { LeadFormDialog } from "@/components/crm/lead-form-dialog";
 import { LeadCommentsDrawer } from "@/components/crm/lead-comments-drawer";
 import { LeadHistoryDrawer } from "@/components/crm/lead-history-drawer";
 import { LeadQuoteDrawer } from "@/components/crm/lead-quote-drawer";
+import { BookingFormDialog } from "@/components/crm/booking-form-dialog";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { Lead } from "@/lib/data";
+import { Booking, Lead } from "@/lib/data";
 import { formatDisplayTime, formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
+import { createLeadActivityApi } from "@/lib/leads-api";
 import { formatDisplayDate } from "@/components/crm/date-picker";
+import {
+  RecordCardsSkeleton,
+  StatCardsSkeleton,
+  TableRowsSkeleton,
+} from "@/components/crm/skeletons";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 function formatNextFollowUp(date?: string, time?: string) {
@@ -150,18 +164,116 @@ export default function LeadsPage() {
     addLeadComment,
     loadLeadComments,
     loadLeadActivity,
+    addBooking,
   } = useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
+  const [searchUnlocked, setSearchUnlocked] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = React.useState<string[]>([]);
   /** Agent filter stores assignee user ids, plus `"unassigned"`. */
   const [agentFilter, setAgentFilter] = React.useState<string[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null);
+  const [editingLeadId, setEditingLeadId] = React.useState<string | null>(null);
   const [commentLeadId, setCommentLeadId] = React.useState<string | null>(null);
+  const [commentsLoading, setCommentsLoading] = React.useState(false);
   const [historyLeadId, setHistoryLeadId] = React.useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
   const [quoteLeadId, setQuoteLeadId] = React.useState<string | null>(null);
+  const [bookingLead, setBookingLead] = React.useState<Lead | null>(null);
+
+  const editingLead = editingLeadId
+    ? state.leads.find((l) => l.id === editingLeadId) ?? null
+    : null;
+
+  const bookedLeadIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const b of state.bookings) {
+      if (b.leadId) ids.add(b.leadId);
+    }
+    return ids;
+  }, [state.bookings]);
+
+  function canCreateBooking(lead: Lead) {
+    return !bookedLeadIds.has(lead.id);
+  }
+
+  function handleLeadStatusChange(lead: Lead, code: string, label: string) {
+    // Booked: update lead via API first, then open booking drawer on success
+    if (code === "Booked" && canCreateBooking(lead)) {
+      void updateLead(lead.id, { status: "Booked" })
+        .then(() => {
+          toast({
+            variant: "success",
+            title: "Status updated",
+            description: `${lead.name} moved to ${label}. Add booking details next.`,
+          });
+          setBookingLead({ ...lead, status: "Booked" });
+        })
+        .catch((error) =>
+          toast({
+            variant: "error",
+            title: "Could not update status",
+            description: error instanceof Error ? error.message : "Please try again.",
+          })
+        );
+      return;
+    }
+    void updateLead(lead.id, { status: code })
+      .then(() =>
+        toast({
+          variant: "success",
+          title: "Status updated",
+          description: `${lead.name} moved to ${label}.`,
+        })
+      )
+      .catch((error) =>
+        toast({
+          variant: "error",
+          title: "Could not update status",
+          description: error instanceof Error ? error.message : "Please try again.",
+        })
+      );
+  }
+
+  async function handleCreateBookingFromLead(data: Omit<Booking, "id" | "bookingNo">) {
+    if (!bookingLead) return;
+    const lead = bookingLead;
+    try {
+      await addBooking({
+        ...data,
+        leadId: lead.id,
+      });
+      // Status may already be Booked (status-dropdown flow); ensure it if opened via button
+      if (lead.status !== "Booked") {
+        try {
+          await updateLead(lead.id, { status: "Booked" });
+        } catch {
+          toast({
+            variant: "error",
+            title: "Booking created",
+            description: "Booking was saved, but the lead status could not be set to Booked.",
+          });
+          setBookingLead(null);
+          return;
+        }
+      }
+      toast({
+        variant: "success",
+        title: "Booking created",
+        description: `${lead.leadNo} · ${data.customer} is on the books.`,
+      });
+      setBookingLead(null);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not create booking",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      throw error;
+    }
+  }
 
   const commentLead = commentLeadId
     ? state.leads.find((l) => l.id === commentLeadId) ?? null
@@ -174,11 +286,33 @@ export default function LeadsPage() {
     : null;
 
   React.useEffect(() => {
-    if (commentLeadId) void loadLeadComments(commentLeadId);
+    if (!commentLeadId) {
+      setCommentsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCommentsLoading(true);
+    void loadLeadComments(commentLeadId).finally(() => {
+      if (!cancelled) setCommentsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [commentLeadId, loadLeadComments]);
 
   React.useEffect(() => {
-    if (historyLeadId) void loadLeadActivity(historyLeadId);
+    if (!historyLeadId) {
+      setHistoryLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    void loadLeadActivity(historyLeadId).finally(() => {
+      if (!cancelled) setHistoryLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [historyLeadId, loadLeadActivity]);
 
   // Master-backed filter options from /api/leads/masters + /api/users
@@ -268,38 +402,42 @@ export default function LeadsPage() {
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Total leads</p>
-              <p className="mt-1 font-display text-xl font-semibold">{state.leads.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Repeat inquiries</p>
-              <p className="mt-1 font-display text-xl font-semibold text-signal">
-                {repeatCount}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Booked</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">
-                {bookedCount}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Open</p>
-              <p className="mt-1 font-display text-xl font-semibold">
-                {state.leads.filter((l) => !closedStatusCodes.has(l.status)).length}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {leadsLoading ? (
+          <StatCardsSkeleton className="shrink-0 gap-4" />
+        ) : (
+          <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Total leads</p>
+                <p className="mt-1 font-display text-xl font-semibold">{state.leads.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Repeat inquiries</p>
+                <p className="mt-1 font-display text-xl font-semibold text-signal">
+                  {repeatCount}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Booked</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">
+                  {bookedCount}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Open</p>
+                <p className="mt-1 font-display text-xl font-semibold">
+                  {state.leads.filter((l) => !closedStatusCodes.has(l.status)).length}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 flex-col gap-3 border-b border-border-soft bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -311,6 +449,14 @@ export default function LeadsPage() {
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search name, phone, email…"
                   className="h-8 pl-8 text-xs"
+                  type="search"
+                  name="leads-list-search"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
+                  readOnly={!searchUnlocked}
+                  onFocus={() => setSearchUnlocked(true)}
                 />
               </div>
               <MultiFilter
@@ -377,18 +523,20 @@ export default function LeadsPage() {
               <TableRow className="group hover:bg-transparent">
                 <TableHead className="sticky top-0 z-20 bg-card">Lead</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Tour package / Route</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Car / pax / days</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Source</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Assigned</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Next follow-up</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Price</TableHead>
                 <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((l) => (
+              {leadsLoading ? (
+                <TableRowsSkeleton columns={10} rows={6} avatar />
+              ) : visible.map((l) => (
                 <TableRow key={l.id} className="group">
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -416,6 +564,35 @@ export default function LeadsPage() {
                       {l.pickup}{l.drop ? ` → ${l.drop}` : ""}
                     </p>
                   </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
+                          aria-label={`Change status for ${l.name}`}
+                        >
+                          <StatusBadge status={l.status} />
+                          <ChevronDown className="size-3.5 text-slate-soft" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {leadStatuses.map((s) => (
+                          <DropdownMenuItem
+                            key={s.code}
+                            disabled={s.code === l.status}
+                            onSelect={() => {
+                              handleLeadStatusChange(l, s.code, s.label);
+                            }}
+                          >
+                            <StatusBadge status={s.code} />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                   <TableCell className="text-sm text-slate">
                     <p>{formatDisplayDate(l.pickupDate)}</p>
                     {l.dropDate ? (
@@ -442,131 +619,112 @@ export default function LeadsPage() {
                   <TableCell className="whitespace-nowrap text-sm text-slate">
                     {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
                   </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
-                          aria-label={`Change status for ${l.name}`}
-                        >
-                          <StatusBadge status={l.status} />
-                          <ChevronDown className="size-3.5 text-slate-soft" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {leadStatuses.map((s) => (
-                          <DropdownMenuItem
-                            key={s.code}
-                            disabled={s.code === l.status}
-                            onSelect={() => {
-                              void updateLead(l.id, { status: s.code })
-                                .then(() =>
-                                  toast({
-                                    variant: "success",
-                                    title: "Status updated",
-                                    description: `${l.name} moved to ${s.label}.`,
-                                  })
-                                )
-                                .catch((error) =>
-                                  toast({
-                                    variant: "error",
-                                    title: "Could not update status",
-                                    description: error instanceof Error ? error.message : "Please try again.",
-                                  })
-                                );
-                            }}
-                          >
-                            <StatusBadge status={s.code} />
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
                   <TableCell className="whitespace-nowrap pr-6 text-right font-mono-data text-sm text-ink-text">
                     ₹{l.price.toLocaleString("en-IN")}
                   </TableCell>
                   <TableCell className={stickyActionCell}>
-                    <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        aria-label={`Tracking history for ${l.name}`}
-                        onClick={() => setHistoryLeadId(l.id)}
-                      >
-                        <History className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        aria-label={`Comments for ${l.name}`}
-                        onClick={() => setCommentLeadId(l.id)}
-                      >
-                        <MessageCircle className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        aria-label={`Send quote for ${l.name}`}
-                        onClick={() => setQuoteLeadId(l.id)}
-                      >
-                        <FileText className="size-3.5" />
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost" className="size-8">
-                            <MoreHorizontal className="size-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <LeadFormDialog
-                            lead={l}
-                            trigger={
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                <Pencil className="size-3.5" /> Edit lead
-                              </DropdownMenuItem>
-                            }
-                            onSubmit={async (data) => {
-                              try {
-                                await updateLead(l.id, {
-                                  ...data,
-                                  assignedToId: data.assignedToId,
-                                });
-                                toast({ variant: "success", title: "Lead updated", description: `${l.leadNo} saved successfully.` });
-                              } catch (error) {
-                                toast({
-                                  variant: "error",
-                                  title: "Could not update lead",
-                                  description: error instanceof Error ? error.message : "Please try again.",
-                                });
-                              }
-                            }}
-                          />
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-signal focus:bg-signal-soft"
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setDeleteTarget(l);
-                            }}
-                          >
-                            <Trash2 className="size-3.5" /> Delete lead
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    <TooltipProvider delayDuration={200}>
+                      <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Tracking history for ${l.name}`}
+                              onClick={() => setHistoryLeadId(l.id)}
+                            >
+                              <History className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">History</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Comments for ${l.name}`}
+                              onClick={() => setCommentLeadId(l.id)}
+                            >
+                              <MessageCircle className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Comments</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Send quote for ${l.name}`}
+                              onClick={() => setQuoteLeadId(l.id)}
+                            >
+                              <FileText className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Send quote</TooltipContent>
+                        </Tooltip>
+                        {canCreateBooking(l) ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8"
+                                aria-label={`Create booking for ${l.name}`}
+                                onClick={() => setBookingLead(l)}
+                              >
+                                <CalendarPlus className="size-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">Create booking</TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="icon" variant="ghost" className="size-8">
+                                    <MoreHorizontal className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      setEditingLeadId(l.id);
+                                    }}
+                                  >
+                                    <Pencil className="size-3.5" /> Edit lead
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-signal focus:bg-signal-soft"
+                                    onSelect={(e) => {
+                                      e.preventDefault();
+                                      setDeleteTarget(l);
+                                    }}
+                                  >
+                                    <Trash2 className="size-3.5" /> Delete lead
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">More actions</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TooltipProvider>
                   </TableCell>
                 </TableRow>
               ))}
-              {visible.length === 0 && (
+              {!leadsLoading && visible.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
-                    {leadsLoading ? "Loading leads…" : "No leads match these filters."}
+                    No leads match these filters.
                   </TableCell>
                 </TableRow>
               )}
@@ -575,9 +733,11 @@ export default function LeadsPage() {
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
-            {visible.length === 0 ? (
+            {leadsLoading ? (
+              <RecordCardsSkeleton count={4} />
+            ) : visible.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
-                {leadsLoading ? "Loading leads…" : "No leads match these filters."}
+                No leads match these filters.
               </p>
             ) : (
               visible.map((l) => (
@@ -605,13 +765,7 @@ export default function LeadsPage() {
                             key={s.code}
                             disabled={s.code === l.status}
                             onSelect={() => {
-                              void updateLead(l.id, { status: s.code }).then(() =>
-                                toast({
-                                  variant: "success",
-                                  title: "Status updated",
-                                  description: `${l.name} moved to ${s.label}.`,
-                                })
-                              );
+                              handleLeadStatusChange(l, s.code, s.label);
                             }}
                           >
                             <StatusBadge status={s.code} />
@@ -658,18 +812,14 @@ export default function LeadsPage() {
                     <Button size="sm" variant="outline" onClick={() => setQuoteLeadId(l.id)}>
                       <FileText className="size-3.5" /> Quote
                     </Button>
-                    <LeadFormDialog
-                      lead={l}
-                      trigger={
-                        <Button size="sm" variant="outline">
-                          <Pencil className="size-3.5" /> Edit
-                        </Button>
-                      }
-                      onSubmit={async (data) => {
-                        await updateLead(l.id, { ...data, assignedToId: data.assignedToId });
-                        toast({ variant: "success", title: "Lead updated", description: `${l.leadNo} saved successfully.` });
-                      }}
-                    />
+                    {canCreateBooking(l) ? (
+                      <Button size="sm" variant="outline" onClick={() => setBookingLead(l)}>
+                        <CalendarPlus className="size-3.5" /> Create booking
+                      </Button>
+                    ) : null}
+                    <Button size="sm" variant="outline" onClick={() => setEditingLeadId(l.id)}>
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
                     <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(l)}>
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
@@ -684,9 +834,40 @@ export default function LeadsPage() {
         </Card>
       </main>
 
+      <LeadFormDialog
+        lead={editingLead ?? undefined}
+        open={!!editingLead}
+        onOpenChange={(open) => {
+          if (!open) setEditingLeadId(null);
+        }}
+        onSubmit={async (data) => {
+          if (!editingLead) return;
+          try {
+            await updateLead(editingLead.id, {
+              ...data,
+              assignedToId: data.assignedToId,
+            });
+            toast({
+              variant: "success",
+              title: "Lead updated",
+              description: `${editingLead.leadNo} saved successfully.`,
+            });
+            setEditingLeadId(null);
+          } catch (error) {
+            toast({
+              variant: "error",
+              title: "Could not update lead",
+              description: error instanceof Error ? error.message : "Please try again.",
+            });
+            throw error;
+          }
+        }}
+      />
+
       <LeadCommentsDrawer
         lead={commentLead}
         open={!!commentLeadId}
+        loading={commentsLoading}
         onOpenChange={(v) => !v && setCommentLeadId(null)}
         onAddComment={async (leadId, text) => {
           await addLeadComment(leadId, text);
@@ -701,6 +882,7 @@ export default function LeadsPage() {
       <LeadHistoryDrawer
         lead={historyLead}
         open={!!historyLeadId}
+        loading={historyLoading}
         onOpenChange={(v) => !v && setHistoryLeadId(null)}
       />
 
@@ -739,12 +921,13 @@ export default function LeadsPage() {
         }}
         onSend={({ amount, note, sentVia, saveAsDraft }) => {
           if (!quoteLead) return;
+          const leadId = quoteLead.id;
           const route =
             quoteLead.pickup && quoteLead.drop
               ? `${quoteLead.pickup} → ${quoteLead.drop}`
               : quoteLead.tourPackage;
           addQuote({
-            leadId: quoteLead.id,
+            leadId,
             customer: quoteLead.name,
             route,
             days: quoteLead.days,
@@ -754,11 +937,20 @@ export default function LeadsPage() {
             sentVia,
             note: note || undefined,
           });
-          void updateLead(quoteLead.id, {
+          void updateLead(leadId, {
             status: saveAsDraft ? quoteLead.status : "Hot",
             price: amount,
             notes: note || quoteLead.notes,
           });
+          if (!saveAsDraft) {
+            void createLeadActivityApi(leadId, {
+              action: "quoted",
+              label: "Quote sent",
+              detail: `₹${amount.toLocaleString("en-IN")} via ${sentVia.join(", ")}`,
+            }).catch(() => {
+              /* KPI activity is best-effort; quote still saved locally */
+            });
+          }
           setQuoteLeadId(null);
           toast({
             variant: "success",
@@ -768,6 +960,16 @@ export default function LeadsPage() {
               : `Quote for ${quoteLead.name} sent via ${sentVia.join(", ")}.`,
           });
         }}
+      />
+
+      <BookingFormDialog
+        lead={bookingLead ?? undefined}
+        drivers={state.drivers}
+        open={!!bookingLead}
+        onOpenChange={(open) => {
+          if (!open) setBookingLead(null);
+        }}
+        onSubmit={handleCreateBookingFromLead}
       />
 
       <ConfirmDialog
