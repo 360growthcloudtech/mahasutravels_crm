@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   adSpendToDto,
   deleteAdSpend,
@@ -33,6 +33,8 @@ export async function GET(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "ad.spend.and.marketing.view");
+  if (denied) return denied;
 
   const { id } = await context.params;
   const spend = await findAdSpendById(id);
@@ -46,6 +48,8 @@ export async function PATCH(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "ad.spend.and.marketing.edit");
+  if (denied) return denied;
 
   const { id } = await context.params;
   let body: Record<string, unknown>;
@@ -128,6 +132,8 @@ export async function DELETE(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "ad.spend.and.marketing.delete");
+  if (denied) return denied;
 
   const { id } = await context.params;
   const deleted = await deleteAdSpend(id);

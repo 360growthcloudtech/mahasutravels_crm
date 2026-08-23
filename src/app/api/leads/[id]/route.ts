@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { sessionHasPermission } from "@/lib/permission-check";
 import {
   deleteLead,
   findLeadById,
@@ -42,6 +43,8 @@ export async function GET(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const viewDenied = forbidUnlessPermission(session, "leads.view");
+  if (viewDenied) return viewDenied;
 
   const { id } = await context.params;
   const lead = await findLeadById(id);
@@ -52,12 +55,33 @@ export async function GET(
   return NextResponse.json({ lead: leadToDto(lead) });
 }
 
+const QUOTE_PATCH_KEYS = new Set(["status", "price", "notes"]);
+
+function isQuoteOnlyPatch(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  return keys.length > 0 && keys.every((key) => QUOTE_PATCH_KEYS.has(key));
+}
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const canEdit = sessionHasPermission(session, "leads.edit");
+  const canQuote = sessionHasPermission(session, "leads.quote");
+  if (!canEdit && !(canQuote && isQuoteOnlyPatch(body))) {
+    const denied = forbidUnlessPermission(session, "leads.edit");
+    if (denied) return denied;
+  }
 
   const { id } = await context.params;
   if (session.role === "Employee") {
@@ -66,13 +90,6 @@ export async function PATCH(
     if (existing.assigned_to !== session.sub) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const patch: PatchLeadInput = {};
@@ -225,6 +242,8 @@ export async function DELETE(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "leads.delete");
+  if (denied) return denied;
 
   const { id } = await context.params;
   if (session.role === "Employee") {

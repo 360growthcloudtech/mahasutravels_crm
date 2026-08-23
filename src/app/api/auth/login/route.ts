@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { findUserByEmail } from "@/lib/db/users";
+import { listUserPermissionKeys } from "@/lib/db/permissions";
 import { setSessionCookie } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
@@ -29,11 +30,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
   }
 
+  const permissions = await listUserPermissionKeys(user.id);
+
   await setSessionCookie({
     sub: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
+    permissions,
   });
 
   return NextResponse.json({
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
       name: user.name,
       email: user.email,
       role: user.role,
+      permission_keys: permissions,
     },
   });
 }

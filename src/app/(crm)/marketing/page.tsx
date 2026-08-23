@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,12 +108,16 @@ function MultiFilter<T extends string>({
 }
 
 export default function MarketingPage() {
-  const { state, adSpendsLoading, addAdSpend, updateAdSpend, deleteAdSpend } = useData();
+  const { state, adSpendsLoading, refreshAdSpends, addAdSpend, updateAdSpend, deleteAdSpend } =
+    useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
   const [platformFilter, setPlatformFilter] = React.useState<AdPlatform[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<AdSpendEntry | null>(null);
+  const canCreateAdSpend = useHasPermission("ad.spend.and.marketing.create");
+  const canEditAdSpend = useHasPermission("ad.spend.and.marketing.edit");
+  const canDeleteAdSpend = useHasPermission("ad.spend.and.marketing.delete");
   const [deleting, setDeleting] = React.useState(false);
 
   const adSpends = state.adSpends || [];
@@ -212,14 +218,19 @@ export default function MarketingPage() {
       <Topbar
         title="Ad Spend & Marketing"
         action={
-          <AdSpendDialog
-            trigger={
-              <Button variant="marigold">
-                <Plus className="size-4" /> Log Ad Spend
-              </Button>
-            }
-            onSubmit={handleCreate}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={refreshAdSpends} loading={adSpendsLoading} />
+            {canCreateAdSpend ? (
+              <AdSpendDialog
+                trigger={
+                  <Button variant="marigold">
+                    <Plus className="size-4" /> Log Ad Spend
+                  </Button>
+                }
+                onSubmit={handleCreate}
+              />
+            ) : null}
+          </div>
         }
       />
 
@@ -376,7 +387,9 @@ export default function MarketingPage() {
                       </TableCell>
 
                       <TableCell className={`text-right ${stickyActionCell}`}>
+                        {canEditAdSpend || canDeleteAdSpend ? (
                         <div className="flex items-center justify-end gap-1">
+                          {canEditAdSpend ? (
                           <AdSpendDialog
                             spend={s}
                             trigger={
@@ -386,7 +399,9 @@ export default function MarketingPage() {
                             }
                             onSubmit={(data) => handleUpdate(s.id, data)}
                           />
+                          ) : null}
 
+                          {canDeleteAdSpend ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -395,7 +410,9 @@ export default function MarketingPage() {
                           >
                             <Trash2 className="size-4" />
                           </Button>
+                          ) : null}
                         </div>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))
@@ -441,6 +458,7 @@ export default function MarketingPage() {
                     ) : null}
                   </InfoGrid>
                   <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    {canEditAdSpend ? (
                     <AdSpendDialog
                       spend={s}
                       trigger={
@@ -450,6 +468,8 @@ export default function MarketingPage() {
                       }
                       onSubmit={(data) => handleUpdate(s.id, data)}
                     />
+                    ) : null}
+                    {canDeleteAdSpend ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -458,6 +478,7 @@ export default function MarketingPage() {
                     >
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
+                    ) : null}
                   </div>
                 </RecordCard>
               ))

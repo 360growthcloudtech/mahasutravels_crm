@@ -18,6 +18,8 @@ import {
   Archive,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -78,12 +80,16 @@ function driverInitials(name: string) {
 function DriverCard({
   d,
   statusBusy,
+  canEdit,
+  canDelete,
   onEdit,
   onToggleStatus,
   onDelete,
 }: {
   d: Driver;
   statusBusy?: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onEdit: () => void;
   onToggleStatus: () => Promise<void>;
   onDelete: () => void;
@@ -105,6 +111,7 @@ function DriverCard({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <StatusBadge status={d.status} />
+            {canEdit || canDelete ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="icon" variant="ghost" className="size-7" disabled={statusBusy}>
@@ -112,10 +119,13 @@ function DriverCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {canEdit ? (
                 <DropdownMenuItem onSelect={() => onEdit()}>
                   <Pencil className="size-3.5" /> Edit profile
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                ) : null}
+                {canEdit && canDelete ? <DropdownMenuSeparator /> : null}
+                {canDelete ? (
                 <DropdownMenuItem
                   className="text-signal focus:bg-signal-soft"
                   onSelect={(e) => {
@@ -125,8 +135,10 @@ function DriverCard({
                 >
                   <Trash2 className="size-3.5" /> Remove driver
                 </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
+            ) : null}
           </div>
         </div>
 
@@ -178,7 +190,9 @@ function DriverCard({
           </p>
         ) : null}
 
+        {(canEdit || canDelete) ? (
         <div className="grid grid-cols-2 gap-2 border-t border-border-soft pt-3">
+          {canEdit ? (
           <Button
             variant="outline"
             size="sm"
@@ -188,6 +202,8 @@ function DriverCard({
           >
             <Pencil className="size-3.5" /> Edit
           </Button>
+          ) : null}
+          {canEdit ? (
           <Button
             variant="secondary"
             size="sm"
@@ -201,16 +217,22 @@ function DriverCard({
                 ? "Deactivate"
                 : "Approve"}
           </Button>
+          ) : null}
         </div>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
 export default function DriversPage() {
-  const { state, driversLoading, addDriver, updateDriver, deleteDriver } = useData();
+  const { state, driversLoading, refreshDrivers, addDriver, updateDriver, deleteDriver } =
+    useData();
   const { toast } = useToast();
   const [deleteTarget, setDeleteTarget] = React.useState<Driver | null>(null);
+  const canCreateDriver = useHasPermission("drivers.and.vehicles.create");
+  const canEditDriver = useHasPermission("drivers.and.vehicles.edit");
+  const canDeleteDriver = useHasPermission("drivers.and.vehicles.delete");
   const [editingDriverId, setEditingDriverId] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [statusBusyId, setStatusBusyId] = React.useState<string | null>(null);
@@ -325,14 +347,19 @@ export default function DriversPage() {
       <Topbar
         title="Drivers & Vehicles"
         action={
-          <DriverFormDialog
-            trigger={
-              <Button variant="marigold">
-                <Plus className="size-4" /> Add Driver
-              </Button>
-            }
-            onSubmit={handleCreate}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={refreshDrivers} loading={driversLoading} />
+            {canCreateDriver ? (
+              <DriverFormDialog
+                trigger={
+                  <Button variant="marigold">
+                    <Plus className="size-4" /> Add Driver
+                  </Button>
+                }
+                onSubmit={handleCreate}
+              />
+            ) : null}
+          </div>
         }
       />
 
@@ -525,7 +552,9 @@ export default function DriversPage() {
                             <StatusBadge status={d.status} />
                           </TableCell>
                           <TableCell className={stickyActionCell}>
+                            {canEditDriver || canDeleteDriver ? (
                             <div className="flex items-center gap-1">
+                              {canEditDriver ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -536,6 +565,8 @@ export default function DriversPage() {
                               >
                                 <Pencil className="size-3.5" />
                               </Button>
+                              ) : null}
+                              {canEditDriver ? (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -550,6 +581,8 @@ export default function DriversPage() {
                                     ? "Deactivate"
                                     : "Approve"}
                               </Button>
+                              ) : null}
+                              {canEditDriver || canDeleteDriver ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button
@@ -562,6 +595,8 @@ export default function DriversPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  {canEditDriver ? (
+                                  <>
                                   <DropdownMenuItem onSelect={() => setEditingDriverId(d.id)}>
                                     <Pencil className="size-3.5" /> Edit profile
                                   </DropdownMenuItem>
@@ -571,16 +606,22 @@ export default function DriversPage() {
                                     <Archive className="size-3.5" />
                                     {d.status === "Approved" ? "Deactivate" : "Approve"}
                                   </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
+                                  </>
+                                  ) : null}
+                                  {canEditDriver && canDeleteDriver ? <DropdownMenuSeparator /> : null}
+                                  {canDeleteDriver ? (
                                   <DropdownMenuItem
                                     className="text-signal focus:text-signal"
                                     onSelect={() => setDeleteTarget(d)}
                                   >
                                     <Trash2 className="size-3.5" /> Remove
                                   </DropdownMenuItem>
+                                  ) : null}
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                              ) : null}
                             </div>
+                            ) : null}
                           </TableCell>
                         </TableRow>
                       );
@@ -613,6 +654,8 @@ export default function DriversPage() {
                     key={d.id}
                     d={d}
                     statusBusy={statusBusyId === d.id}
+                    canEdit={canEditDriver}
+                    canDelete={canDeleteDriver}
                     onEdit={() => setEditingDriverId(d.id)}
                     onToggleStatus={() => handleToggleStatus(d)}
                     onDelete={() => setDeleteTarget(d)}

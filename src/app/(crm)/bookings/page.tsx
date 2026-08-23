@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { downloadBookingsCsv } from "@/lib/bookings-api";
 import { BookingsExportDialog } from "@/components/crm/bookings-export-dialog";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
 import { bookingDrivers, bookingHotels } from "@/lib/booking-utils";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
@@ -151,7 +153,8 @@ function MultiFilter<T extends string>({
 }
 
 export default function BookingsPage() {
-  const { state, bookingsLoading, addBooking, updateBooking, deleteBooking } = useData();
+  const { state, bookingsLoading, refreshBookings, addBooking, updateBooking, deleteBooking } =
+    useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
   const [searchUnlocked, setSearchUnlocked] = React.useState(false);
@@ -168,6 +171,11 @@ export default function BookingsPage() {
   const [editingBookingId, setEditingBookingId] = React.useState<string | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
+  const canExportBookings = useHasPermission("bookings.export");
+  const canCreateBooking = useHasPermission("bookings.create");
+  const canEditBooking = useHasPermission("bookings.edit");
+  const canDeleteBooking = useHasPermission("bookings.delete");
+  const canCommentBooking = useHasPermission("bookings.comment");
 
   const driverNames = React.useMemo(
     () =>
@@ -376,15 +384,20 @@ export default function BookingsPage() {
       <Topbar
         title="Bookings"
         action={
-          <BookingFormDialog
-            trigger={
-              <Button variant="marigold">
-                <Plus className="size-4" /> New Booking
-              </Button>
-            }
-            drivers={state.drivers}
-            onSubmit={handleCreate}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={refreshBookings} loading={bookingsLoading} />
+            {canCreateBooking ? (
+              <BookingFormDialog
+                trigger={
+                  <Button variant="marigold">
+                    <Plus className="size-4" /> New Booking
+                  </Button>
+                }
+                drivers={state.drivers}
+                onSubmit={handleCreate}
+              />
+            ) : null}
+          </div>
         }
       />
 
@@ -503,16 +516,18 @@ export default function BookingsPage() {
                 </Button>
               )}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 shrink-0"
-              disabled={exporting || bookingsLoading}
-              onClick={() => setExportOpen(true)}
-            >
-              <Download className="size-3.5" />
-              Export CSV
-            </Button>
+            {canExportBookings ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 shrink-0"
+                disabled={exporting || bookingsLoading}
+                onClick={() => setExportOpen(true)}
+              >
+                <Download className="size-3.5" />
+                Export CSV
+              </Button>
+            ) : null}
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
@@ -614,6 +629,7 @@ export default function BookingsPage() {
                       >
                         <History className="size-3.5" />
                       </Button>
+                      {canCommentBooking ? (
                       <Button
                         size="icon"
                         variant="ghost"
@@ -623,6 +639,8 @@ export default function BookingsPage() {
                       >
                         <MessageCircle className="size-3.5" />
                       </Button>
+                      ) : null}
+                      {canEditBooking || canDeleteBooking ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button size="icon" variant="ghost" className="size-8">
@@ -630,6 +648,7 @@ export default function BookingsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {canEditBooking ? (
                           <DropdownMenuItem
                             onSelect={() => {
                               setEditingBookingId(b.id);
@@ -637,7 +656,9 @@ export default function BookingsPage() {
                           >
                             <Pencil className="size-3.5" /> Edit booking
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
+                          ) : null}
+                          {canEditBooking && canDeleteBooking ? <DropdownMenuSeparator /> : null}
+                          {canDeleteBooking ? (
                           <DropdownMenuItem
                             className="text-signal focus:bg-signal-soft"
                             onSelect={(e) => {
@@ -647,8 +668,10 @@ export default function BookingsPage() {
                           >
                             <Trash2 className="size-3.5" /> Delete booking
                           </DropdownMenuItem>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -737,15 +760,21 @@ export default function BookingsPage() {
                     <Button size="sm" variant="outline" onClick={() => setHistoryBookingId(b.id)}>
                       <History className="size-3.5" /> History
                     </Button>
+                    {canCommentBooking ? (
                     <Button size="sm" variant="outline" onClick={() => setCommentBookingId(b.id)}>
                       <MessageCircle className="size-3.5" /> Comments
                     </Button>
+                    ) : null}
+                    {canEditBooking ? (
                     <Button size="sm" variant="outline" onClick={() => setEditingBookingId(b.id)}>
                       <Pencil className="size-3.5" /> Edit
                     </Button>
+                    ) : null}
+                    {canDeleteBooking ? (
                     <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(b)}>
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
+                    ) : null}
                   </div>
                 </RecordCard>
               ))

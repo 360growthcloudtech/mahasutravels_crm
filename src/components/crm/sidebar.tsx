@@ -18,7 +18,9 @@ import {
   PanelLeftOpen,
   LogOut,
 } from "lucide-react";
-import { getSession, logout, type AuthSession } from "@/lib/auth";
+import { logout, sessionAllows } from "@/lib/auth";
+import { useSession } from "@/lib/session-context";
+import { ROUTE_VIEW_PERMISSION } from "@/lib/nav-permissions";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -35,15 +37,40 @@ import {
 } from "@/components/ui/sheet";
 
 export const crmNav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads", label: "Leads", icon: Users },
-  { href: "/bookings", label: "Bookings", icon: ClipboardList },
-  { href: "/marketing", label: "Ad Spend & Marketing", icon: Megaphone },
-  { href: "/assignments", label: "Booking & Drivers", icon: UserRound },
-  { href: "/itineraries", label: "Itineraries", icon: Route },
-  { href: "/hotels", label: "Hotels", icon: BedDouble },
-  { href: "/drivers", label: "Drivers & Vehicles", icon: Car },
-];
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, permission: ROUTE_VIEW_PERMISSION["/"] },
+  { href: "/leads", label: "Leads", icon: Users, permission: ROUTE_VIEW_PERMISSION["/leads"] },
+  {
+    href: "/bookings",
+    label: "Bookings",
+    icon: ClipboardList,
+    permission: ROUTE_VIEW_PERMISSION["/bookings"],
+  },
+  {
+    href: "/marketing",
+    label: "Ad Spend & Marketing",
+    icon: Megaphone,
+    permission: ROUTE_VIEW_PERMISSION["/marketing"],
+  },
+  {
+    href: "/assignments",
+    label: "Booking & Drivers",
+    icon: UserRound,
+    permission: ROUTE_VIEW_PERMISSION["/assignments"],
+  },
+  {
+    href: "/itineraries",
+    label: "Itineraries",
+    icon: Route,
+    permission: ROUTE_VIEW_PERMISSION["/itineraries"],
+  },
+  { href: "/hotels", label: "Hotels", icon: BedDouble, permission: ROUTE_VIEW_PERMISSION["/hotels"] },
+  {
+    href: "/drivers",
+    label: "Drivers & Vehicles",
+    icon: Car,
+    permission: ROUTE_VIEW_PERMISSION["/drivers"],
+  },
+] as const;
 
 const STORAGE_KEY = "mahasu-sidebar-collapsed";
 let collapsedCache: boolean | null = null;
@@ -102,11 +129,7 @@ export function Sidebar({
   animate?: boolean;
 }) {
   const pathname = usePathname();
-  const [session, setSession] = React.useState<AuthSession | null>(null);
-
-  React.useEffect(() => {
-    getSession().then(setSession);
-  }, []);
+  const { session } = useSession();
 
   const displayName = session?.name ?? "Priya Anand";
   const displayRole = session?.role ?? "Super Admin";
@@ -116,6 +139,8 @@ export function Sidebar({
     .join("")
     .slice(0, 2)
     .toUpperCase();
+  const visibleNav = crmNav.filter((item) => sessionAllows(session, item.permission));
+  const canViewSettings = sessionAllows(session, ROUTE_VIEW_PERMISSION["/settings"]);
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -155,7 +180,7 @@ export function Sidebar({
             collapsed ? "px-2" : "px-3"
           )}
         >
-          {crmNav.map((item) => {
+          {visibleNav.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
             return (
@@ -187,19 +212,21 @@ export function Sidebar({
         <div className={cn("pb-3", collapsed ? "px-2" : "px-3")}>
           <div className={cn("route-line mb-3 opacity-20", collapsed && "mx-1")} />
 
-          <NavLabel collapsed={collapsed} label="Roles & Permissions">
-            <Link
-              href="/settings"
-              className={cn(
-                "flex items-center rounded-md py-2.5 text-sm font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white",
-                collapsed ? "justify-center px-0" : "gap-3 px-3",
-                pathname === "/settings" && "bg-white/[0.08] text-white"
-              )}
-            >
-              <Settings className="size-4 shrink-0" strokeWidth={2} />
-              {!collapsed ? <span className="truncate">Roles & Permissions</span> : null}
-            </Link>
-          </NavLabel>
+          {canViewSettings ? (
+            <NavLabel collapsed={collapsed} label="Roles & Permissions">
+              <Link
+                href="/settings"
+                className={cn(
+                  "flex items-center rounded-md py-2.5 text-sm font-medium text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white",
+                  collapsed ? "justify-center px-0" : "gap-3 px-3",
+                  pathname === "/settings" && "bg-white/[0.08] text-white"
+                )}
+              >
+                <Settings className="size-4 shrink-0" strokeWidth={2} />
+                {!collapsed ? <span className="truncate">Roles & Permissions</span> : null}
+              </Link>
+            </NavLabel>
+          ) : null}
 
           <NavLabel
             collapsed={collapsed}
@@ -271,11 +298,7 @@ export function MobileNav({
   onOpenChange: (open: boolean) => void;
 }) {
   const pathname = usePathname();
-  const [session, setSession] = React.useState<AuthSession | null>(null);
-
-  React.useEffect(() => {
-    getSession().then(setSession);
-  }, []);
+  const { session } = useSession();
 
   const displayName = session?.name ?? "Priya Anand";
   const displayRole = session?.role ?? "Super Admin";
@@ -285,6 +308,8 @@ export function MobileNav({
     .join("")
     .slice(0, 2)
     .toUpperCase();
+  const visibleNav = crmNav.filter((item) => sessionAllows(session, item.permission));
+  const canViewSettings = sessionAllows(session, ROUTE_VIEW_PERMISSION["/settings"]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -305,7 +330,7 @@ export function MobileNav({
           </SheetTitle>
         </SheetHeader>
         <SheetBody className="flex flex-col gap-0.5 px-3 py-3">
-          {crmNav.map((item) => {
+          {visibleNav.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
             return (
@@ -324,17 +349,19 @@ export function MobileNav({
             );
           })}
           <div className="route-line my-3 opacity-20" />
-          <Link
-            href="/settings"
-            onClick={() => onOpenChange(false)}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white",
-              pathname === "/settings" && "bg-white/[0.1] text-white"
-            )}
-          >
-            <Settings className="size-4 shrink-0" strokeWidth={2} />
-            Roles & Permissions
-          </Link>
+          {canViewSettings ? (
+            <Link
+              href="/settings"
+              onClick={() => onOpenChange(false)}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white",
+                pathname === "/settings" && "bg-white/[0.1] text-white"
+              )}
+            >
+              <Settings className="size-4 shrink-0" strokeWidth={2} />
+              Roles & Permissions
+            </Link>
+          ) : null}
           <div className="mt-3 flex items-center gap-3 rounded-md bg-white/[0.05] px-3 py-2.5">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-marigold text-xs font-semibold text-ink">
               {initials}

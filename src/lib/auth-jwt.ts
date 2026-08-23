@@ -8,6 +8,8 @@ export type SessionPayload = {
   name: string;
   email: string;
   role: string;
+  /** Explicit grants from `user_permissions` at login / refresh. */
+  permissions: string[];
 };
 
 function getSecret() {
@@ -18,8 +20,18 @@ function getSecret() {
   return new TextEncoder().encode(secret);
 }
 
+function readPermissions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((k): k is string => typeof k === "string");
+}
+
 export async function signSessionToken(payload: SessionPayload) {
-  return new SignJWT(payload)
+  return new SignJWT({
+    name: payload.name,
+    email: payload.email,
+    role: payload.role,
+    permissions: payload.permissions,
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
     .setIssuedAt()
@@ -43,6 +55,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       name: payload.name,
       email: payload.email,
       role: payload.role,
+      permissions: readPermissions(payload.permissions),
     };
   } catch {
     return null;

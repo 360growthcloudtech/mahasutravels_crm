@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   adSpendToDto,
   createAdSpend,
@@ -40,6 +40,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "ad.spend.and.marketing.view");
+  if (denied) return denied;
 
   const url = new URL(request.url);
   const spends = await listAdSpends({
@@ -56,6 +58,8 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "ad.spend.and.marketing.create");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ingestCorsHeaders, requireIngestAuth, requireSession } from "@/lib/api-auth";
+import { ingestCorsHeaders, forbidUnlessPermission, requireIngestAuth, requireSession } from "@/lib/api-auth";
 import {
   ingestLead,
   leadToDto,
@@ -28,6 +28,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "leads.view");
+  if (denied) return denied;
 
   const url = new URL(request.url);
   const leads = await listLeads(parseLeadsListFilters(url.searchParams, session));
@@ -40,6 +42,13 @@ export async function POST(request: Request) {
   const auth = await requireIngestAuth(request);
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: cors });
+  }
+  if (auth.kind === "session") {
+    const denied = forbidUnlessPermission(auth.session, "leads.create");
+    if (denied) {
+      const body = await denied.json();
+      return NextResponse.json(body, { status: 403, headers: cors });
+    }
   }
 
   let body: Record<string, unknown>;

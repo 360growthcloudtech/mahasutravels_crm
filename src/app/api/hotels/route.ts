@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   createHotelTemplate,
   hotelToDto,
@@ -36,6 +36,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "hotels.view");
+  if (denied) return denied;
 
   const url = new URL(request.url);
   const hotels = await listHotelTemplates({
@@ -51,6 +53,8 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "hotels.create");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

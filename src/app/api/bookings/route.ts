@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessAnyPermission, forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   bookingToDto,
   createBooking,
@@ -84,6 +84,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "bookings.view");
+  if (denied) return denied;
 
   const url = new URL(request.url);
   const bookings = await listBookings(parseBookingsListFilters(url.searchParams, session));
@@ -103,6 +105,12 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+
+  const leadId = readString(body.lead_id)?.trim() || null;
+  const denied = leadId
+    ? forbidUnlessAnyPermission(session, ["bookings.create", "leads.create_booking"])
+    : forbidUnlessPermission(session, "bookings.create");
+  if (denied) return denied;
 
   const customer = readString(body.customer)?.trim() ?? "";
   if (!customer) {
@@ -124,7 +132,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "status is invalid" }, { status: 400 });
   }
 
-  const leadId = readString(body.lead_id)?.trim() || null;
   let leadNo: string | null = null;
   if (leadId) {
     const { rows } = await query<{ lead_no: number }>(

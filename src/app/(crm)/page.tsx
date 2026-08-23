@@ -33,7 +33,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmployeeDashboard } from "@/components/crm/employee-dashboard";
 import { fetchDashboard } from "@/lib/dashboard-api";
 import type { DashboardBookingSummary, DashboardPayload } from "@/lib/db/dashboard";
-import { getSession } from "@/lib/auth";
+import { useSession } from "@/lib/session-context";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -156,22 +157,8 @@ function DashboardBodySkeleton() {
 }
 
 export default function DashboardPage() {
-  const [role, setRole] = React.useState<string | null>(null);
-  const [roleLoading, setRoleLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void getSession()
-      .then((session) => {
-        if (!cancelled) setRole(session?.role ?? null);
-      })
-      .finally(() => {
-        if (!cancelled) setRoleLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { session, loading: roleLoading } = useSession();
+  const role = session?.role ?? null;
 
   if (roleLoading) {
     return (
@@ -194,6 +181,7 @@ export default function DashboardPage() {
 function OrgDashboard() {
   const { addLead } = useData();
   const { toast } = useToast();
+  const canCreateLead = useHasPermission("leads.create");
   const [dateRange, setDateRange] = React.useState<DashboardDateRange>(null);
   const [selectedSource, setSelectedSource] = React.useState<string | null>(null);
   const [selectedWebsite, setSelectedWebsite] = React.useState<string | null>(null);
@@ -303,6 +291,7 @@ function OrgDashboard() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <WebsiteFilter value={selectedWebsite} onChange={setSelectedWebsite} />
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
+            {canCreateLead ? (
             <LeadFormDialog
               trigger={
                 <Button variant="marigold">
@@ -330,6 +319,7 @@ function OrgDashboard() {
                 }
               }}
             />
+            ) : null}
           </div>
         }
       />

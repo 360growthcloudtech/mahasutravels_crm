@@ -429,14 +429,17 @@ async function myRevenueTrend(
   if (filters.from && !filters.to) end = addDaysIso(start, 6);
   if (diffDaysInclusive(start, end) > 31) start = addDaysIso(end, -30);
 
-  const params: unknown[] = [start, end, userId, userName];
+  const bookingParams: unknown[] = [start, end, userId, userName];
   const bookingExtra: string[] = [mineBookingClause("b", 3, 4)];
+
+  const leadParams: unknown[] = [start, end, userId];
   const leadExtra: string[] = [`AND l.assigned_to = $3::uuid`];
 
   if (filters.website) {
-    params.push(filters.website);
-    bookingExtra.push(`AND b.website = $${params.length}`);
-    leadExtra.push(`AND l.website = $${params.length}`);
+    bookingParams.push(filters.website);
+    bookingExtra.push(`AND b.website = $${bookingParams.length}`);
+    leadParams.push(filters.website);
+    leadExtra.push(`AND l.website = $${leadParams.length}`);
   }
 
   const { rows: revRows } = await query<{ day: string; revenue: string }>(
@@ -448,7 +451,7 @@ async function myRevenueTrend(
       AND ${bookingExtra.join(" ")}
      GROUP BY gs::date
      ORDER BY gs::date`,
-    params
+    bookingParams
   );
 
   const { rows: leadRows } = await query<{ day: string; leads: string }>(
@@ -459,7 +462,7 @@ async function myRevenueTrend(
       ${leadExtra.join(" ")}
      GROUP BY gs::date
      ORDER BY gs::date`,
-    params
+    leadParams
   );
 
   const leadMap = new Map(leadRows.map((r) => [r.day, Number(r.leads) || 0]));

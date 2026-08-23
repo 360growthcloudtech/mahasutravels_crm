@@ -1,3 +1,11 @@
+import {
+  PERMISSIONS_CATALOG,
+  ALL_PERMISSION_KEYS,
+  defaultPermissionKeysForRole,
+  type PermissionAction as CatalogPermissionAction,
+  type MemberRole as CatalogMemberRole,
+} from "@/lib/permissions-catalog";
+
 export function genId(prefix: string) {
   return `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
@@ -1431,7 +1439,7 @@ export const sourceSplit = [
   { source: "Manual", value: 13, color: "#64748b" },
 ];
 
-export type PermissionAction = "view" | "create" | "edit" | "delete" | "assign" | "export";
+export type PermissionAction = CatalogPermissionAction;
 
 export type SystemPermission = {
   id: string;
@@ -1442,7 +1450,7 @@ export type SystemPermission = {
   description?: string;
 };
 
-export type MemberRole = "Super Admin" | "Admin" | "Employee";
+export type MemberRole = CatalogMemberRole;
 export type MemberStatus = "Active" | "Inactive";
 
 export type Member = {
@@ -1459,120 +1467,21 @@ export type Member = {
   autoAssignWebsite?: string | null;
 };
 
-const permissionDefs: Array<{
-  module: string;
-  actions: Array<{ action: PermissionAction; label: string; description?: string }>;
-}> = [
-  {
-    module: "Dashboard",
-    actions: [
-      { action: "view", label: "View Dashboard", description: "See CRM overview and KPIs" },
-      { action: "export", label: "Export Dashboard", description: "Download reports from dashboard" },
-    ],
-  },
-  {
-    module: "Leads",
-    actions: [
-      { action: "view", label: "View Leads" },
-      { action: "create", label: "Create Lead" },
-      { action: "edit", label: "Edit Lead" },
-      { action: "delete", label: "Delete Lead" },
-      { action: "assign", label: "Assign Lead", description: "Assign leads to agents" },
-    ],
-  },
-  {
-    module: "Bookings",
-    actions: [
-      { action: "view", label: "View Bookings" },
-      { action: "create", label: "Create Booking" },
-      { action: "edit", label: "Edit Booking" },
-      { action: "delete", label: "Delete Booking" },
-    ],
-  },
-  {
-    module: "Booking & Drivers",
-    actions: [
-      { action: "view", label: "View Assignments", description: "See booking–driver mapping" },
-      { action: "assign", label: "Assign Driver", description: "Assign or reassign drivers to bookings" },
-    ],
-  },
-  {
-    module: "Itineraries",
-    actions: [
-      { action: "view", label: "View Itineraries" },
-      { action: "create", label: "Create Itinerary" },
-      { action: "edit", label: "Edit Itinerary" },
-      { action: "delete", label: "Delete Itinerary" },
-    ],
-  },
-  {
-    module: "Hotels",
-    actions: [
-      { action: "view", label: "View Hotels" },
-      { action: "create", label: "Create Hotel Template" },
-      { action: "edit", label: "Edit Hotel Template" },
-      { action: "delete", label: "Delete Hotel Template" },
-    ],
-  },
-  {
-    module: "Drivers & Vehicles",
-    actions: [
-      { action: "view", label: "View Drivers" },
-      { action: "create", label: "Create Driver" },
-      { action: "edit", label: "Edit Driver" },
-      { action: "delete", label: "Delete Driver" },
-    ],
-  },
-  {
-    module: "Roles & Permissions",
-    actions: [
-      { action: "view", label: "View Roles", description: "See members and system permissions" },
-      { action: "create", label: "Invite Member" },
-      { action: "edit", label: "Edit Member & Permissions" },
-      { action: "delete", label: "Remove Member" },
-    ],
-  },
-];
-
-function slugModule(module: string) {
-  return module
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/^\.|\.$/g, "");
-}
-
-export const systemPermissions: SystemPermission[] = permissionDefs.flatMap((mod, mi) =>
-  mod.actions.map((a, ai) => ({
-    id: `SP-${mi + 1}${ai + 1}`,
-    key: `${slugModule(mod.module)}.${a.action}`,
-    module: mod.module,
-    action: a.action,
-    label: a.label,
-    description: a.description,
-  }))
-);
+export const systemPermissions: SystemPermission[] = PERMISSIONS_CATALOG.map((p, i) => ({
+  id: `SP-${i + 1}`,
+  key: p.key,
+  module: p.module,
+  action: p.action,
+  label: p.label,
+  description: p.description,
+}));
 
 export const permissionModules = [...new Set(systemPermissions.map((p) => p.module))];
 
-export const allPermissionKeys = systemPermissions.map((p) => p.key);
-
-const adminDefaultKeys = systemPermissions
-  .filter((p) => !(p.module === "Roles & Permissions" && p.action === "delete"))
-  .map((p) => p.key);
-
-const employeeDefaultKeys = systemPermissions
-  .filter((p) =>
-    ["leads.view", "leads.create", "leads.edit", "bookings.view", "bookings.create", "booking.and.drivers.view", "itineraries.view", "hotels.view", "drivers.and.vehicles.view", "dashboard.view"].includes(
-      p.key
-    )
-  )
-  .map((p) => p.key);
+export const allPermissionKeys = [...ALL_PERMISSION_KEYS];
 
 export function defaultPermissionsForRole(role: MemberRole): string[] {
-  if (role === "Super Admin") return [...allPermissionKeys];
-  if (role === "Admin") return [...adminDefaultKeys];
-  return [...employeeDefaultKeys];
+  return defaultPermissionKeysForRole(role);
 }
 
 export const members: Member[] = [

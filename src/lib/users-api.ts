@@ -9,12 +9,37 @@ export type UserApi = {
   auto_assign_website: string | null;
 };
 
+export type PermissionApi = {
+  key: string;
+  module: string;
+  action: string;
+  label: string;
+  description?: string;
+  sort_order: number;
+};
+
 export async function fetchUsers(opts?: { all?: boolean }): Promise<UserApi[]> {
   const qs = opts?.all ? "?all=1" : "";
   const res = await fetch(`/api/users${qs}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to load users");
   const data = (await res.json()) as { users?: UserApi[] };
   return data.users ?? [];
+}
+
+export async function fetchPermissionsCatalog(): Promise<{
+  permissions: PermissionApi[];
+  myPermissionKeys: string[];
+}> {
+  const res = await fetch("/api/permissions", { credentials: "include", cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load permissions");
+  const data = (await res.json()) as {
+    permissions?: PermissionApi[];
+    my_permission_keys?: string[];
+  };
+  return {
+    permissions: data.permissions ?? [],
+    myPermissionKeys: data.my_permission_keys ?? [],
+  };
 }
 
 export async function updateUserAutoAssignWebsite(
@@ -33,6 +58,24 @@ export async function updateUserAutoAssignWebsite(
   }
   const data = (await res.json()) as { user: UserApi };
   return data.user;
+}
+
+export async function updateUserPermissionKeys(
+  id: string,
+  permissionKeys: string[]
+): Promise<string[]> {
+  const res = await fetch(`/api/users/${id}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ permission_keys: permissionKeys }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to update permissions");
+  }
+  const data = (await res.json()) as { permission_keys?: string[] };
+  return data.permission_keys ?? [];
 }
 
 export function userFromApi(u: PublicUser | UserApi): UserApi {

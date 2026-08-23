@@ -1,8 +1,31 @@
+import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth-server";
 import type { SessionPayload } from "@/lib/auth-jwt";
+import { sessionHasPermission } from "@/lib/permission-check";
 
 export async function requireSession(): Promise<SessionPayload | null> {
   return getSessionFromCookies();
+}
+
+/** Returns a 403 JSON response when the session lacks the permission key. */
+export function forbidUnlessPermission(
+  session: SessionPayload,
+  key: string
+): NextResponse | null {
+  if (sessionHasPermission(session, key)) return null;
+  return NextResponse.json({ error: `Missing ${key} permission` }, { status: 403 });
+}
+
+/** Passes if the session has any of the listed permission keys. */
+export function forbidUnlessAnyPermission(
+  session: SessionPayload,
+  keys: string[]
+): NextResponse | null {
+  if (keys.some((key) => sessionHasPermission(session, key))) return null;
+  return NextResponse.json(
+    { error: `Missing one of: ${keys.join(", ")}` },
+    { status: 403 }
+  );
 }
 
 export function isValidIngestApiKey(request: Request) {

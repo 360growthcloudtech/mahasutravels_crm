@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   createItineraryTemplate,
   isUniqueViolation,
@@ -84,6 +84,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "itineraries.view");
+  if (denied) return denied;
 
   const url = new URL(request.url);
   const items = await listItineraryTemplates({
@@ -101,6 +103,8 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "itineraries.create");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

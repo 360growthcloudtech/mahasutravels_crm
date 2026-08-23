@@ -15,6 +15,9 @@ import {
   Users,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
+import { useHasPermission } from "@/lib/use-has-permission";
+import { useSession } from "@/lib/session-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,13 +56,14 @@ import {
   defaultPermissionsForRole,
   allPermissionKeys,
 } from "@/lib/data";
-import { fetchUsers, updateUserAutoAssignWebsite, type UserApi } from "@/lib/users-api";
+import { fetchUsers, fetchPermissionsCatalog, updateUserAutoAssignWebsite, updateUserPermissionKeys, type UserApi } from "@/lib/users-api";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { cn } from "@/lib/utils";
+import type { PermissionAction as CatalogAction } from "@/lib/permissions-catalog";
 
 const roles: MemberRole[] = ["Super Admin", "Admin", "Employee"];
 const statuses: MemberStatus[] = ["Active", "Inactive"];
-const actions: PermissionAction[] = ["view", "create", "edit", "delete", "assign", "export"];
+const actions: PermissionAction[] = ["view", "create", "edit", "delete", "assign", "export", "comment", "quote", "create_booking"];
 
 const actionBadge: Record<PermissionAction, string> = {
   view: "bg-teal-soft text-teal",
@@ -68,6 +72,9 @@ const actionBadge: Record<PermissionAction, string> = {
   delete: "bg-signal-soft text-signal",
   assign: "bg-secondary text-ink-text",
   export: "bg-secondary text-slate",
+  comment: "bg-secondary text-slate",
+  quote: "bg-marigold-soft text-marigold-ink",
+  create_booking: "bg-teal-soft text-teal",
 };
 
 const moduleDot = [
@@ -103,16 +110,47 @@ export default function SettingsPage() {
     addSystemPermission,
     updateSystemPermission,
     deleteSystemPermission,
+    mergeSystemPermissions,
   } = useData();
   const { toast } = useToast();
+  const { session, refreshSession } = useSession();
+  const canInviteMember = useHasPermission("roles.and.permissions.create");
+  const canEditMember = useHasPermission("roles.and.permissions.edit");
+  const canDeleteMember = useHasPermission("roles.and.permissions.delete");
 
   const [dbUsers, setDbUsers] = React.useState<UserApi[]>([]);
   const [savingMember, setSavingMember] = React.useState(false);
+  const [settingsLoading, setSettingsLoading] = React.useState(true);
+
+  const reloadSettings = React.useCallback(async () => {
+    setSettingsLoading(true);
+    try {
+      const [users, catalog] = await Promise.all([
+        fetchUsers({ all: true }).catch(() => [] as UserApi[]),
+        fetchPermissionsCatalog().catch(() => null),
+      ]);
+      setDbUsers(users);
+      if (catalog) {
+        mergeSystemPermissions(
+          catalog.permissions.map((p) => ({
+            key: p.key,
+            module: p.module,
+            action: p.action as CatalogAction,
+            label: p.label,
+            description: p.description,
+          }))
+        );
+      }
+    } finally {
+      setSettingsLoading(false);
+    }
+    // mergeSystemPermissions identity changes with store state — omit from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
-    void fetchUsers({ all: true })
-      .then(setDbUsers)
-      .catch(() => setDbUsers([]));
+    void reloadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const websiteByEmail = React.useMemo(() => {
@@ -260,6 +298,10 @@ export default function SettingsPage() {
           dbUser.id,
           payload.autoAssignWebsite || null
         );
+        await updateUserPermissionKeys(dbUser.id, payload.permissionKeys);
+        if (session?.memberId === dbUser.id) {
+          await refreshSession();
+        }
         setDbUsers((prev) =>
           prev.map((u) => {
             if (u.id === updated.id) return updated;
@@ -364,15 +406,20 @@ export default function SettingsPage() {
       <Topbar
         title="Roles & Permissions"
         action={
-          section === "members" ? (
-            <Button variant="marigold" onClick={openCreateMember}>
-              <Plus className="size-4" /> Invite member
-            </Button>
-          ) : (
-            <Button variant="marigold" onClick={openCreatePerm}>
-              <Plus className="size-4" /> Add permission
-            </Button>
-          )
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={reloadSettings} loading={settingsLoading} />
+            {section === "members" ? (
+              canInviteMember ? (
+                <Button variant="marigold" onClick={openCreateMember}>
+                  <Plus className="size-4" /> Invite member
+                </Button>
+              ) : null
+            ) : canEditMember ? (
+              <Button variant="marigold" onClick={openCreatePerm}>
+                <Plus className="size-4" /> Add permission
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -461,7 +508,9 @@ export default function SettingsPage() {
                         <StatusBadge status={m.status} />
                       </TableCell>
                       <TableCell>
+                        {(canEditMember || canDeleteMember) ? (
                         <div className="flex gap-1">
+                          {canEditMember ? (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -470,6 +519,8 @@ export default function SettingsPage() {
                           >
                             <Pencil className="size-3.5" />
                           </Button>
+                          ) : null}
+                          {canDeleteMember ? (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -478,7 +529,9 @@ export default function SettingsPage() {
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
+                          ) : null}
                         </div>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -509,10 +562,14 @@ export default function SettingsPage() {
                         {m.permissionKeys.length}/{allPermissionKeys.length}
                       </InfoItem>
                     </InfoGrid>
+                    {(canEditMember || canDeleteMember) ? (
                     <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                      {canEditMember ? (
                       <Button size="sm" variant="outline" onClick={() => openEditMember(m)}>
                         <Pencil className="size-3.5" /> Edit
                       </Button>
+                      ) : null}
+                      {canDeleteMember ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -521,7 +578,9 @@ export default function SettingsPage() {
                       >
                         <Trash2 className="size-3.5" /> Remove
                       </Button>
+                      ) : null}
                     </div>
+                    ) : null}
                   </RecordCard>
                 ))}
               </div>
@@ -634,7 +693,9 @@ export default function SettingsPage() {
                                   {p.description || "—"}
                                 </TableCell>
                                 <TableCell>
+                                  {(canEditMember || canDeleteMember) ? (
                                   <div className="flex gap-1">
+                                    {canEditMember ? (
                                     <Button
                                       size="icon"
                                       variant="ghost"
@@ -643,6 +704,8 @@ export default function SettingsPage() {
                                     >
                                       <Pencil className="size-3.5" />
                                     </Button>
+                                    ) : null}
+                                    {canDeleteMember ? (
                                     <Button
                                       size="icon"
                                       variant="ghost"
@@ -651,7 +714,9 @@ export default function SettingsPage() {
                                     >
                                       <Trash2 className="size-3.5" />
                                     </Button>
+                                    ) : null}
                                   </div>
+                                  ) : null}
                                 </TableCell>
                               </TableRow>
                             ))}

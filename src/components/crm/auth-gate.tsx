@@ -2,37 +2,19 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/auth";
-
-/** Keep auth ready across Soft Navigations if Shell remounts. */
-let authReadyCache = false;
+import { useSession } from "@/lib/session-context";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [ready, setReady] = React.useState(authReadyCache);
+  const { session, loading } = useSession();
 
   React.useEffect(() => {
-    if (authReadyCache) {
-      setReady(true);
-      return;
+    if (!loading && !session) {
+      router.replace("/login");
     }
-    let cancelled = false;
-    getSession().then((session) => {
-      if (cancelled) return;
-      if (!session) {
-        authReadyCache = false;
-        router.replace("/login");
-        return;
-      }
-      authReadyCache = true;
-      setReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+  }, [loading, session, router]);
 
-  if (!ready) {
+  if (loading || !session) {
     return <div className="min-h-dvh bg-paper" aria-busy="true" />;
   }
 

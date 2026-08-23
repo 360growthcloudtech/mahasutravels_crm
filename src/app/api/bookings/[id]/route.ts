@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessAnyPermission, forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { sessionHasPermission } from "@/lib/permission-check";
 import {
   bookingToDto,
   deleteBooking,
@@ -12,6 +13,19 @@ import { isBookingStatus, isMarketingChannel, parseDriversJson } from "@/lib/boo
 import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } from "@/lib/data";
 
 export const runtime = "nodejs";
+
+const COMMENT_PATCH_KEYS = new Set(["comments", "history"]);
+const ASSIGN_PATCH_KEYS = new Set(["drivers", "driver", "vehicle", "history"]);
+
+function isCommentOnlyPatch(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  return keys.length > 0 && keys.every((key) => COMMENT_PATCH_KEYS.has(key));
+}
+
+function isAssignOnlyPatch(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  return keys.length > 0 && keys.every((key) => ASSIGN_PATCH_KEYS.has(key));
+}
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -71,6 +85,8 @@ export async function GET(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "bookings.view");
+  if (denied) return denied;
 
   const { id } = await context.params;
   const booking = await findBookingById(id);
@@ -91,6 +107,25 @@ export async function PATCH(
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const canEdit = sessionHasPermission(session, "bookings.edit");
+  const canComment = sessionHasPermission(session, "bookings.comment");
+  const canAssign = sessionHasPermission(session, "booking.and.drivers.assign");
+  if (
+    !canEdit &&
+    !(canComment && isCommentOnlyPatch(body)) &&
+    !(canAssign && isAssignOnlyPatch(body))
+  ) {
+    const denied = forbidUnlessPermission(session, "bookings.edit");
+    if (denied) return denied;
+  }
+
   const { id } = await context.params;
   if (session.role === "Employee") {
     const existing = await findBookingById(id);
@@ -98,13 +133,6 @@ export async function PATCH(
     if (!(await isBookingOwnedBy(existing, session.sub, session.name))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const patch: PatchBookingInput = {};
@@ -187,6 +215,8 @@ export async function DELETE(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "bookings.delete");
+  if (denied) return denied;
 
   const { id } = await context.params;
   if (session.role === "Employee") {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import { getDashboard, parseDashboardFilters } from "@/lib/db/dashboard";
 
 export const runtime = "nodejs";
@@ -9,6 +9,8 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const denied = forbidUnlessPermission(session, "dashboard.view");
+  if (denied) return denied;
   if (session.role === "Employee") {
     return NextResponse.json(
       { error: "Employees should use /api/dashboard/me" },

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessAnyPermission, forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   activityToDto,
   findLeadById,
@@ -15,6 +15,8 @@ export async function GET(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "leads.view");
+  if (denied) return denied;
 
   const { id } = await context.params;
   const lead = await findLeadById(id);
@@ -31,10 +33,6 @@ export async function POST(
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id } = await context.params;
-  const lead = await findLeadById(id);
-  if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -47,6 +45,16 @@ export async function POST(
   if (!action || !label) {
     return NextResponse.json({ error: "action and label are required" }, { status: 400 });
   }
+
+  const denied =
+    action === "quoted"
+      ? forbidUnlessAnyPermission(session, ["leads.edit", "leads.quote"])
+      : forbidUnlessPermission(session, "leads.edit");
+  if (denied) return denied;
+
+  const { id } = await context.params;
+  const lead = await findLeadById(id);
+  if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
   const detail = typeof body.detail === "string" ? body.detail.trim() : undefined;
   const actor =

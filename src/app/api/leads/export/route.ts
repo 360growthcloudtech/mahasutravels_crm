@@ -4,6 +4,7 @@ import { hasLeadsExportFilters, parseLeadsListFilters } from "@/lib/api/list-fil
 import { csvResponse, exportFilename } from "@/lib/csv";
 import { leadToDto, listLeads } from "@/lib/db/leads";
 import { leadsToCsv } from "@/lib/export/leads-csv";
+import { sessionHasPermission } from "@/lib/permission-check";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ export async function GET(request: Request) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!sessionHasPermission(session, "leads.export")) {
+    return NextResponse.json({ error: "Missing leads.export permission" }, { status: 403 });
   }
 
   const url = new URL(request.url);

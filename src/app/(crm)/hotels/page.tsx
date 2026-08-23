@@ -13,6 +13,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,6 +67,7 @@ export default function HotelsPage() {
   const {
     state,
     hotelsLoading,
+    refreshHotels,
     addHotelTemplate,
     updateHotelTemplate,
     deleteHotelTemplate,
@@ -77,6 +80,9 @@ export default function HotelsPage() {
   const [templateFormOpen, setTemplateFormOpen] = React.useState(false);
   const [editingTemplate, setEditingTemplate] = React.useState<HotelTemplate | null>(null);
   const [deleteTemplate, setDeleteTemplate] = React.useState<HotelTemplate | null>(null);
+  const canCreateHotel = useHasPermission("hotels.create");
+  const canEditHotel = useHasPermission("hotels.edit");
+  const canDeleteHotel = useHasPermission("hotels.delete");
 
   const activeMasters = state.hotelTemplates.filter((t) => t.status === "Active").length;
   const draftMasters = state.hotelTemplates.filter((t) => t.status === "Draft").length;
@@ -173,9 +179,14 @@ export default function HotelsPage() {
       <Topbar
         title="Hotels"
         action={
-          <Button variant="marigold" size="sm" onClick={openCreateTemplate}>
-            <Plus className="size-3.5" /> New hotel template
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={refreshHotels} loading={hotelsLoading} />
+            {canCreateHotel ? (
+              <Button variant="marigold" size="sm" onClick={openCreateTemplate}>
+                <Plus className="size-3.5" /> New hotel template
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -311,7 +322,9 @@ export default function HotelsPage() {
                         </TableCell>
                         <TableCell className="text-sm text-slate">{t.updatedAt}</TableCell>
                         <TableCell>
+                          {canEditHotel || canDeleteHotel ? (
                           <div className="flex items-center gap-1">
+                            {canEditHotel ? (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -320,6 +333,8 @@ export default function HotelsPage() {
                             >
                               <Pencil className="size-3.5" />
                             </Button>
+                            ) : null}
+                            {canEditHotel || canDeleteHotel ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="size-8">
@@ -327,6 +342,8 @@ export default function HotelsPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {canEditHotel ? (
+                                <>
                                 <DropdownMenuItem onSelect={() => openEditTemplate(t)}>
                                   <Pencil className="size-3.5" /> Edit
                                 </DropdownMenuItem>
@@ -342,16 +359,22 @@ export default function HotelsPage() {
                                     <Archive className="size-3.5" /> Restore
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuSeparator />
+                                </>
+                                ) : null}
+                                {canEditHotel && canDeleteHotel ? <DropdownMenuSeparator /> : null}
+                                {canDeleteHotel ? (
                                 <DropdownMenuItem
                                   className="text-signal focus:text-signal"
                                   onSelect={() => setDeleteTemplate(t)}
                                 >
                                   <Trash2 className="size-3.5" /> Delete
                                 </DropdownMenuItem>
+                                ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            ) : null}
                           </div>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))
@@ -410,6 +433,7 @@ export default function HotelsPage() {
                       </InfoItem>
                     </InfoGrid>
                     <div className="grid grid-cols-3 gap-2 border-t border-border-soft pt-3">
+                      {canEditHotel ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -418,6 +442,8 @@ export default function HotelsPage() {
                       >
                         <Pencil className="size-3.5" /> Edit
                       </Button>
+                      ) : null}
+                      {canEditHotel ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -426,6 +452,8 @@ export default function HotelsPage() {
                       >
                         <Copy className="size-3.5" /> Copy
                       </Button>
+                      ) : null}
+                      {canDeleteHotel ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -434,6 +462,7 @@ export default function HotelsPage() {
                       >
                         <Trash2 className="size-3.5" /> Delete
                       </Button>
+                      ) : null}
                     </div>
                   </RecordCard>
                 ))}

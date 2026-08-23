@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Sidebar, MobileNav, useSidebarCollapsed } from "@/components/crm/sidebar";
 import { AuthGate } from "@/components/crm/auth-gate";
+import { RoutePermissionGate } from "@/components/crm/route-permission-gate";
 import { cn } from "@/lib/utils";
 
 const MobileNavContext = React.createContext<() => void>(() => {});
@@ -35,7 +36,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
         >
           <MobileNavContext.Provider value={openMobileNav}>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <RoutePermissionGate>{children}</RoutePermissionGate>
+            </div>
           </MobileNavContext.Provider>
         </div>
       </div>

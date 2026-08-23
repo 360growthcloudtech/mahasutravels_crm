@@ -13,6 +13,8 @@ import {
   Archive,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +78,7 @@ export default function ItinerariesPage() {
   const {
     state,
     itinerariesLoading,
+    refreshItineraries,
     addItinerary,
     updateItinerary,
     deleteItinerary,
@@ -88,6 +91,9 @@ export default function ItinerariesPage() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ItineraryTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ItineraryTemplate | null>(null);
+  const canCreateItinerary = useHasPermission("itineraries.create");
+  const canEditItinerary = useHasPermission("itineraries.edit");
+  const canDeleteItinerary = useHasPermission("itineraries.delete");
 
   const filtered = state.itineraries.filter((t) => {
     const q = search.trim().toLowerCase();
@@ -193,9 +199,14 @@ export default function ItinerariesPage() {
       <Topbar
         title="Itineraries"
         action={
-          <Button variant="marigold" size="sm" onClick={openCreate}>
-            <Plus className="size-3.5" /> New template
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={refreshItineraries} loading={itinerariesLoading} />
+            {canCreateItinerary ? (
+              <Button variant="marigold" size="sm" onClick={openCreate}>
+                <Plus className="size-3.5" /> New template
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -347,7 +358,9 @@ export default function ItinerariesPage() {
                         </TableCell>
                         <TableCell className="text-sm text-slate">{t.updatedAt}</TableCell>
                         <TableCell className={stickyActionCell}>
+                          {canEditItinerary || canDeleteItinerary ? (
                           <div className="flex items-center gap-1">
+                            {canEditItinerary ? (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -357,6 +370,8 @@ export default function ItinerariesPage() {
                             >
                               <Pencil className="size-3.5" />
                             </Button>
+                            ) : null}
+                            {canEditItinerary || canDeleteItinerary ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="size-8">
@@ -364,6 +379,8 @@ export default function ItinerariesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {canEditItinerary ? (
+                                <>
                                 <DropdownMenuItem onSelect={() => openEdit(t)}>
                                   <Pencil className="size-3.5" /> Edit
                                 </DropdownMenuItem>
@@ -379,16 +396,22 @@ export default function ItinerariesPage() {
                                     <Archive className="size-3.5" /> Restore
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuSeparator />
+                                </>
+                                ) : null}
+                                {canEditItinerary && canDeleteItinerary ? <DropdownMenuSeparator /> : null}
+                                {canDeleteItinerary ? (
                                 <DropdownMenuItem
                                   className="text-signal focus:text-signal"
                                   onSelect={() => setDeleteTarget(t)}
                                 >
                                   <Trash2 className="size-3.5" /> Delete
                                 </DropdownMenuItem>
+                                ) : null}
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            ) : null}
                           </div>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))
@@ -459,9 +482,12 @@ export default function ItinerariesPage() {
                       </InfoItem>
                     </InfoGrid>
                     <div className="grid grid-cols-3 gap-2 border-t border-border-soft pt-3">
+                      {canEditItinerary ? (
                       <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(t)}>
                         <Pencil className="size-3.5" /> Edit
                       </Button>
+                      ) : null}
+                      {canEditItinerary ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -470,6 +496,8 @@ export default function ItinerariesPage() {
                       >
                         <Copy className="size-3.5" /> Copy
                       </Button>
+                      ) : null}
+                      {canDeleteItinerary ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -478,6 +506,7 @@ export default function ItinerariesPage() {
                       >
                         <Trash2 className="size-3.5" /> Delete
                       </Button>
+                      ) : null}
                     </div>
                   </RecordCard>
                 ))}

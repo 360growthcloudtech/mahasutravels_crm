@@ -4,6 +4,7 @@ import { hasBookingsExportFilters, parseBookingsListFilters } from "@/lib/api/li
 import { csvResponse, exportFilename } from "@/lib/csv";
 import { bookingToDto, listBookings } from "@/lib/db/bookings";
 import { bookingsToCsv } from "@/lib/export/bookings-csv";
+import { sessionHasPermission } from "@/lib/permission-check";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ export async function GET(request: Request) {
   const session = await requireSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!sessionHasPermission(session, "bookings.export")) {
+    return NextResponse.json({ error: "Missing bookings.export permission" }, { status: 403 });
   }
 
   const url = new URL(request.url);

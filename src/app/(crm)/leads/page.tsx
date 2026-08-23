@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -57,8 +58,9 @@ import { useToast } from "@/lib/toast";
 import { Booking, Lead } from "@/lib/data";
 import { formatDisplayTime, formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
 import { createLeadActivityApi, downloadLeadsCsv } from "@/lib/leads-api";
-import { getSession } from "@/lib/auth";
 import { LeadsExportDialog } from "@/components/crm/leads-export-dialog";
+import { useSession } from "@/lib/session-context";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import {
   RecordCardsSkeleton,
@@ -157,6 +159,7 @@ export default function LeadsPage() {
     leadSources,
     websites,
     leadsLoading,
+    refreshLeads,
     addLead,
     updateLead,
     deleteLead,
@@ -187,11 +190,15 @@ export default function LeadsPage() {
   const [bookingLead, setBookingLead] = React.useState<Lead | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
-  const [isEmployee, setIsEmployee] = React.useState(false);
-
-  React.useEffect(() => {
-    void getSession().then((session) => setIsEmployee(session?.role === "Employee"));
-  }, []);
+  const { session } = useSession();
+  const isEmployee = session?.role === "Employee";
+  const canExportLeads = useHasPermission("leads.export");
+  const canCreateLead = useHasPermission("leads.create");
+  const canEditLead = useHasPermission("leads.edit");
+  const canDeleteLead = useHasPermission("leads.delete");
+  const canCommentLead = useHasPermission("leads.comment");
+  const canQuoteLead = useHasPermission("leads.quote");
+  const canCreateBookingFromLead = useHasPermission("leads.create_booking");
 
   const editingLead = editingLeadId
     ? state.leads.find((l) => l.id === editingLeadId) ?? null
@@ -205,13 +212,13 @@ export default function LeadsPage() {
     return ids;
   }, [state.bookings]);
 
-  function canCreateBooking(lead: Lead) {
-    return !bookedLeadIds.has(lead.id);
+  function leadCanConvertToBooking(lead: Lead) {
+    return canCreateBookingFromLead && !bookedLeadIds.has(lead.id);
   }
 
   function handleLeadStatusChange(lead: Lead, code: string, label: string) {
     // Booked: update lead via API first, then open booking drawer on success
-    if (code === "Booked" && canCreateBooking(lead)) {
+    if (code === "Booked" && leadCanConvertToBooking(lead)) {
       void updateLead(lead.id, { status: "Booked" })
         .then(() => {
           toast({
@@ -393,32 +400,37 @@ export default function LeadsPage() {
       <Topbar
         title="Leads"
         action={
-          <LeadFormDialog
-            trigger={
-              <Button variant="marigold">
-                <Plus className="size-4" /> Add Lead
-              </Button>
-            }
-            onSubmit={async (data) => {
-              try {
-                const created = await addLead(data);
-                toast({
-                  variant: "success",
-                  title: created.inquiryCount > 1 ? "Repeat inquiry updated" : "Lead added",
-                  description:
-                    created.inquiryCount > 1
-                      ? `${created.name} already had an open lead · inquiry #${created.inquiryCount}.`
-                      : `${created.name} was added to the pipeline.`,
-                });
-              } catch (error) {
-                toast({
-                  variant: "error",
-                  title: "Could not add lead",
-                  description: error instanceof Error ? error.message : "Please try again.",
-                });
-              }
-            }}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <TableRefreshButton onRefresh={refreshLeads} loading={leadsLoading} />
+            {canCreateLead ? (
+              <LeadFormDialog
+                trigger={
+                  <Button variant="marigold">
+                    <Plus className="size-4" /> Add Lead
+                  </Button>
+                }
+                onSubmit={async (data) => {
+                  try {
+                    const created = await addLead(data);
+                    toast({
+                      variant: "success",
+                      title: created.inquiryCount > 1 ? "Repeat inquiry updated" : "Lead added",
+                      description:
+                        created.inquiryCount > 1
+                          ? `${created.name} already had an open lead · inquiry #${created.inquiryCount}.`
+                          : `${created.name} was added to the pipeline.`,
+                    });
+                  } catch (error) {
+                    toast({
+                      variant: "error",
+                      title: "Could not add lead",
+                      description: error instanceof Error ? error.message : "Please try again.",
+                    });
+                  }
+                }}
+              />
+            ) : null}
+          </div>
         }
       />
 
@@ -536,16 +548,18 @@ export default function LeadsPage() {
                 </Button>
               )}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 shrink-0"
-              disabled={exporting || leadsLoading}
-              onClick={() => setExportOpen(true)}
-            >
-              <Download className="size-3.5" />
-              Export CSV
-            </Button>
+            {canExportLeads ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 shrink-0"
+                disabled={exporting || leadsLoading}
+                onClick={() => setExportOpen(true)}
+              >
+                <Download className="size-3.5" />
+                Export CSV
+              </Button>
+            ) : null}
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
@@ -670,6 +684,7 @@ export default function LeadsPage() {
                           </TooltipTrigger>
                           <TooltipContent side="top">History</TooltipContent>
                         </Tooltip>
+                        {canCommentLead ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -684,6 +699,8 @@ export default function LeadsPage() {
                           </TooltipTrigger>
                           <TooltipContent side="top">Comments</TooltipContent>
                         </Tooltip>
+                        ) : null}
+                        {canQuoteLead ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -698,7 +715,8 @@ export default function LeadsPage() {
                           </TooltipTrigger>
                           <TooltipContent side="top">Send quote</TooltipContent>
                         </Tooltip>
-                        {canCreateBooking(l) ? (
+                        ) : null}
+                        {leadCanConvertToBooking(l) ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -714,6 +732,7 @@ export default function LeadsPage() {
                             <TooltipContent side="top">Create booking</TooltipContent>
                           </Tooltip>
                         ) : null}
+                        {canEditLead || canDeleteLead ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="inline-flex">
@@ -724,6 +743,7 @@ export default function LeadsPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  {canEditLead ? (
                                   <DropdownMenuItem
                                     onSelect={() => {
                                       setEditingLeadId(l.id);
@@ -731,7 +751,9 @@ export default function LeadsPage() {
                                   >
                                     <Pencil className="size-3.5" /> Edit lead
                                   </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
+                                  ) : null}
+                                  {canEditLead && canDeleteLead ? <DropdownMenuSeparator /> : null}
+                                  {canDeleteLead ? (
                                   <DropdownMenuItem
                                     className="text-signal focus:bg-signal-soft"
                                     onSelect={(e) => {
@@ -741,12 +763,14 @@ export default function LeadsPage() {
                                   >
                                     <Trash2 className="size-3.5" /> Delete lead
                                   </DropdownMenuItem>
+                                  ) : null}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top">More actions</TooltipContent>
                         </Tooltip>
+                        ) : null}
                       </div>
                     </TooltipProvider>
                   </TableCell>
@@ -837,23 +861,31 @@ export default function LeadsPage() {
                     <Button size="sm" variant="outline" onClick={() => setHistoryLeadId(l.id)}>
                       <History className="size-3.5" /> History
                     </Button>
+                    {canCommentLead ? (
                     <Button size="sm" variant="outline" onClick={() => setCommentLeadId(l.id)}>
                       <MessageCircle className="size-3.5" /> Comments
                     </Button>
+                    ) : null}
+                    {canQuoteLead ? (
                     <Button size="sm" variant="outline" onClick={() => setQuoteLeadId(l.id)}>
                       <FileText className="size-3.5" /> Quote
                     </Button>
-                    {canCreateBooking(l) ? (
+                    ) : null}
+                    {leadCanConvertToBooking(l) ? (
                       <Button size="sm" variant="outline" onClick={() => setBookingLead(l)}>
                         <CalendarPlus className="size-3.5" /> Create booking
                       </Button>
                     ) : null}
+                    {canEditLead ? (
                     <Button size="sm" variant="outline" onClick={() => setEditingLeadId(l.id)}>
                       <Pencil className="size-3.5" /> Edit
                     </Button>
+                    ) : null}
+                    {canDeleteLead ? (
                     <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(l)}>
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
+                    ) : null}
                   </div>
                 </RecordCard>
               ))

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
+import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +34,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { useHasPermission } from "@/lib/use-has-permission";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import {
@@ -162,9 +164,21 @@ function AssignDriverMenu({
 }
 
 export default function AssignmentsPage() {
-  const { state, bookingsLoading, driversLoading, updateBooking } = useData();
+  const {
+    state,
+    bookingsLoading,
+    driversLoading,
+    refreshBookings,
+    refreshDrivers,
+    updateBooking,
+  } = useData();
   const { toast } = useToast();
+  const canAssignDriver = useHasPermission("booking.and.drivers.assign");
   const pageLoading = bookingsLoading || driversLoading;
+
+  const refreshAssignments = React.useCallback(async () => {
+    await Promise.all([refreshBookings(), refreshDrivers()]);
+  }, [refreshBookings, refreshDrivers]);
 
   const [query, setQuery] = React.useState("");
   const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
@@ -285,6 +299,9 @@ export default function AssignmentsPage() {
     <>
       <Topbar
         title="Booking & Drivers"
+        action={
+          <TableRefreshButton onRefresh={refreshAssignments} loading={pageLoading} />
+        }
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col">
@@ -482,11 +499,17 @@ export default function AssignmentsPage() {
                             )}
                           </TableCell>
                           <TableCell>
+                            {canAssignDriver ? (
                             <AssignDriverMenu
                               booking={b}
                               assignableDrivers={assignableDrivers}
                               onAssign={(d) => void assignDriver(b, d)}
                             />
+                            ) : (
+                              <Badge variant="outline">
+                                {assignments.length > 0 ? "Assigned" : "Unassigned"}
+                              </Badge>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -539,11 +562,13 @@ export default function AssignmentsPage() {
                             : "Unassigned"}
                         </InfoItem>
                       </InfoGrid>
+                      {canAssignDriver ? (
                       <AssignDriverMenu
                         booking={b}
                         assignableDrivers={assignableDrivers}
                         onAssign={(d) => void assignDriver(b, d)}
                       />
+                      ) : null}
                     </RecordCard>
                   );
                 })
@@ -608,7 +633,7 @@ export default function AssignmentsPage() {
                           </p>
                           <p className="truncate text-[11px] text-slate">{bookingRoute(b)}</p>
                         </div>
-                        {name === "Unassigned" || !group.driver ? (
+                        {canAssignDriver && (name === "Unassigned" || !group.driver) ? (
                           <div className="mt-2">
                             <AssignDriverMenu
                               booking={b}

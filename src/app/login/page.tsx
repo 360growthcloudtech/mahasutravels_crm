@@ -14,11 +14,15 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getSession, login } from "@/lib/auth";
+import { login } from "@/lib/auth";
+import { useSession } from "@/lib/session-context";
+import { useData } from "@/lib/store";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { reloadSessionData } = useData();
+  const { session: existingSession, loading: sessionLoading, reloadSession } = useSession();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
@@ -26,14 +30,8 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    let cancelled = false;
-    getSession().then((session) => {
-      if (!cancelled && session) router.replace("/");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    if (!sessionLoading && existingSession) router.replace("/");
+  }, [sessionLoading, existingSession, router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,6 +42,8 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+    await reloadSession();
+    await reloadSessionData();
     router.replace("/");
   }
 

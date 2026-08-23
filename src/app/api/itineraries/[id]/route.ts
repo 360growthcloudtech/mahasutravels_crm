@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import {
   deleteItineraryTemplate,
   findItineraryTemplateById,
@@ -79,6 +79,8 @@ export async function GET(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "itineraries.view");
+  if (denied) return denied;
 
   const { id } = await context.params;
   const found = await findItineraryTemplateById(id);
@@ -94,6 +96,8 @@ export async function PATCH(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "itineraries.edit");
+  if (denied) return denied;
 
   const { id } = await context.params;
   let body: Record<string, unknown>;
@@ -160,6 +164,8 @@ export async function DELETE(
 ) {
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "itineraries.delete");
+  if (denied) return denied;
 
   const { id } = await context.params;
   const deleted = await deleteItineraryTemplate(id);

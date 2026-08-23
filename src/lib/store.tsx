@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { getSession } from "@/lib/auth";
 import {
   Lead,
   Booking,
@@ -16,6 +17,7 @@ import {
   quotes as seedQuotes,
   members as seedMembers,
   systemPermissions as seedSystemPermissions,
+  defaultPermissionsForRole,
   genId,
   makeLeadHistoryEvent,
 } from "@/lib/data";
@@ -169,6 +171,8 @@ type Ctx = {
   refreshDrivers: () => Promise<void>;
   refreshAdSpends: () => Promise<void>;
   refreshBookings: () => Promise<void>;
+  /** Refetch all server lists after sign-in (provider mounts before auth cookie exists). */
+  reloadSessionData: () => Promise<void>;
   addLead: (l: LeadFormValues) => Promise<Lead>;
   updateLead: (
     id: string,
@@ -213,6 +217,8 @@ type Ctx = {
   addSystemPermission: (p: Omit<SystemPermission, "id">) => void;
   updateSystemPermission: (id: string, patch: Partial<SystemPermission>) => void;
   deleteSystemPermission: (id: string) => void;
+  /** Merge server master permissions by key (localStorage never permanently hides new masters). */
+  mergeSystemPermissions: (masters: Array<Omit<SystemPermission, "id"> & { id?: string }>) => void;
   addAdSpend: (s: Omit<AdSpendEntry, "id" | "createdAt">) => Promise<AdSpendEntry>;
   updateAdSpend: (id: string, patch: Partial<AdSpendEntry>) => Promise<void>;
   deleteAdSpend: (id: string) => Promise<void>;
@@ -249,13 +255,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           drivers: [],
           adSpends: [],
           bookings: [],
-          members: (parsed.members?.length ? parsed.members : seedMembers).map((m) => ({
-            ...m,
-            password: m.password ?? "",
-          })),
-          systemPermissions: parsed.systemPermissions?.length
-            ? parsed.systemPermissions
-            : seedSystemPermissions,
+          members: (parsed.members?.length ? parsed.members : seedMembers).map((m) => {
+            const defaults = defaultPermissionsForRole(m.role);
+            const keys = new Set([...(m.permissionKeys ?? []), ...defaults]);
+            return {
+              ...m,
+              password: m.password ?? "",
+              permissionKeys: [...keys],
+            };
+          }),
+          systemPermissions: (() => {
+            const byKey = new Map(
+              (parsed.systemPermissions?.length
+                ? parsed.systemPermissions
+                : seedSystemPermissions
+              ).map((p) => [p.key, p])
+            );
+            for (const seed of seedSystemPermissions) {
+              if (!byKey.has(seed.key)) byKey.set(seed.key, seed);
+              else {
+                const cur = byKey.get(seed.key)!;
+                byKey.set(seed.key, {
+                  ...cur,
+                  module: seed.module,
+                  action: seed.action,
+                  label: seed.label,
+                  description: seed.description,
+                });
+              }
+            }
+            const order = new Map(seedSystemPermissions.map((p, i) => [p.key, i]));
+            return [...byKey.values()].sort(
+              (a, b) => (order.get(a.key) ?? 9999) - (order.get(b.key) ?? 9999)
+            );
+          })(),
           leadItineraries: parsed.leadItineraries ?? {},
         });
       }
@@ -309,11 +342,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  React.useEffect(() => {
-    if (!hydrated) return;
-    void refreshLeads();
-  }, [hydrated, refreshLeads]);
-
   const refreshHotels = React.useCallback(async () => {
     setHotelsLoading(true);
     try {
@@ -328,11 +356,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setHotelsLoading(false);
     }
   }, []);
-
-  React.useEffect(() => {
-    if (!hydrated) return;
-    void refreshHotels();
-  }, [hydrated, refreshHotels]);
 
   const refreshItineraries = React.useCallback(async () => {
     setItinerariesLoading(true);
@@ -349,11 +372,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  React.useEffect(() => {
-    if (!hydrated) return;
-    void refreshItineraries();
-  }, [hydrated, refreshItineraries]);
-
   const refreshDrivers = React.useCallback(async () => {
     setDriversLoading(true);
     try {
@@ -368,11 +386,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setDriversLoading(false);
     }
   }, []);
-
-  React.useEffect(() => {
-    if (!hydrated) return;
-    void refreshDrivers();
-  }, [hydrated, refreshDrivers]);
 
   const refreshAdSpends = React.useCallback(async () => {
     setAdSpendsLoading(true);
@@ -389,11 +402,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  React.useEffect(() => {
-    if (!hydrated) return;
-    void refreshAdSpends();
-  }, [hydrated, refreshAdSpends]);
-
   const refreshBookings = React.useCallback(async () => {
     setBookingsLoading(true);
     try {
@@ -409,10 +417,64 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshAllServerData = React.useCallback(async () => {
+    await Promise.all([
+      refreshLeads(),
+      refreshHotels(),
+      refreshItineraries(),
+      refreshDrivers(),
+      refreshAdSpends(),
+      refreshBookings(),
+    ]);
+  }, [
+    refreshLeads,
+    refreshHotels,
+    refreshItineraries,
+    refreshDrivers,
+    refreshAdSpends,
+    refreshBookings,
+  ]);
+
+  const reloadSessionData = React.useCallback(async () => {
+    const session = await getSession();
+    if (!session?.memberId) {
+      setLeadsLoading(false);
+      setHotelsLoading(false);
+      setItinerariesLoading(false);
+      setDriversLoading(false);
+      setAdSpendsLoading(false);
+      setBookingsLoading(false);
+      return;
+    }
+    await refreshAllServerData();
+  }, [refreshAllServerData]);
+
+  /** Load CRM lists once hydrated and a session cookie exists. */
   React.useEffect(() => {
     if (!hydrated) return;
-    void refreshBookings();
-  }, [hydrated, refreshBookings]);
+    let cancelled = false;
+
+    void (async () => {
+      const session = await getSession();
+      if (cancelled) return;
+
+      if (!session?.memberId) {
+        setLeadsLoading(false);
+        setHotelsLoading(false);
+        setItinerariesLoading(false);
+        setDriversLoading(false);
+        setAdSpendsLoading(false);
+        setBookingsLoading(false);
+        return;
+      }
+
+      await refreshAllServerData();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, refreshAllServerData]);
 
   const addBooking = React.useCallback(async (input: Omit<Booking, "id" | "bookingNo">) => {
     const created = await createBookingApi(bookingToWritePayload(input));
@@ -902,6 +964,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshDrivers,
       refreshAdSpends,
       refreshBookings,
+      reloadSessionData,
       addLead,
       updateLead,
       deleteLead,
@@ -1036,6 +1099,51 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           systemPermissions: s.systemPermissions.filter((x) => x.id !== id),
         })),
 
+      mergeSystemPermissions: (masters) =>
+        setState((s) => {
+          const byKey = new Map(s.systemPermissions.map((p) => [p.key, p]));
+          let changed = false;
+          for (const m of masters) {
+            const existing = byKey.get(m.key);
+            if (existing) {
+              if (
+                existing.module !== m.module ||
+                existing.action !== m.action ||
+                existing.label !== m.label ||
+                (existing.description ?? "") !== (m.description ?? "")
+              ) {
+                byKey.set(m.key, {
+                  ...existing,
+                  module: m.module,
+                  action: m.action as SystemPermission["action"],
+                  label: m.label,
+                  description: m.description,
+                });
+                changed = true;
+              }
+            } else {
+              byKey.set(m.key, {
+                id: m.id || genId("SP"),
+                key: m.key,
+                module: m.module,
+                action: m.action as SystemPermission["action"],
+                label: m.label,
+                description: m.description,
+              });
+              changed = true;
+            }
+          }
+          if (!changed) return s;
+          const seedOrder = new Map(seedSystemPermissions.map((p, i) => [p.key, i]));
+          const merged = [...byKey.values()].sort((a, b) => {
+            const ai = seedOrder.get(a.key) ?? 9999;
+            const bi = seedOrder.get(b.key) ?? 9999;
+            if (ai !== bi) return ai - bi;
+            return a.key.localeCompare(b.key);
+          });
+          return { ...s, systemPermissions: merged };
+        }),
+
       addAdSpend,
       updateAdSpend,
       deleteAdSpend,
@@ -1060,6 +1168,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshDrivers,
       refreshAdSpends,
       refreshBookings,
+      reloadSessionData,
       addLead,
       updateLead,
       deleteLead,

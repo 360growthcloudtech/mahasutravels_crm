@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { DataProvider } from "@/lib/store";
+import { SessionProvider } from "@/lib/session-context";
 import { ToastProvider } from "@/lib/toast";
 import { ThemeProvider } from "@/lib/theme";
 
@@ -33,7 +34,9 @@ export default function RootLayout({
       <body className="min-h-full">
         <ThemeProvider>
           <ToastProvider>
-            <DataProvider>{children}</DataProvider>
+            <SessionProvider>
+              <DataProvider>{children}</DataProvider>
+            </SessionProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>
