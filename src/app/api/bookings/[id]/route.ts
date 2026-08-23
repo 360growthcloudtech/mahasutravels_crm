@@ -4,6 +4,7 @@ import {
   bookingToDto,
   deleteBooking,
   findBookingById,
+  isBookingOwnedBy,
   patchBooking,
   type PatchBookingInput,
 } from "@/lib/db/bookings";
@@ -74,6 +75,12 @@ export async function GET(
   const { id } = await context.params;
   const booking = await findBookingById(id);
   if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  if (
+    session.role === "Employee" &&
+    !(await isBookingOwnedBy(booking, session.sub, session.name))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   return NextResponse.json({ booking: bookingToDto(booking) });
 }
 
@@ -85,6 +92,14 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
+  if (session.role === "Employee") {
+    const existing = await findBookingById(id);
+    if (!existing) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    if (!(await isBookingOwnedBy(existing, session.sub, session.name))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -174,6 +189,14 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
+  if (session.role === "Employee") {
+    const existing = await findBookingById(id);
+    if (!existing) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+    if (!(await isBookingOwnedBy(existing, session.sub, session.name))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   const deleted = await deleteBooking(id);
   if (!deleted) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   return NextResponse.json({ ok: true });

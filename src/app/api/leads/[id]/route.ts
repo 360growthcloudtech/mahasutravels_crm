@@ -46,6 +46,9 @@ export async function GET(
   const { id } = await context.params;
   const lead = await findLeadById(id);
   if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  if (session.role === "Employee" && lead.assigned_to !== session.sub) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   return NextResponse.json({ lead: leadToDto(lead) });
 }
 
@@ -57,6 +60,14 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
+  if (session.role === "Employee") {
+    const existing = await findLeadById(id);
+    if (!existing) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    if (existing.assigned_to !== session.sub) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -216,6 +227,14 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
+  if (session.role === "Employee") {
+    const existing = await findLeadById(id);
+    if (!existing) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    if (existing.assigned_to !== session.sub) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   const deleted = await deleteLead(id);
   if (!deleted) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
   return NextResponse.json({ ok: true });

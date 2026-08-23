@@ -99,6 +99,10 @@ export async function GET(request: Request) {
     status: csvParam(url.searchParams.get("status")),
     website: csvParam(url.searchParams.get("website")),
     driver: csvParam(url.searchParams.get("driver")),
+    ownedBy:
+      session.role === "Employee"
+        ? { userId: session.sub, agentName: session.name }
+        : undefined,
   });
 
   return NextResponse.json({ bookings: bookings.map(bookingToDto) });

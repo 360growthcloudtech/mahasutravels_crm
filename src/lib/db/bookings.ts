@@ -129,6 +129,8 @@ export type ListBookingsFilters = {
   status?: string[];
   website?: string[];
   driver?: string[];
+  /** When set, only bookings owned by this user (lead assignee or agent name). */
+  ownedBy?: { userId: string; agentName: string };
 };
 
 const BOOKING_SELECT = `
@@ -218,6 +220,26 @@ export async function findBookingById(id: string): Promise<BookingRow | null> {
   return rows[0] ?? null;
 }
 
+/** Same ownership rule as employee dashboard: lead assignee or matching agent name. */
+export async function isBookingOwnedBy(
+  booking: BookingRow,
+  userId: string,
+  agentName: string
+): Promise<boolean> {
+  if (
+    booking.agent &&
+    booking.agent.trim().toLowerCase() === agentName.trim().toLowerCase()
+  ) {
+    return true;
+  }
+  if (!booking.lead_id) return false;
+  const { rows } = await query<{ assigned_to: string | null }>(
+    `SELECT assigned_to FROM leads WHERE id = $1`,
+    [booking.lead_id]
+  );
+  return rows[0]?.assigned_to === userId;
+}
+
 export async function listBookings(filters: ListBookingsFilters = {}): Promise<BookingRow[]> {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -250,6 +272,21 @@ export async function listBookings(filters: ListBookingsFilters = {}): Promise<B
           FROM jsonb_array_elements(COALESCE(drivers, '[]'::jsonb)) AS elem
           WHERE elem->>'driver' = ANY($${params.length}::text[])
         ))`
+    );
+  }
+  if (filters.ownedBy?.userId) {
+    params.push(filters.ownedBy.userId, filters.ownedBy.agentName);
+    const userIdx = params.length - 1;
+    const nameIdx = params.length;
+    clauses.push(
+      `(
+        EXISTS (
+          SELECT 1 FROM leads lmine
+          WHERE lmine.id = lead_id
+            AND lmine.assigned_to = $${userIdx}::uuid
+        )
+        OR lower(trim(COALESCE(agent, ''))) = lower(trim($${nameIdx}))
+      )`
     );
   }
 

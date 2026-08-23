@@ -30,8 +30,10 @@ import {
 } from "@/components/crm/date-range-filter";
 import { StatCardsSkeleton } from "@/components/crm/skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmployeeDashboard } from "@/components/crm/employee-dashboard";
 import { fetchDashboard } from "@/lib/dashboard-api";
 import type { DashboardBookingSummary, DashboardPayload } from "@/lib/db/dashboard";
+import { getSession } from "@/lib/auth";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -154,6 +156,42 @@ function DashboardBodySkeleton() {
 }
 
 export default function DashboardPage() {
+  const [role, setRole] = React.useState<string | null>(null);
+  const [roleLoading, setRoleLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void getSession()
+      .then((session) => {
+        if (!cancelled) setRole(session?.role ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setRoleLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (roleLoading) {
+    return (
+      <>
+        <Topbar title="Dashboard" />
+        <main className="page-pad">
+          <DashboardBodySkeleton />
+        </main>
+      </>
+    );
+  }
+
+  if (role === "Employee") {
+    return <EmployeeDashboard />;
+  }
+
+  return <OrgDashboard />;
+}
+
+function OrgDashboard() {
   const { addLead } = useData();
   const { toast } = useToast();
   const [dateRange, setDateRange] = React.useState<DashboardDateRange>(null);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
-import { getDashboard, parseDashboardFilters } from "@/lib/db/dashboard";
+import { getEmployeeDashboard, parseEmployeeDashboardFilters } from "@/lib/db/dashboard-me";
 
 export const runtime = "nodejs";
 
@@ -9,19 +9,19 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.role === "Employee") {
+  if (session.role !== "Employee") {
     return NextResponse.json(
-      { error: "Employees should use /api/dashboard/me" },
+      { error: "Employee dashboard is only available for Employee role" },
       { status: 403 }
     );
   }
 
   const url = new URL(request.url);
-  const parsed = parseDashboardFilters(url.searchParams);
+  const parsed = parseEmployeeDashboardFilters(url.searchParams);
   if (parsed.error) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const dashboard = await getDashboard(parsed.filters);
+  const dashboard = await getEmployeeDashboard(session.sub, session.name, parsed.filters);
   return NextResponse.json({ dashboard });
 }

@@ -38,11 +38,16 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const assignedTo =
+    session.role === "Employee"
+      ? [session.sub]
+      : csvParam(url.searchParams.get("assigned_to"));
+
   const leads = await listLeads({
     search: url.searchParams.get("search") ?? undefined,
     status: csvParam(url.searchParams.get("status")),
     source: csvParam(url.searchParams.get("source")),
-    assigned_to: csvParam(url.searchParams.get("assigned_to")),
+    assigned_to: assignedTo,
     website: csvParam(url.searchParams.get("website")),
   });
 
