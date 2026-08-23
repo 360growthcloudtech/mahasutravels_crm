@@ -1455,6 +1455,8 @@ export type Member = {
   role: MemberRole;
   status: MemberStatus;
   permissionKeys: string[];
+  /** Website domain for auto-assigning inbound leads (optional). */
+  autoAssignWebsite?: string | null;
 };
 
 const permissionDefs: Array<{

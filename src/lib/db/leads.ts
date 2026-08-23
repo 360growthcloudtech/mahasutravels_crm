@@ -1,5 +1,7 @@
 import { query } from "@/lib/db";
 import { getDefaultStatusCode } from "@/lib/db/masters";
+import { findActiveUserByAutoAssignWebsite } from "@/lib/db/users";
+import { ensureLeadWebhookSchema } from "@/lib/db/ensure-lead-webhook-schema";
 import {
   formatLeadNo,
   normalizePhone,
@@ -380,6 +382,13 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
   const previous = await findLatestLeadByPhone(phoneNormalized);
   const status = input.status || (await getDefaultStatusCode());
 
+  let assignedTo = input.assigned_to || null;
+  if (!assignedTo && input.website?.trim()) {
+    await ensureLeadWebhookSchema();
+    const auto = await findActiveUserByAutoAssignWebsite(input.website.trim());
+    if (auto) assignedTo = auto.id;
+  }
+
   const { rows } = await query<{ id: string }>(
     `INSERT INTO leads (
       name, phone, phone_normalized, email, pickup, drop_location, car, days,
@@ -417,7 +426,7 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
       Number(input.kids) || 0,
       input.notes?.trim() ?? "",
       status,
-      input.assigned_to || null,
+      assignedTo,
       previous?.id ?? null,
       input.utm_source?.trim() || null,
       input.utm_medium?.trim() || null,
@@ -433,14 +442,15 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
   const detailParts = [`Source: ${input.source}`];
   if (previous) detailParts.push(`Repeat customer · previous ${formatLeadNo(previous.lead_no)}`);
   await insertActivity(id, "created", "Lead created", actor, detailParts.join(" · "));
-  if (input.assigned_to) {
+  if (assignedTo) {
     const created = await findLeadById(id);
+    const viaAuto = !input.assigned_to && Boolean(input.website?.trim());
     await insertActivity(
       id,
       "assigned",
       `Assigned to ${created?.assigned_to_name ?? "agent"}`,
       actor,
-      "Manual assignment on create"
+      viaAuto ? `Auto-assigned from website ${input.website}` : "Manual assignment on create"
     );
   }
   const lead = await findLeadById(id);

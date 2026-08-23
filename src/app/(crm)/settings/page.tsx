@@ -53,8 +53,9 @@ import {
   defaultPermissionsForRole,
   allPermissionKeys,
 } from "@/lib/data";
-import { cn } from "@/lib/utils";
+import { fetchUsers, updateUserAutoAssignWebsite, type UserApi } from "@/lib/users-api";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+import { cn } from "@/lib/utils";
 
 const roles: MemberRole[] = ["Super Admin", "Admin", "Employee"];
 const statuses: MemberStatus[] = ["Active", "Inactive"];
@@ -88,12 +89,14 @@ function emptyMember(): Omit<Member, "id"> {
     role: "Employee",
     status: "Active",
     permissionKeys: defaultPermissionsForRole("Employee"),
+    autoAssignWebsite: null,
   };
 }
 
 export default function SettingsPage() {
   const {
     state,
+    websites,
     addMember,
     updateMember,
     deleteMember,
@@ -102,6 +105,23 @@ export default function SettingsPage() {
     deleteSystemPermission,
   } = useData();
   const { toast } = useToast();
+
+  const [dbUsers, setDbUsers] = React.useState<UserApi[]>([]);
+  const [savingMember, setSavingMember] = React.useState(false);
+
+  React.useEffect(() => {
+    void fetchUsers({ all: true })
+      .then(setDbUsers)
+      .catch(() => setDbUsers([]));
+  }, []);
+
+  const websiteByEmail = React.useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const u of dbUsers) {
+      map.set(u.email.toLowerCase(), u.auto_assign_website);
+    }
+    return map;
+  }, [dbUsers]);
 
   const [section, setSection] = React.useState<"members" | "permissions">("members");
   const [memberQuery, setMemberQuery] = React.useState("");
@@ -171,6 +191,7 @@ export default function SettingsPage() {
 
   function openEditMember(m: Member) {
     setEditingMember(m);
+    const fromDb = websiteByEmail.get(m.email.toLowerCase());
     setForm({
       name: m.name,
       email: m.email,
@@ -180,6 +201,7 @@ export default function SettingsPage() {
       role: m.role,
       status: m.status,
       permissionKeys: [...m.permissionKeys],
+      autoAssignWebsite: fromDb ?? m.autoAssignWebsite ?? null,
     });
     setShowPassword(false);
     setMemberTab("profile");
@@ -213,7 +235,7 @@ export default function SettingsPage() {
     });
   }
 
-  function saveMember() {
+  async function saveMember() {
     if (!form.name.trim() || !form.email.trim()) {
       toast({ variant: "error", title: "Name and email are required" });
       return;
@@ -222,14 +244,64 @@ export default function SettingsPage() {
       toast({ variant: "error", title: "Password is required" });
       return;
     }
-    if (editingMember) {
-      updateMember(editingMember.id, form);
-      toast({ variant: "success", title: "Member updated", description: form.name });
-    } else {
-      addMember(form);
-      toast({ variant: "success", title: "Member invited", description: form.name });
+
+    const payload = {
+      ...form,
+      autoAssignWebsite: form.autoAssignWebsite || null,
+    };
+
+    setSavingMember(true);
+    try {
+      const dbUser = dbUsers.find(
+        (u) => u.email.toLowerCase() === form.email.trim().toLowerCase()
+      );
+      if (dbUser) {
+        const updated = await updateUserAutoAssignWebsite(
+          dbUser.id,
+          payload.autoAssignWebsite || null
+        );
+        setDbUsers((prev) =>
+          prev.map((u) => {
+            if (u.id === updated.id) return updated;
+            // Ownership moved: clear from others locally
+            if (
+              updated.auto_assign_website &&
+              u.auto_assign_website === updated.auto_assign_website &&
+              u.id !== updated.id
+            ) {
+              return { ...u, auto_assign_website: null };
+            }
+            return u;
+          })
+        );
+      } else if (payload.autoAssignWebsite) {
+        toast({
+          variant: "error",
+          title: "No matching login user",
+          description:
+            "Auto-assign website only saves for members that exist as CRM login users (same email).",
+        });
+        setSavingMember(false);
+        return;
+      }
+
+      if (editingMember) {
+        updateMember(editingMember.id, payload);
+        toast({ variant: "success", title: "Member updated", description: form.name });
+      } else {
+        addMember(payload);
+        toast({ variant: "success", title: "Member invited", description: form.name });
+      }
+      setMemberOpen(false);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not save member",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setSavingMember(false);
     }
-    setMemberOpen(false);
   }
 
   function openCreatePerm() {
@@ -357,6 +429,7 @@ export default function SettingsPage() {
                     <TableHead>Member</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Department</TableHead>
+                    <TableHead>Website</TableHead>
                     <TableHead>Permissions</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-[6rem]">Actions</TableHead>
@@ -375,6 +448,11 @@ export default function SettingsPage() {
                       </TableCell>
                       <TableCell className="text-sm text-slate">
                         {m.department || "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate">
+                        {websiteByEmail.get(m.email.toLowerCase()) ||
+                          m.autoAssignWebsite ||
+                          "—"}
                       </TableCell>
                       <TableCell className="font-mono-data text-xs text-slate">
                         {m.permissionKeys.length}/{allPermissionKeys.length}
@@ -422,6 +500,11 @@ export default function SettingsPage() {
                     <InfoGrid>
                       <InfoItem label="Role">{m.role}</InfoItem>
                       <InfoItem label="Department">{m.department || "—"}</InfoItem>
+                      <InfoItem label="Website">
+                        {websiteByEmail.get(m.email.toLowerCase()) ||
+                          m.autoAssignWebsite ||
+                          "—"}
+                      </InfoItem>
                       <InfoItem label="Permissions">
                         {m.permissionKeys.length}/{allPermissionKeys.length}
                       </InfoItem>
@@ -708,6 +791,32 @@ export default function SettingsPage() {
                       </SelectContent>
                     </Select>
                   </Field>
+                  <Field
+                    label="Website (auto-assign leads)"
+                    hint="Optional. New leads from this site are assigned to this user."
+                  >
+                    <Select
+                      value={form.autoAssignWebsite || "__none__"}
+                      onValueChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          autoAssignWebsite: v === "__none__" ? null : v,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {websites.map((w) => (
+                          <SelectItem key={w.domain} value={w.domain}>
+                            {w.label ? `${w.label} (${w.domain})` : w.domain}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                 </form>
               </TabsContent>
 
@@ -827,8 +936,8 @@ export default function SettingsPage() {
             <Button variant="outline" onClick={() => setMemberOpen(false)}>
               Discard
             </Button>
-            <Button variant="marigold" onClick={saveMember}>
-              Save changes
+            <Button variant="marigold" onClick={() => void saveMember()} disabled={savingMember}>
+              {savingMember ? "Saving…" : "Save changes"}
             </Button>
           </SheetFooter>
         </SheetContent>
