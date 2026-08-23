@@ -15,17 +15,9 @@ import {
   resolveWebsiteDomain,
 } from "@/lib/db/masters";
 import { parseLeadIngestBody } from "@/lib/lead-ingest-parse";
+import { parseLeadsListFilters } from "@/lib/api/list-filters";
 
 export const runtime = "nodejs";
-
-function csvParam(value: string | null): string[] | undefined {
-  if (!value?.trim()) return undefined;
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-}
 
 export async function OPTIONS(request: Request) {
   return new NextResponse(null, { status: 204, headers: ingestCorsHeaders(request) });
@@ -38,18 +30,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const assignedTo =
-    session.role === "Employee"
-      ? [session.sub]
-      : csvParam(url.searchParams.get("assigned_to"));
-
-  const leads = await listLeads({
-    search: url.searchParams.get("search") ?? undefined,
-    status: csvParam(url.searchParams.get("status")),
-    source: csvParam(url.searchParams.get("source")),
-    assigned_to: assignedTo,
-    website: csvParam(url.searchParams.get("website")),
-  });
+  const leads = await listLeads(parseLeadsListFilters(url.searchParams, session));
 
   return NextResponse.json({ leads: leads.map(leadToDto) });
 }

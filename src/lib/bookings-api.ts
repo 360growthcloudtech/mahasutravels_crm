@@ -8,6 +8,7 @@ import type {
   MarketingChannel,
 } from "@/lib/data";
 import { normalizeBookingAssignments } from "@/lib/booking-utils";
+import { buildExportParams, downloadCsvFromResponse } from "@/lib/csv-download";
 
 export type BookingApi = {
   id: string;
@@ -171,6 +172,34 @@ export async function fetchBookings(): Promise<BookingApi[]> {
   if (!res.ok) throw new Error("Failed to load bookings");
   const data = (await res.json()) as { bookings?: BookingApi[] };
   return data.bookings ?? [];
+}
+
+export type BookingsExportQuery = {
+  search?: string;
+  status?: string[];
+  website?: string[];
+  driver?: string[];
+  travel_from?: string;
+  travel_to?: string;
+  hotel?: Array<"with_hotel" | "no_hotel">;
+};
+
+export async function downloadBookingsCsv(query: BookingsExportQuery = {}): Promise<number> {
+  const params = buildExportParams({
+    search: query.search,
+    status: query.status,
+    website: query.website,
+    driver: query.driver,
+    travel_from: query.travel_from,
+    travel_to: query.travel_to,
+    hotel: query.hotel,
+  });
+  const qs = params.toString();
+  const res = await fetch(`/api/bookings/export${qs ? `?${qs}` : ""}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  return downloadCsvFromResponse(res, "bookings-export.csv");
 }
 
 export async function createBookingApi(payload: BookingWritePayload): Promise<BookingApi> {

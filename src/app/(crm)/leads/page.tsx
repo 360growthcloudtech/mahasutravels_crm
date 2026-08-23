@@ -5,6 +5,7 @@ import {
   CalendarPlus,
   ChevronDown,
   Copy,
+  Download,
   Filter,
   FileText,
   History,
@@ -55,7 +56,9 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Booking, Lead } from "@/lib/data";
 import { formatDisplayTime, formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
-import { createLeadActivityApi } from "@/lib/leads-api";
+import { createLeadActivityApi, downloadLeadsCsv } from "@/lib/leads-api";
+import { getSession } from "@/lib/auth";
+import { LeadsExportDialog } from "@/components/crm/leads-export-dialog";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import {
   RecordCardsSkeleton,
@@ -182,6 +185,13 @@ export default function LeadsPage() {
   const [historyLoading, setHistoryLoading] = React.useState(false);
   const [quoteLeadId, setQuoteLeadId] = React.useState<string | null>(null);
   const [bookingLead, setBookingLead] = React.useState<Lead | null>(null);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
+  const [isEmployee, setIsEmployee] = React.useState(false);
+
+  React.useEffect(() => {
+    void getSession().then((session) => setIsEmployee(session?.role === "Employee"));
+  }, []);
 
   const editingLead = editingLeadId
     ? state.leads.find((l) => l.id === editingLeadId) ?? null
@@ -346,6 +356,17 @@ export default function LeadsPage() {
     sourceFilter.length > 0 ||
     agentFilter.length > 0 ||
     websiteFilter.length > 0;
+
+  const exportInitialFilters = React.useMemo(
+    () => ({
+      search: query,
+      status: statusFilter,
+      source: sourceFilter,
+      website: websiteFilter,
+      assigned_to: agentFilter,
+    }),
+    [query, statusFilter, sourceFilter, websiteFilter, agentFilter]
+  );
 
   const visible = state.leads.filter((l) => {
     const q = query.trim().toLowerCase();
@@ -515,6 +536,16 @@ export default function LeadsPage() {
                 </Button>
               )}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 shrink-0"
+              disabled={exporting || leadsLoading}
+              onClick={() => setExportOpen(true)}
+            >
+              <Download className="size-3.5" />
+              Export CSV
+            </Button>
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
@@ -970,6 +1001,52 @@ export default function LeadsPage() {
           if (!open) setBookingLead(null);
         }}
         onSubmit={handleCreateBookingFromLead}
+      />
+
+      <LeadsExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        initialFilters={exportInitialFilters}
+        statusOptions={statusCodes}
+        sourceOptions={sourceCodes}
+        websiteOptions={websiteDomains}
+        agentOptions={agentOptions}
+        formatStatus={(code) => leadStatuses.find((s) => s.code === code)?.label ?? code}
+        formatSource={(code) => sourceLabel(code, leadSources)}
+        formatWebsite={(domain) => {
+          const w = websites.find((item) => item.domain === domain);
+          return w ? `${w.label} · ${w.domain}` : domain;
+        }}
+        formatAgent={(id) =>
+          id === "unassigned" ? "Unassigned" : assignees.find((a) => a.id === id)?.name ?? id
+        }
+        hideAgentFilter={isEmployee}
+        exporting={exporting}
+        onExport={async (query) => {
+          setExporting(true);
+          try {
+            return await downloadLeadsCsv(query);
+          } finally {
+            setExporting(false);
+          }
+        }}
+        onSuccess={(count, filtered) => {
+          toast({
+            variant: "success",
+            title: count === 0 ? "Exported headers only" : "Export ready",
+            description:
+              count === 0
+                ? "No leads matched your export filters."
+                : `Exported ${count} lead${count === 1 ? "" : "s"}${filtered ? " (filtered)" : ""}.`,
+          });
+        }}
+        onError={(message) => {
+          toast({
+            variant: "error",
+            title: "Could not export leads",
+            description: message,
+          });
+        }}
       />
 
       <ConfirmDialog

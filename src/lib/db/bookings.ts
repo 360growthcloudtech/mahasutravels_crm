@@ -129,6 +129,12 @@ export type ListBookingsFilters = {
   status?: string[];
   website?: string[];
   driver?: string[];
+  /** Inclusive travel start date (YYYY-MM-DD). */
+  travel_from?: string | null;
+  /** Inclusive travel start date (YYYY-MM-DD). */
+  travel_to?: string | null;
+  /** Filter by presence of hotel add-on. */
+  hotel?: Array<"with_hotel" | "no_hotel">;
   /** When set, only bookings owned by this user (lead assignee or agent name). */
   ownedBy?: { userId: string; agentName: string };
 };
@@ -273,6 +279,31 @@ export async function listBookings(filters: ListBookingsFilters = {}): Promise<B
           WHERE elem->>'driver' = ANY($${params.length}::text[])
         ))`
     );
+  }
+  if (filters.travel_from) {
+    params.push(filters.travel_from);
+    clauses.push(`travel_date IS NOT NULL AND travel_date::date >= $${params.length}::date`);
+  }
+  if (filters.travel_to) {
+    params.push(filters.travel_to);
+    clauses.push(`travel_date IS NOT NULL AND travel_date::date <= $${params.length}::date`);
+  }
+  if (filters.hotel?.length) {
+    const wantWith = filters.hotel.includes("with_hotel");
+    const wantWithout = filters.hotel.includes("no_hotel");
+    const hasHotelSql = `(
+      hotel IS NOT NULL
+      AND (
+        (jsonb_typeof(hotel::jsonb) = 'array' AND jsonb_array_length(hotel::jsonb) > 0)
+        OR (jsonb_typeof(hotel::jsonb) = 'object' AND COALESCE(hotel::jsonb->>'hotelName', '') <> '')
+      )
+    )`;
+    if (wantWith && !wantWithout) {
+      clauses.push(hasHotelSql);
+    } else if (wantWithout && !wantWith) {
+      clauses.push(`NOT ${hasHotelSql}`);
+    }
+    // both selected → no hotel filter (show all)
   }
   if (filters.ownedBy?.userId) {
     params.push(filters.ownedBy.userId, filters.ownedBy.agentName);

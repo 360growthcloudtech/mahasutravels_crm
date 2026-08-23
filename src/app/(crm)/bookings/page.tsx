@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   BedDouble,
   ChevronDown,
+  Download,
   Filter,
   History,
   MoreHorizontal,
@@ -48,6 +49,8 @@ import {
 } from "@/components/crm/skeletons";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
+import { downloadBookingsCsv } from "@/lib/bookings-api";
+import { BookingsExportDialog } from "@/components/crm/bookings-export-dialog";
 import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
 import { bookingDrivers, bookingHotels } from "@/lib/booking-utils";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
@@ -163,6 +166,8 @@ export default function BookingsPage() {
   const [commentBookingId, setCommentBookingId] = React.useState<string | null>(null);
   const [historyBookingId, setHistoryBookingId] = React.useState<string | null>(null);
   const [editingBookingId, setEditingBookingId] = React.useState<string | null>(null);
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   const driverNames = React.useMemo(
     () =>
@@ -308,6 +313,19 @@ export default function BookingsPage() {
     websiteFilter.length > 0 ||
     travelFrom.length > 0 ||
     travelTo.length > 0;
+
+  const exportInitialFilters = React.useMemo(
+    () => ({
+      search: query,
+      status: statusFilter,
+      website: websiteFilter,
+      driver: driverFilter,
+      travelFrom,
+      travelTo,
+      hotel: hotelFilter,
+    }),
+    [query, statusFilter, websiteFilter, driverFilter, travelFrom, travelTo, hotelFilter]
+  );
 
   const visible = state.bookings.filter((b) => {
     const q = query.trim().toLowerCase();
@@ -485,6 +503,16 @@ export default function BookingsPage() {
                 </Button>
               )}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 shrink-0"
+              disabled={exporting || bookingsLoading}
+              onClick={() => setExportOpen(true)}
+            >
+              <Download className="size-3.5" />
+              Export CSV
+            </Button>
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
@@ -776,6 +804,41 @@ export default function BookingsPage() {
         booking={historyBooking}
         open={!!historyBookingId}
         onOpenChange={(v) => !v && setHistoryBookingId(null)}
+      />
+
+      <BookingsExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        initialFilters={exportInitialFilters}
+        statusOptions={statuses}
+        websiteOptions={websiteNames}
+        driverOptions={driverNames}
+        exporting={exporting}
+        onExport={async (query) => {
+          setExporting(true);
+          try {
+            return await downloadBookingsCsv(query);
+          } finally {
+            setExporting(false);
+          }
+        }}
+        onSuccess={(count, filtered) => {
+          toast({
+            variant: "success",
+            title: count === 0 ? "Exported headers only" : "Export ready",
+            description:
+              count === 0
+                ? "No bookings matched your export filters."
+                : `Exported ${count} booking${count === 1 ? "" : "s"}${filtered ? " (filtered)" : ""}.`,
+          });
+        }}
+        onError={(message) => {
+          toast({
+            variant: "error",
+            title: "Could not export bookings",
+            description: message,
+          });
+        }}
       />
 
       <ConfirmDialog

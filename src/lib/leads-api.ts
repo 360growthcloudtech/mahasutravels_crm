@@ -1,4 +1,5 @@
 import type { Lead, LeadComment, LeadCustomItinerary, LeadHistoryAction, LeadHistoryEvent } from "@/lib/data";
+import { buildExportParams, downloadCsvFromResponse } from "@/lib/csv-download";
 
 export type LeadApiAssignee = { id: string; name: string } | null;
 
@@ -202,6 +203,30 @@ export async function fetchLeads(): Promise<LeadApi[]> {
   if (!res.ok) throw new Error("Failed to load leads");
   const data = (await res.json()) as { leads?: LeadApi[] };
   return data.leads ?? [];
+}
+
+export type LeadsExportQuery = {
+  search?: string;
+  status?: string[];
+  source?: string[];
+  website?: string[];
+  assigned_to?: string[];
+};
+
+export async function downloadLeadsCsv(query: LeadsExportQuery = {}): Promise<number> {
+  const params = buildExportParams({
+    search: query.search,
+    status: query.status,
+    source: query.source,
+    website: query.website,
+    assigned_to: query.assigned_to,
+  });
+  const qs = params.toString();
+  const res = await fetch(`/api/leads/export${qs ? `?${qs}` : ""}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  return downloadCsvFromResponse(res, "leads-export.csv");
 }
 
 export async function createLeadApi(payload: LeadWritePayload): Promise<{ lead: LeadApi; repeat_inquiry: boolean }> {

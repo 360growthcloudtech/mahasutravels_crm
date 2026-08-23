@@ -11,17 +11,9 @@ import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } fr
 import { makeLeadHistoryEvent } from "@/lib/data";
 import { query } from "@/lib/db";
 import { formatLeadNo } from "@/lib/lead-utils";
+import { parseBookingsListFilters } from "@/lib/api/list-filters";
 
 export const runtime = "nodejs";
-
-function csvParam(value: string | null): string[] | undefined {
-  if (!value?.trim()) return undefined;
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-}
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -94,16 +86,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const bookings = await listBookings({
-    search: url.searchParams.get("search") ?? undefined,
-    status: csvParam(url.searchParams.get("status")),
-    website: csvParam(url.searchParams.get("website")),
-    driver: csvParam(url.searchParams.get("driver")),
-    ownedBy:
-      session.role === "Employee"
-        ? { userId: session.sub, agentName: session.name }
-        : undefined,
-  });
+  const bookings = await listBookings(parseBookingsListFilters(url.searchParams, session));
 
   return NextResponse.json({ bookings: bookings.map(bookingToDto) });
 }
