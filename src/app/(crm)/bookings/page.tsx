@@ -53,10 +53,11 @@ import { useToast } from "@/lib/toast";
 import { downloadBookingsCsv } from "@/lib/bookings-api";
 import { BookingsExportDialog } from "@/components/crm/bookings-export-dialog";
 import { useHasPermission } from "@/lib/use-has-permission";
-import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
-import { bookingDrivers, bookingHotels } from "@/lib/booking-utils";
+import { Booking, BookingStatus, Driver, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
+import { assignedVehicleLabel, bookingDrivers, bookingHotels } from "@/lib/booking-utils";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+import { CreatedAtDisplay } from "@/components/crm/created-at-display";
 
 function formatDriversLabel(b: Booking) {
   const list = bookingDrivers(b);
@@ -65,11 +66,11 @@ function formatDriversLabel(b: Booking) {
   return `${list[0].driver} +${list.length - 1}`;
 }
 
-function formatVehiclesLabel(b: Booking) {
+function formatVehiclesLabel(b: Booking, drivers: Driver[]) {
   const list = bookingDrivers(b);
   if (!list.length) return "—";
-  if (list.length === 1) return list[0].vehicle || "—";
-  return `${list[0].vehicle || "—"} +${list.length - 1}`;
+  if (list.length === 1) return assignedVehicleLabel(list[0], drivers);
+  return `${assignedVehicleLabel(list[0], drivers)} +${list.length - 1}`;
 }
 
 function formatHotelsLabel(b: Booking) {
@@ -543,6 +544,7 @@ export default function BookingsPage() {
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Advance</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Balance</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Payment status</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card whitespace-nowrap">Created</TableHead>
                 <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -578,7 +580,7 @@ export default function BookingsPage() {
                   </TableCell>
                   <TableCell>
                     <p className="text-sm text-ink-text">{formatDriversLabel(b)}</p>
-                    <p className="font-mono-data text-[11px] text-slate-soft">{formatVehiclesLabel(b)}</p>
+                    <p className="font-mono-data text-[11px] text-slate-soft">{formatVehiclesLabel(b, state.drivers)}</p>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text">
                     ₹{b.total.toLocaleString("en-IN")}
@@ -590,33 +592,43 @@ export default function BookingsPage() {
                     {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
-                          aria-label={`Change payment status for ${b.customer}`}
-                        >
-                          <StatusBadge status={b.status} />
-                          <ChevronDown className="size-3.5 text-slate-soft" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>Set payment status</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {statuses.map((s) => (
-                          <DropdownMenuItem
-                            key={s}
-                            disabled={s === b.status}
-                            onSelect={() => {
-                              void handleStatusChange(b, s);
-                            }}
+                    <div className="space-y-0.5">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
+                            aria-label={`Change payment status for ${b.customer}`}
                           >
-                            <StatusBadge status={s} />
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                            <StatusBadge status={b.status} />
+                            <ChevronDown className="size-3.5 text-slate-soft" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuLabel>Set payment status</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {statuses.map((s) => (
+                            <DropdownMenuItem
+                              key={s}
+                              disabled={s === b.status}
+                              onSelect={() => {
+                                void handleStatusChange(b, s);
+                              }}
+                            >
+                              <StatusBadge status={s} />
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {b.paymentMode ? (
+                        <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                          {b.paymentMode}
+                        </p>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-slate">
+                    <CreatedAtDisplay iso={b.createdAt} stacked />
                   </TableCell>
                   <TableCell className={stickyActionCell}>
                     <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
@@ -678,7 +690,7 @@ export default function BookingsPage() {
               ))}
               {visible.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
                     No bookings match these filters.
                   </TableCell>
                 </TableRow>
@@ -744,11 +756,15 @@ export default function BookingsPage() {
                       {b.cabType} · {b.adults}A{b.kids > 0 ? `+${b.kids}K` : ""} · {b.days}d
                     </InfoItem>
                     <InfoItem label="Driver">{formatDriversLabel(b)}</InfoItem>
-                    <InfoItem label="Vehicle">{formatVehiclesLabel(b)}</InfoItem>
+                    <InfoItem label="Vehicle">{formatVehiclesLabel(b, state.drivers)}</InfoItem>
                     <InfoItem label="Total">₹{b.total.toLocaleString("en-IN")}</InfoItem>
                     <InfoItem label="Advance">₹{b.advance.toLocaleString("en-IN")}</InfoItem>
                     <InfoItem label="Balance">
                       {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
+                    </InfoItem>
+                    <InfoItem label="Payment mode">{b.paymentMode || "—"}</InfoItem>
+                    <InfoItem label="Created">
+                      <CreatedAtDisplay iso={b.createdAt} />
                     </InfoItem>
                     {formatHotelsLabel(b) ? (
                       <InfoItem label="Hotel" className="sm:col-span-2">

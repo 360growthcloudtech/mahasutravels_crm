@@ -2,6 +2,7 @@ import type {
   Booking,
   BookingDriverAssignment,
   BookingStatus,
+  Driver,
   Hotel,
   Lead,
   LeadComment,
@@ -25,6 +26,21 @@ export const BOOKING_STATUSES: BookingStatus[] = [
 
 export function isBookingStatus(value: unknown): value is BookingStatus {
   return typeof value === "string" && (BOOKING_STATUSES as string[]).includes(value);
+}
+
+export const BOOKING_PAYMENT_MODES = [
+  "Cash",
+  "UPI",
+  "Bank Transfer",
+  "Card",
+  "Cheque",
+  "Other",
+] as const;
+
+export type BookingPaymentMode = (typeof BOOKING_PAYMENT_MODES)[number];
+
+export function isBookingPaymentMode(value: unknown): value is BookingPaymentMode {
+  return typeof value === "string" && (BOOKING_PAYMENT_MODES as readonly string[]).includes(value);
 }
 
 export const MARKETING_CHANNELS: MarketingChannel[] = [
@@ -83,6 +99,7 @@ export function bookingFromLead(lead: Lead): Omit<Booking, "id"> {
     advance: 0,
     balance: total,
     status: "Advance Pending",
+    paymentMode: "",
     hotels: [],
     comments: [],
     history: [],
@@ -160,6 +177,61 @@ export function bookingDrivers(
     return [{ driver: booking.driver, vehicle: booking.vehicle ?? "" }];
   }
   return [];
+}
+
+export function findDriverByAssignment(
+  drivers: Driver[],
+  name: string,
+  vehicle?: string
+): Driver | undefined {
+  const n = name.trim();
+  if (!n) return undefined;
+  const v = vehicle?.trim();
+  return (
+    drivers.find(
+      (d) =>
+        d.name === n && (!v || d.vehicle === v || d.vehicleType === v)
+    ) ?? drivers.find((d) => d.name === n)
+  );
+}
+
+export function assignedVehicleLabel(
+  assignment: Pick<BookingDriverAssignment, "driver" | "vehicle">,
+  drivers: Driver[]
+): string {
+  const d = findDriverByAssignment(drivers, assignment.driver, assignment.vehicle);
+  if (d) return d.vehicle?.trim() || assignment.vehicle || "—";
+  return assignment.vehicle?.trim() || "—";
+}
+
+export function assignmentWithVehicleNumber(
+  assignment: BookingDriverAssignment,
+  drivers: Driver[]
+): BookingDriverAssignment {
+  const d = findDriverByAssignment(drivers, assignment.driver, assignment.vehicle);
+  if (!d) return assignment;
+  return {
+    driver: assignment.driver,
+    vehicle: d.vehicle?.trim() || assignment.vehicle,
+  };
+}
+
+/** Collect unique driver names from primary field and drivers array. */
+export function collectAssignedDriverNames(
+  driver?: string,
+  drivers?: BookingDriverAssignment[] | null
+): string[] {
+  const names = new Set<string>();
+  if (drivers?.length) {
+    for (const d of drivers) {
+      const n = d.driver?.trim();
+      if (n) names.add(n);
+    }
+  } else {
+    const n = driver?.trim();
+    if (n) names.add(n);
+  }
+  return [...names];
 }
 
 /** Normalize for API write: arrays + primary fields. */

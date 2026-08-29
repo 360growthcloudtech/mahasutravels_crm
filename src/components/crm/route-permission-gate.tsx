@@ -6,11 +6,21 @@ import { usePathname } from "next/navigation";
 import { ShieldOff } from "lucide-react";
 import { sessionAllows, type AuthSession } from "@/lib/auth";
 import { useSession } from "@/lib/session-context";
-import { ROUTE_VIEW_PERMISSION, viewPermissionForPath } from "@/lib/nav-permissions";
+import {
+  homeHrefForRole,
+  ROUTE_VIEW_PERMISSION,
+  viewPermissionForPath,
+} from "@/lib/nav-permissions";
 import { Button } from "@/components/ui/button";
 
 function firstAllowedHref(session: AuthSession): string | null {
+  const preferred = homeHrefForRole(session.role);
+  const preferredKey = ROUTE_VIEW_PERMISSION[preferred];
+  if (preferredKey && sessionAllows(session, preferredKey)) return preferred;
+
   for (const [href, key] of Object.entries(ROUTE_VIEW_PERMISSION)) {
+    if (href === preferred) continue;
+    if (href === "/" && session.role === "Employee") continue;
     if (sessionAllows(session, key)) return href;
   }
   return null;

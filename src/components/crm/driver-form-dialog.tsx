@@ -21,8 +21,11 @@ import { Field } from "@/components/crm/field";
 import { DrawerFormSkeleton, useDrawerReady } from "@/components/crm/skeletons";
 import { DatePicker } from "@/components/crm/date-picker";
 import { Driver } from "@/lib/data";
+import {
+  DRIVER_FORM_STATUS_OPTIONS,
+  driverFormStatusValue,
+} from "@/lib/driver-utils";
 
-const statuses: Driver["status"][] = ["Approved", "Rejected", "Deactivated"];
 const fuelTypes: NonNullable<Driver["fuelType"]>[] = ["Petrol", "Diesel", "CNG", "Electric"];
 const vehicleTypes = ["Swift Dzire", "Ertiga", "Innova Crysta", "Tempo Traveller", "Sedan", "SUV"];
 
@@ -190,14 +193,17 @@ export function DriverFormDialog({
               />
             </Field>
             <Field label="Status">
-              <Select value={form.status} onValueChange={(v) => set("status", v as Driver["status"])}>
+              <Select
+                value={driverFormStatusValue(form.status)}
+                onValueChange={(v) => set("status", v as Driver["status"])}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {statuses.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
+                  {DRIVER_FORM_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

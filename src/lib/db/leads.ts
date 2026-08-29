@@ -1,6 +1,6 @@
-import { query } from "@/lib/db";
+import { query, getPool } from "@/lib/db";
 import { getDefaultStatusCode } from "@/lib/db/masters";
-import { findActiveUserByAutoAssignWebsite } from "@/lib/db/users";
+import { pickAutoAssignUserForWebsiteWithClient } from "@/lib/db/lead-auto-assign";
 import { ensureLeadWebhookSchema } from "@/lib/db/ensure-lead-webhook-schema";
 import {
   formatLeadNo,
@@ -383,74 +383,88 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
   const status = input.status || (await getDefaultStatusCode());
 
   let assignedTo = input.assigned_to || null;
-  if (!assignedTo && input.website?.trim()) {
-    await ensureLeadWebhookSchema();
-    const auto = await findActiveUserByAutoAssignWebsite(input.website.trim());
-    if (auto) assignedTo = auto.id;
+  const website = input.website?.trim() || null;
+  const viaAuto = !input.assigned_to && Boolean(website);
+
+  const client = await getPool().connect();
+  let id: string;
+  try {
+    await client.query("BEGIN");
+
+    if (!assignedTo && website) {
+      await ensureLeadWebhookSchema();
+      const auto = await pickAutoAssignUserForWebsiteWithClient(client, website);
+      if (auto) assignedTo = auto.id;
+    }
+
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO leads (
+        name, phone, phone_normalized, email, pickup, drop_location, car, days,
+        pickup_date, drop_date, next_follow_up_date, next_follow_up_time, price, source, city, website, tour_package,
+        itinerary_template_id, vehicle_id, adults, kids, notes, status, assigned_to, previous_lead_id,
+        utm_source, utm_medium, utm_campaign, utm_term, utm_content, page_url, form_type
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14, $15, $16, $17,
+        $18, $19, $20, $21, $22, $23, $24, $25,
+        $26, $27, $28, $29, $30, $31, $32
+      )
+      RETURNING id`,
+      [
+        input.name,
+        input.phone.trim(),
+        phoneNormalized,
+        input.email?.trim() ?? "",
+        input.pickup?.trim() ?? "",
+        input.drop?.trim() ?? "",
+        input.car?.trim() ?? "",
+        Number(input.days) || 0,
+        input.pickup_date || null,
+        input.drop_date || null,
+        input.next_follow_up_date || null,
+        input.next_follow_up_time || null,
+        Number(input.price) || 0,
+        input.source,
+        input.city?.trim() ?? "",
+        website,
+        input.tour_package?.trim() ?? "",
+        input.itinerary_template_id || null,
+        input.vehicle_id || null,
+        Number(input.adults) || 0,
+        Number(input.kids) || 0,
+        input.notes?.trim() ?? "",
+        status,
+        assignedTo,
+        previous?.id ?? null,
+        input.utm_source?.trim() || null,
+        input.utm_medium?.trim() || null,
+        input.utm_campaign?.trim() || null,
+        input.utm_term?.trim() || null,
+        input.utm_content?.trim() || null,
+        input.page_url?.trim() || null,
+        input.form_type?.trim() || null,
+      ]
+    );
+    id = rows[0].id;
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
 
-  const { rows } = await query<{ id: string }>(
-    `INSERT INTO leads (
-      name, phone, phone_normalized, email, pickup, drop_location, car, days,
-      pickup_date, drop_date, next_follow_up_date, next_follow_up_time, price, source, city, website, tour_package,
-      itinerary_template_id, vehicle_id, adults, kids, notes, status, assigned_to, previous_lead_id,
-      utm_source, utm_medium, utm_campaign, utm_term, utm_content, page_url, form_type
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8,
-      $9, $10, $11, $12, $13, $14, $15, $16, $17,
-      $18, $19, $20, $21, $22, $23, $24, $25,
-      $26, $27, $28, $29, $30, $31, $32
-    )
-    RETURNING id`,
-    [
-      input.name,
-      input.phone.trim(),
-      phoneNormalized,
-      input.email?.trim() ?? "",
-      input.pickup?.trim() ?? "",
-      input.drop?.trim() ?? "",
-      input.car?.trim() ?? "",
-      Number(input.days) || 0,
-      input.pickup_date || null,
-      input.drop_date || null,
-      input.next_follow_up_date || null,
-      input.next_follow_up_time || null,
-      Number(input.price) || 0,
-      input.source,
-      input.city?.trim() ?? "",
-      input.website?.trim() || null,
-      input.tour_package?.trim() ?? "",
-      input.itinerary_template_id || null,
-      input.vehicle_id || null,
-      Number(input.adults) || 0,
-      Number(input.kids) || 0,
-      input.notes?.trim() ?? "",
-      status,
-      assignedTo,
-      previous?.id ?? null,
-      input.utm_source?.trim() || null,
-      input.utm_medium?.trim() || null,
-      input.utm_campaign?.trim() || null,
-      input.utm_term?.trim() || null,
-      input.utm_content?.trim() || null,
-      input.page_url?.trim() || null,
-      input.form_type?.trim() || null,
-    ]
-  );
-
-  const id = rows[0].id;
   const detailParts = [`Source: ${input.source}`];
   if (previous) detailParts.push(`Repeat customer · previous ${formatLeadNo(previous.lead_no)}`);
   await insertActivity(id, "created", "Lead created", actor, detailParts.join(" · "));
   if (assignedTo) {
     const created = await findLeadById(id);
-    const viaAuto = !input.assigned_to && Boolean(input.website?.trim());
     await insertActivity(
       id,
       "assigned",
       `Assigned to ${created?.assigned_to_name ?? "agent"}`,
       actor,
-      viaAuto ? `Auto-assigned from website ${input.website}` : "Manual assignment on create"
+      viaAuto ? `Auto-assigned from website ${website} (balanced daily)` : "Manual assignment on create"
     );
   }
   const lead = await findLeadById(id);

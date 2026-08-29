@@ -36,6 +36,7 @@ import {
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { AdPlatform, AdSpendEntry, trackedWebsites } from "@/lib/data";
+import { formatDisplayTime } from "@/lib/lead-utils";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
 const platformsList: AdPlatform[] = [
@@ -55,6 +56,47 @@ const stickyActionCell =
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
+function formatSpendDateTime(date?: string, time?: string) {
+  const dateValue = date?.trim();
+  const parsedDate = dateValue
+    ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateValue) ? `${dateValue}T12:00:00` : dateValue)
+    : null;
+  if (!parsedDate || !Number.isFinite(parsedDate.getTime())) return null;
+
+  return {
+    date: parsedDate.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }),
+    time: formatDisplayTime(time),
+  };
+}
+
+function SpendDateTime({
+  date,
+  time,
+  stacked = false,
+}: {
+  date?: string;
+  time?: string;
+  stacked?: boolean;
+}) {
+  const formatted = formatSpendDateTime(date, time);
+  if (!formatted) return "—";
+  if (!stacked) {
+    return formatted.time ? `${formatted.date} · ${formatted.time}` : formatted.date;
+  }
+  return (
+    <>
+      <p>{formatted.date}</p>
+      {formatted.time ? (
+        <p className="font-mono-data text-[11px] text-slate-soft">{formatted.time}</p>
+      ) : null}
+    </>
+  );
 }
 
 function MultiFilter<T extends string>({
@@ -380,7 +422,9 @@ export default function MarketingPage() {
                         )}
                       </TableCell>
 
-                      <TableCell className="text-sm text-slate">{s.date}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-slate">
+                        <SpendDateTime date={s.date} time={s.time} stacked />
+                      </TableCell>
 
                       <TableCell className="whitespace-nowrap text-right font-mono-data text-sm font-semibold text-ink-text">
                         ₹{s.amount.toLocaleString("en-IN")}
@@ -449,7 +493,9 @@ export default function MarketingPage() {
                   </div>
                   <InfoGrid>
                     <InfoItem label="Website">{s.website || "—"}</InfoItem>
-                    <InfoItem label="Date">{s.date}</InfoItem>
+                    <InfoItem label="Date">
+                      <SpendDateTime date={s.date} time={s.time} />
+                    </InfoItem>
                     <InfoItem label="Amount">₹{s.amount.toLocaleString("en-IN")}</InfoItem>
                     {s.notes ? (
                       <InfoItem label="Notes" className="sm:col-span-2">

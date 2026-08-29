@@ -8,6 +8,7 @@ export type EmployeeDashboardFilters = {
   from?: string | null;
   to?: string | null;
   website?: string | null;
+  userId?: string | null;
 };
 
 export type EmployeeDashboardPayload = {
@@ -15,6 +16,10 @@ export type EmployeeDashboardPayload = {
     from: string | null;
     to: string | null;
     website: string | null;
+  };
+  viewedUser: {
+    id: string;
+    name: string;
   };
   kpis: {
     leadsTotal: number;
@@ -58,6 +63,8 @@ const FIXED_SOURCE_SPLIT: Array<{ code: string; label: string; color: string }> 
 ];
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isDateOnly(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -218,11 +225,16 @@ export function parseEmployeeDashboardFilters(searchParams: URLSearchParams): {
 } {
   const parsed = parseDashboardFilters(searchParams);
   if (parsed.error) return { filters: {}, error: parsed.error };
+  const userId = searchParams.get("userId")?.trim() || null;
+  if (userId && !UUID_RE.test(userId)) {
+    return { filters: {}, error: "userId must be a valid id" };
+  }
   return {
     filters: {
       from: parsed.filters.from,
       to: parsed.filters.to,
       website: parsed.filters.website,
+      userId,
     },
   };
 }
@@ -270,6 +282,10 @@ export async function getEmployeeDashboard(
       from: filters.from,
       to: filters.to,
       website: filters.website,
+    },
+    viewedUser: {
+      id: userId,
+      name: userName,
     },
     kpis: {
       leadsTotal,

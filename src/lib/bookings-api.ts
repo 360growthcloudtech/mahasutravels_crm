@@ -38,6 +38,7 @@ export type BookingApi = {
   advance: number;
   balance: number;
   status: BookingStatus;
+  payment_mode: string;
   hotel: Hotel | null;
   hotels: Hotel[];
   comments: LeadComment[];
@@ -72,6 +73,7 @@ export type BookingWritePayload = {
   advance?: number;
   balance?: number;
   status?: BookingStatus;
+  payment_mode?: string;
   hotel?: Hotel | null;
   hotels?: Hotel[] | null;
   comments?: LeadComment[];
@@ -117,10 +119,12 @@ export function bookingFromApi(dto: BookingApi): Booking {
     advance: dto.advance ?? 0,
     balance: dto.balance ?? 0,
     status: dto.status,
+    paymentMode: dto.payment_mode || undefined,
     hotel: hotels[0],
     hotels,
     comments: dto.comments?.length ? dto.comments : undefined,
     history: dto.history?.length ? dto.history : undefined,
+    createdAt: dto.created_at || undefined,
   };
 }
 
@@ -160,6 +164,7 @@ export function bookingToWritePayload(
     advance: input.advance ?? 0,
     balance: input.balance ?? 0,
     status: input.status,
+    payment_mode: input.paymentMode ?? "",
     hotel: normalized.hotel,
     hotels: normalized.hotels,
     comments: input.comments ?? [],

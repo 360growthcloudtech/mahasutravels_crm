@@ -5,6 +5,32 @@ export function formatDriverNo(n: number) {
 export const DRIVER_STATUSES = ["Approved", "Rejected", "Deactivated"] as const;
 export type DriverStatusValue = (typeof DRIVER_STATUSES)[number];
 
+/** User-facing label: Approved → Active; Rejected/Deactivated → Inactive. */
+export function formatDriverStatusLabel(status: DriverStatusValue | string): string {
+  if (status === "Approved") return "Active";
+  if (status === "Rejected" || status === "Deactivated") return "Inactive";
+  return status;
+}
+
+export function isDriverActiveStatus(status: DriverStatusValue | string): boolean {
+  return status === "Approved";
+}
+
+export const DRIVER_STATUS_FILTER_GROUPS = [
+  { label: "Active", statuses: ["Approved"] as const },
+  { label: "Inactive", statuses: ["Rejected", "Deactivated"] as const },
+] as const;
+
+export const DRIVER_FORM_STATUS_OPTIONS = [
+  { label: "Active", value: "Approved" as const },
+  { label: "Inactive", value: "Deactivated" as const },
+] as const;
+
+/** Map stored status to form select value (Inactive covers Rejected and Deactivated). */
+export function driverFormStatusValue(status: DriverStatusValue): DriverStatusValue {
+  return status === "Approved" ? "Approved" : "Deactivated";
+}
+
 export const FUEL_TYPES = ["Petrol", "Diesel", "CNG", "Electric"] as const;
 export type FuelTypeValue = (typeof FUEL_TYPES)[number];
 
@@ -54,4 +80,24 @@ export function clampCapacity(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.max(Math.floor(n), 0);
+}
+
+export function formatSeatCount(capacity?: number) {
+  const n = clampCapacity(capacity);
+  if (n <= 0) return "";
+  return `${n} seater`;
+}
+
+/** Driver dropdown: "Name · Car · 7 seater" */
+export function formatDriverFleetLabel(d: {
+  name: string;
+  vehicleType?: string;
+  vehicleCapacity?: number;
+}) {
+  const parts = [d.name.trim()].filter(Boolean);
+  const car = d.vehicleType?.trim();
+  if (car) parts.push(car);
+  const seats = formatSeatCount(d.vehicleCapacity);
+  if (seats) parts.push(seats);
+  return parts.join(" · ");
 }

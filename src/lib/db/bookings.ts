@@ -46,6 +46,7 @@ export type BookingRow = {
   advance: string | number;
   balance: string | number;
   status: string;
+  payment_mode: string;
   hotel: unknown;
   drivers: unknown;
   comments: unknown;
@@ -82,6 +83,7 @@ export type BookingDto = {
   advance: number;
   balance: number;
   status: BookingStatus;
+  payment_mode: string;
   hotel: Hotel | null;
   hotels: Hotel[];
   comments: LeadComment[];
@@ -116,6 +118,7 @@ export type CreateBookingInput = {
   advance?: number;
   balance?: number;
   status?: BookingStatus;
+  payment_mode?: string;
   hotel?: Hotel | null;
   hotels?: Hotel[] | null;
   comments?: LeadComment[];
@@ -167,6 +170,7 @@ const BOOKING_SELECT = `
     advance,
     balance,
     status,
+    payment_mode,
     hotel,
     drivers,
     comments,
@@ -212,6 +216,7 @@ export function bookingToDto(row: BookingRow): BookingDto {
     advance: Number(row.advance) || 0,
     balance: Number(row.balance) || 0,
     status,
+    payment_mode: row.payment_mode ?? "",
     hotel: hotels[0] ?? null,
     hotels,
     comments: parseCommentsJson(row.comments),
@@ -354,11 +359,12 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
     `INSERT INTO bookings (
       lead_id, customer, email, city, phone, source, website, tour_package,
       pickup, dropoff, travel_date, return_date, cab_type, adults, kids, days,
-      tour_plan, agent, driver, vehicle, total, advance, balance, status,
-      hotel, drivers, comments, history
+      tour_plan, agent, driver, vehicle, total, advance, balance, status, payment_mode,
+      hotel, drivers, comments, history, created_at, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-      $17,$18,$19,$20,$21,$22,$23,$24,$25::jsonb,$26::jsonb,$27::jsonb,$28::jsonb
+      $17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb,$27::jsonb,$28::jsonb,$29::jsonb,
+      now(), now()
     )
     RETURNING id`,
     [
@@ -386,6 +392,7 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
       advance,
       balance,
       status,
+      input.payment_mode?.trim() ?? "",
       normalized.hotels.length ? JSON.stringify(normalized.hotels) : null,
       JSON.stringify(normalized.drivers),
       JSON.stringify(input.comments ?? []),
@@ -425,6 +432,10 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
         ? patch.status
         : existing.status
       : existing.status;
+  const paymentMode =
+    patch.payment_mode !== undefined
+      ? patch.payment_mode.trim()
+      : existing.payment_mode ?? "";
 
   const hotelPatchProvided =
     patch.hotels !== undefined || patch.hotel !== undefined;
@@ -505,10 +516,11 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
       advance = $23,
       balance = $24,
       status = $25,
-      hotel = $26::jsonb,
-      drivers = $27::jsonb,
-      comments = $28::jsonb,
-      history = $29::jsonb,
+      payment_mode = $26,
+      hotel = $27::jsonb,
+      drivers = $28::jsonb,
+      comments = $29::jsonb,
+      history = $30::jsonb,
       updated_at = now()
      WHERE id = $1`,
     [
@@ -547,6 +559,7 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
       advance,
       balance,
       status,
+      paymentMode,
       hotelJson,
       driversJson,
       JSON.stringify(
@@ -561,6 +574,62 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
   const booking = await findBookingById(id);
   if (!booking) throw new Error("NOT_FOUND");
   return booking;
+}
+
+export type OccupiedDriversQuery = {
+  travelDate: string | null;
+  returnDate?: string | null;
+  excludeBookingId?: string | null;
+};
+
+/** Driver names already assigned on overlapping active bookings for the given trip window. */
+export async function listOccupiedDriverNames(
+  opts: OccupiedDriversQuery
+): Promise<string[]> {
+  const travel = opts.travelDate?.trim().slice(0, 10);
+  if (!travel) return [];
+  const returnDate = opts.returnDate?.trim().slice(0, 10) || travel;
+
+  const params: unknown[] = [returnDate, travel];
+  let excludeClause = "";
+  if (opts.excludeBookingId?.trim()) {
+    params.push(opts.excludeBookingId.trim());
+    excludeClause = `AND b.id <> $${params.length}::uuid`;
+  }
+
+  const overlapClause = `b.status NOT IN ('Cancelled', 'Refunded')
+    AND b.travel_date IS NOT NULL
+    AND b.travel_date::date <= $1::date
+    AND COALESCE(b.return_date, b.travel_date)::date >= $2::date
+    ${excludeClause}`;
+
+  const { rows } = await query<{ driver_name: string }>(
+    `SELECT DISTINCT names.driver_name
+     FROM (
+       SELECT b.driver AS driver_name
+       FROM bookings b
+       WHERE ${overlapClause}
+       UNION
+       SELECT elem->>'driver' AS driver_name
+       FROM bookings b
+       CROSS JOIN jsonb_array_elements(COALESCE(b.drivers, '[]'::jsonb)) AS elem
+       WHERE ${overlapClause}
+     ) names
+     WHERE names.driver_name IS NOT NULL AND TRIM(names.driver_name) <> ''
+     ORDER BY names.driver_name`,
+    params
+  );
+  return rows.map((r) => r.driver_name);
+}
+
+/** Returns assigned driver names that conflict with another booking on the same dates. */
+export async function findConflictingDriverNames(
+  driverNames: string[],
+  opts: OccupiedDriversQuery
+): Promise<string[]> {
+  if (!driverNames.length) return [];
+  const occupied = new Set(await listOccupiedDriverNames(opts));
+  return driverNames.filter((name) => occupied.has(name));
 }
 
 export async function deleteBooking(id: string): Promise<boolean> {

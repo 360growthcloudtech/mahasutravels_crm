@@ -3,10 +3,18 @@ import { forbidUnlessAnyPermission, forbidUnlessPermission, requireSession } fro
 import {
   bookingToDto,
   createBooking,
+  findBookingById,
+  findConflictingDriverNames,
   listBookings,
   type CreateBookingInput,
 } from "@/lib/db/bookings";
-import { isBookingStatus, isMarketingChannel, parseDriversJson } from "@/lib/booking-utils";
+import {
+  collectAssignedDriverNames,
+  isBookingStatus,
+  isMarketingChannel,
+  normalizeBookingAssignments,
+  parseDriversJson,
+} from "@/lib/booking-utils";
 import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } from "@/lib/data";
 import { makeLeadHistoryEvent } from "@/lib/data";
 import { query } from "@/lib/db";
@@ -186,11 +194,31 @@ export async function POST(request: Request) {
     advance,
     balance,
     status: statusRaw && isBookingStatus(statusRaw) ? statusRaw : "Advance Pending",
+    payment_mode: readString(body.payment_mode)?.trim() ?? "",
     hotel: readHotel(body.hotel) ?? null,
     hotels: readHotels(body.hotels) ?? undefined,
     comments: readComments(body.comments) ?? [],
     history,
   };
+
+  const assignedDrivers = collectAssignedDriverNames(
+    input.driver,
+    input.drivers ?? normalizeBookingAssignments({ driver: input.driver, vehicle: input.vehicle }).drivers
+  );
+  if (assignedDrivers.length && input.travel_date) {
+    const conflicts = await findConflictingDriverNames(assignedDrivers, {
+      travelDate: input.travel_date,
+      returnDate: input.return_date,
+    });
+    if (conflicts.length) {
+      return NextResponse.json(
+        {
+          error: `${conflicts.join(", ")} is not available for these travel dates (already assigned to another booking).`,
+        },
+        { status: 409 }
+      );
+    }
+  }
 
   const booking = await createBooking(input);
   return NextResponse.json({ booking: bookingToDto(booking) }, { status: 201 });

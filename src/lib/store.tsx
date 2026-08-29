@@ -604,6 +604,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (patch.website !== undefined) payload.website = patch.website ?? "";
     if (patch.amount !== undefined) payload.amount = patch.amount;
     if (patch.date !== undefined) payload.spend_date = patch.date;
+    if (patch.time !== undefined) payload.spend_time = patch.time;
     if (patch.campaignName !== undefined) payload.campaign_name = patch.campaignName ?? "";
     if (patch.leadsGenerated !== undefined) payload.leads_generated = patch.leadsGenerated ?? 0;
     if (patch.notes !== undefined) payload.notes = patch.notes ?? "";

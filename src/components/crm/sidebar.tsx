@@ -13,6 +13,7 @@ import {
   Compass,
   BedDouble,
   UserRound,
+  CircleUser,
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
@@ -37,7 +38,19 @@ import {
 } from "@/components/ui/sheet";
 
 export const crmNav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, permission: ROUTE_VIEW_PERMISSION["/"] },
+  {
+    href: "/",
+    label: "Main Dashboard",
+    icon: LayoutDashboard,
+    permission: ROUTE_VIEW_PERMISSION["/"],
+    hideForRoles: ["Employee"] as const,
+  },
+  {
+    href: "/employee-dashboard",
+    label: "Employee Dashboard",
+    icon: CircleUser,
+    permission: ROUTE_VIEW_PERMISSION["/employee-dashboard"],
+  },
   { href: "/leads", label: "Leads", icon: Users, permission: ROUTE_VIEW_PERMISSION["/leads"] },
   {
     href: "/bookings",
@@ -71,6 +84,18 @@ export const crmNav = [
     permission: ROUTE_VIEW_PERMISSION["/drivers"],
   },
 ] as const;
+
+function navItemVisible(
+  item: (typeof crmNav)[number],
+  session: ReturnType<typeof useSession>["session"]
+) {
+  if (!sessionAllows(session, item.permission)) return false;
+  const hiddenRoles = "hideForRoles" in item ? item.hideForRoles : undefined;
+  if (hiddenRoles && session?.role && (hiddenRoles as readonly string[]).includes(session.role)) {
+    return false;
+  }
+  return true;
+}
 
 const STORAGE_KEY = "mahasu-sidebar-collapsed";
 let collapsedCache: boolean | null = null;
@@ -139,7 +164,7 @@ export function Sidebar({
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  const visibleNav = crmNav.filter((item) => sessionAllows(session, item.permission));
+  const visibleNav = crmNav.filter((item) => navItemVisible(item, session));
   const canViewSettings = sessionAllows(session, ROUTE_VIEW_PERMISSION["/settings"]);
 
   return (
@@ -308,7 +333,7 @@ export function MobileNav({
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  const visibleNav = crmNav.filter((item) => sessionAllows(session, item.permission));
+  const visibleNav = crmNav.filter((item) => navItemVisible(item, session));
   const canViewSettings = sessionAllows(session, ROUTE_VIEW_PERMISSION["/settings"]);
 
   return (

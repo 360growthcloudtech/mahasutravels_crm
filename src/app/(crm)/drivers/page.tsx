@@ -21,7 +21,7 @@ import { Topbar } from "@/components/crm/topbar";
 import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { useHasPermission } from "@/lib/use-has-permission";
 import { Card, CardContent } from "@/components/ui/card";
-import { StatusBadge } from "@/components/crm/status-badge";
+import { DriverStatusBadge } from "@/components/crm/driver-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,8 +57,13 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { useListPagination } from "@/lib/use-list-pagination";
 import { Driver } from "@/lib/data";
+import {
+  DRIVER_STATUS_FILTER_GROUPS,
+  formatDriverStatusLabel,
+  isDriverActiveStatus,
+} from "@/lib/driver-utils";
 
-const statuses: Driver["status"][] = ["Approved", "Rejected", "Deactivated"];
+type DriverStatusFilter = (typeof DRIVER_STATUS_FILTER_GROUPS)[number]["label"];
 
 const stickyActionHead =
   "sticky right-0 top-0 z-30 min-w-[9rem] whitespace-nowrap border-l border-border-soft bg-card";
@@ -110,7 +115,7 @@ function DriverCard({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <StatusBadge status={d.status} />
+            <DriverStatusBadge status={d.status} />
             {canEdit || canDelete ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -213,9 +218,9 @@ function DriverCard({
           >
             {statusBusy
               ? "Updating…"
-              : d.status === "Approved"
+              : isDriverActiveStatus(d.status)
                 ? "Deactivate"
-                : "Approve"}
+                : "Activate"}
           </Button>
           ) : null}
         </div>
@@ -237,7 +242,7 @@ export default function DriversPage() {
   const [deleting, setDeleting] = React.useState(false);
   const [statusBusyId, setStatusBusyId] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<Driver["status"][]>([]);
+  const [statusFilter, setStatusFilter] = React.useState<DriverStatusFilter[]>([]);
 
   const { drivers } = state;
   const editingDriver = editingDriverId
@@ -254,7 +259,13 @@ export default function DriversPage() {
       d.vehicle.toLowerCase().includes(q) ||
       d.vehicleType.toLowerCase().includes(q) ||
       (d.address ?? "").toLowerCase().includes(q);
-    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(d.status);
+    const matchesStatus =
+      statusFilter.length === 0 ||
+      DRIVER_STATUS_FILTER_GROUPS.some(
+        (group) =>
+          statusFilter.includes(group.label) &&
+          (group.statuses as readonly Driver["status"][]).includes(d.status)
+      );
     return matchesSearch && matchesStatus;
   });
 
@@ -300,14 +311,14 @@ export default function DriversPage() {
   }
 
   async function handleToggleStatus(d: Driver) {
-    const next = d.status === "Approved" ? "Deactivated" : "Approved";
+    const next = isDriverActiveStatus(d.status) ? "Deactivated" : "Approved";
     setStatusBusyId(d.id);
     try {
       await updateDriver(d.id, { status: next });
       toast({
         variant: "info",
         title: "Status updated",
-        description: `${d.name} marked as ${next}.`,
+        description: `${d.name} marked as ${formatDriverStatusLabel(next)}.`,
       });
     } catch (error) {
       toast({
@@ -367,28 +378,20 @@ export default function DriversPage() {
         {driversLoading ? (
           <StatCardsSkeleton />
         ) : (
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Approved</p>
+                <p className="text-xs text-muted-foreground">Active</p>
                 <p className="mt-1 font-display text-xl font-semibold text-teal">
-                  {drivers.filter((d) => d.status === "Approved").length}
+                  {drivers.filter((d) => isDriverActiveStatus(d.status)).length}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Rejected</p>
-                <p className="mt-1 font-display text-xl font-semibold text-signal">
-                  {drivers.filter((d) => d.status === "Rejected").length}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Deactivated</p>
+                <p className="text-xs text-muted-foreground">Inactive</p>
                 <p className="mt-1 font-display text-xl font-semibold text-slate-soft">
-                  {drivers.filter((d) => d.status === "Deactivated").length}
+                  {drivers.filter((d) => !isDriverActiveStatus(d.status)).length}
                 </p>
               </CardContent>
             </Card>
@@ -431,14 +434,14 @@ export default function DriversPage() {
               <DropdownMenuContent align="start" className="min-w-[11rem]">
                 <DropdownMenuLabel>Status</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {statuses.map((option) => (
+                {DRIVER_STATUS_FILTER_GROUPS.map((option) => (
                   <DropdownMenuCheckboxItem
-                    key={option}
-                    checked={statusFilter.includes(option)}
-                    onCheckedChange={() => setStatusFilter(toggleValue(statusFilter, option))}
+                    key={option.label}
+                    checked={statusFilter.includes(option.label)}
+                    onCheckedChange={() => setStatusFilter(toggleValue(statusFilter, option.label))}
                     onSelect={(e) => e.preventDefault()}
                   >
-                    {option}
+                    {option.label}
                   </DropdownMenuCheckboxItem>
                 ))}
                 {statusFilter.length > 0 && (
@@ -549,7 +552,7 @@ export default function DriversPage() {
                             <p className="text-[11px] text-slate-soft">{d.trips} trips</p>
                           </TableCell>
                           <TableCell>
-                            <StatusBadge status={d.status} />
+                            <DriverStatusBadge status={d.status} />
                           </TableCell>
                           <TableCell className={stickyActionCell}>
                             {canEditDriver || canDeleteDriver ? (
@@ -577,9 +580,9 @@ export default function DriversPage() {
                                 <Archive className="size-3.5" />
                                 {statusBusy
                                   ? "…"
-                                  : d.status === "Approved"
+                                  : isDriverActiveStatus(d.status)
                                     ? "Deactivate"
-                                    : "Approve"}
+                                    : "Activate"}
                               </Button>
                               ) : null}
                               {canEditDriver || canDeleteDriver ? (
@@ -604,7 +607,7 @@ export default function DriversPage() {
                                     onSelect={() => void handleToggleStatus(d)}
                                   >
                                     <Archive className="size-3.5" />
-                                    {d.status === "Approved" ? "Deactivate" : "Approve"}
+                                    {isDriverActiveStatus(d.status) ? "Deactivate" : "Activate"}
                                   </DropdownMenuItem>
                                   </>
                                   ) : null}

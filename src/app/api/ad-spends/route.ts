@@ -7,6 +7,7 @@ import {
   listAdSpends,
   type CreateAdSpendInput,
 } from "@/lib/db/ad-spends";
+import { parseLeadTime } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
 
@@ -87,6 +88,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const spendTimeRaw =
+    readString(body.spend_time)?.trim() || readString(body.time)?.trim() || "";
+  const spendTime = parseLeadTime(spendTimeRaw);
+  if (!spendTime) {
+    return NextResponse.json(
+      { error: "spend_time must be a valid time (HH:MM)" },
+      { status: 400 }
+    );
+  }
+
   const leadsGenerated = readNumber(body.leads_generated);
   if (leadsGenerated !== undefined && leadsGenerated < 0) {
     return NextResponse.json(
@@ -100,6 +111,7 @@ export async function POST(request: Request) {
     website: readString(body.website)?.trim() ?? "",
     amount,
     spend_date: spendDate,
+    spend_time: spendTime,
     campaign_name: readString(body.campaign_name)?.trim() ?? "",
     leads_generated: leadsGenerated ?? 0,
     notes: readString(body.notes)?.trim() ?? "",

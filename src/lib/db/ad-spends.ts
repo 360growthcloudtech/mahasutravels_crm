@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import type { AdPlatform } from "@/lib/data";
-import { toDateOnly, toIso } from "@/lib/lead-utils";
+import { toDateOnly, toIso, toTimeOnly } from "@/lib/lead-utils";
 
 export const AD_PLATFORMS: AdPlatform[] = [
   "Google Ads",
@@ -20,6 +20,7 @@ export type AdSpendRow = {
   website: string;
   amount: string | number;
   spend_date: unknown;
+  spend_time: unknown;
   campaign_name: string;
   leads_generated: number;
   notes: string;
@@ -33,6 +34,7 @@ export type AdSpendDto = {
   website: string;
   amount: number;
   spend_date: string;
+  spend_time: string;
   campaign_name: string;
   leads_generated: number;
   notes: string;
@@ -45,6 +47,7 @@ export type CreateAdSpendInput = {
   website?: string;
   amount: number;
   spend_date: string;
+  spend_time: string;
   campaign_name?: string;
   leads_generated?: number;
   notes?: string;
@@ -55,6 +58,7 @@ export type PatchAdSpendInput = {
   website?: string;
   amount?: number;
   spend_date?: string;
+  spend_time?: string;
   campaign_name?: string;
   leads_generated?: number;
   notes?: string;
@@ -73,6 +77,7 @@ const AD_SPEND_SELECT = `
     website,
     amount,
     spend_date,
+    spend_time,
     campaign_name,
     leads_generated,
     notes,
@@ -88,6 +93,7 @@ export function adSpendToDto(row: AdSpendRow): AdSpendDto {
     website: row.website ?? "",
     amount: Number(row.amount) || 0,
     spend_date: toDateOnly(row.spend_date),
+    spend_time: toTimeOnly(row.spend_time),
     campaign_name: row.campaign_name ?? "",
     leads_generated: Number(row.leads_generated) || 0,
     notes: row.notes ?? "",
@@ -125,7 +131,7 @@ export async function listAdSpends(filters: ListAdSpendsFilters = {}): Promise<A
 
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<AdSpendRow>(
-    `${AD_SPEND_SELECT} ${where} ORDER BY spend_date DESC, created_at DESC`,
+    `${AD_SPEND_SELECT} ${where} ORDER BY spend_date DESC, spend_time DESC NULLS LAST, created_at DESC`,
     params
   );
   return rows;
@@ -134,14 +140,15 @@ export async function listAdSpends(filters: ListAdSpendsFilters = {}): Promise<A
 export async function createAdSpend(input: CreateAdSpendInput): Promise<AdSpendRow> {
   const { rows } = await query<{ id: string }>(
     `INSERT INTO ad_spends (
-      platform, website, amount, spend_date, campaign_name, leads_generated, notes
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      platform, website, amount, spend_date, spend_time, campaign_name, leads_generated, notes
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING id`,
     [
       input.platform,
       input.website?.trim() ?? "",
       Number(input.amount) || 0,
       input.spend_date,
+      input.spend_time,
       input.campaign_name?.trim() ?? "",
       Math.max(0, Math.floor(Number(input.leads_generated) || 0)),
       input.notes?.trim() ?? "",
@@ -163,9 +170,10 @@ export async function patchAdSpend(id: string, patch: PatchAdSpendInput): Promis
       website = $3,
       amount = $4,
       spend_date = $5,
-      campaign_name = $6,
-      leads_generated = $7,
-      notes = $8,
+      spend_time = $6,
+      campaign_name = $7,
+      leads_generated = $8,
+      notes = $9,
       updated_at = now()
      WHERE id = $1`,
     [
@@ -174,6 +182,7 @@ export async function patchAdSpend(id: string, patch: PatchAdSpendInput): Promis
       patch.website !== undefined ? patch.website.trim() : existing.website,
       patch.amount !== undefined ? Number(patch.amount) || 0 : Number(existing.amount) || 0,
       patch.spend_date !== undefined ? patch.spend_date : toDateOnly(existing.spend_date),
+      patch.spend_time !== undefined ? patch.spend_time : toTimeOnly(existing.spend_time) || "00:00:00",
       patch.campaign_name !== undefined
         ? patch.campaign_name.trim()
         : existing.campaign_name,

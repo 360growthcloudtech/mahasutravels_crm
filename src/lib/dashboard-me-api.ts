@@ -6,6 +6,7 @@ export type MyDashboardQuery = {
   from?: string | null;
   to?: string | null;
   website?: string | null;
+  userId?: string | null;
 };
 
 export async function fetchMyDashboard(query: MyDashboardQuery = {}): Promise<EmployeeDashboardPayload> {
@@ -13,6 +14,7 @@ export async function fetchMyDashboard(query: MyDashboardQuery = {}): Promise<Em
   if (query.from) params.set("from", query.from);
   if (query.to) params.set("to", query.to);
   if (query.website) params.set("website", query.website);
+  if (query.userId) params.set("userId", query.userId);
   const qs = params.toString();
   const res = await fetch(`/api/dashboard/me${qs ? `?${qs}` : ""}`, {
     credentials: "include",

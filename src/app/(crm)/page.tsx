@@ -30,14 +30,15 @@ import {
 } from "@/components/crm/date-range-filter";
 import { StatCardsSkeleton } from "@/components/crm/skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmployeeDashboard } from "@/components/crm/employee-dashboard";
 import { fetchDashboard } from "@/lib/dashboard-api";
 import type { DashboardBookingSummary, DashboardPayload } from "@/lib/db/dashboard";
 import { useSession } from "@/lib/session-context";
 import { useHasPermission } from "@/lib/use-has-permission";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
+import { homeHrefForRole } from "@/lib/nav-permissions";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 function formatTripDate(iso: string) {
   const d = new Date(`${iso}T12:00:00`);
@@ -157,22 +158,26 @@ function DashboardBodySkeleton() {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { session, loading: roleLoading } = useSession();
   const role = session?.role ?? null;
 
-  if (roleLoading) {
+  React.useEffect(() => {
+    if (roleLoading) return;
+    if (role === "Employee") {
+      router.replace(homeHrefForRole(role));
+    }
+  }, [role, roleLoading, router]);
+
+  if (roleLoading || role === "Employee") {
     return (
       <>
-        <Topbar title="Dashboard" />
+        <Topbar title="Main Dashboard" />
         <main className="page-pad">
           <DashboardBodySkeleton />
         </main>
       </>
     );
-  }
-
-  if (role === "Employee") {
-    return <EmployeeDashboard />;
   }
 
   return <OrgDashboard />;
@@ -286,7 +291,7 @@ function OrgDashboard() {
   return (
     <>
       <Topbar
-        title="Dashboard"
+        title="Main Dashboard"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <WebsiteFilter value={selectedWebsite} onChange={setSelectedWebsite} />

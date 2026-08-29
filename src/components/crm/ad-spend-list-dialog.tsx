@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Trash2, IndianRupee } from "lucide-react";
 import { AdSpendEntry } from "@/lib/data";
+import { formatDisplayTime } from "@/lib/lead-utils";
+import { formatDisplayDate } from "@/components/crm/date-picker";
 import { AdSpendDialog } from "@/components/crm/ad-spend-dialog";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
@@ -154,7 +156,10 @@ export function AdSpendListDialog({
                         {s.website && (
                           <span className="text-[11px] text-slate-soft">🌐 {s.website}</span>
                         )}
-                        <span className="text-[11px] text-muted-foreground">{s.date}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatDisplayDate(s.date)}
+                          {s.time ? ` · ${formatDisplayTime(s.time)}` : ""}
+                        </span>
                       </div>
                       {s.campaignName && (
                         <p className="text-xs font-medium text-ink-text">{s.campaignName}</p>

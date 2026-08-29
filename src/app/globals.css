@@ -276,12 +276,17 @@
 
 @media print {
   @page {
+    size: A4;
     margin: 10mm;
   }
   .proposal-print,
   .proposal-sheet {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+  .proposal-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

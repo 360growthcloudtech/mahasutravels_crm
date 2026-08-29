@@ -140,6 +140,31 @@ export async function fetchDrivers(): Promise<{
   return { drivers: data.drivers ?? [], summary: data.summary };
 }
 
+export type DriverAvailabilityQuery = {
+  travel_date?: string | null;
+  return_date?: string | null;
+  exclude_booking_id?: string | null;
+};
+
+export async function fetchDriverAvailability(
+  query: DriverAvailabilityQuery
+): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (query.travel_date?.trim()) params.set("travel_date", query.travel_date.trim());
+  if (query.return_date?.trim()) params.set("return_date", query.return_date.trim());
+  if (query.exclude_booking_id?.trim()) {
+    params.set("exclude_booking_id", query.exclude_booking_id.trim());
+  }
+  const qs = params.toString();
+  const res = await fetch(`/api/drivers/availability${qs ? `?${qs}` : ""}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to load driver availability");
+  const data = (await res.json()) as { occupied?: string[] };
+  return data.occupied ?? [];
+}
+
 export async function createDriverApi(payload: DriverWritePayload): Promise<DriverApi> {
   const res = await fetch("/api/drivers", {
     method: "POST",

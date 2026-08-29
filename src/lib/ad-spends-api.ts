@@ -6,6 +6,7 @@ export type AdSpendApi = {
   website: string;
   amount: number;
   spend_date: string;
+  spend_time: string;
   campaign_name: string;
   leads_generated: number;
   notes: string;
@@ -18,6 +19,7 @@ export type AdSpendWritePayload = {
   website?: string;
   amount: number;
   spend_date: string;
+  spend_time?: string;
   campaign_name?: string;
   leads_generated?: number;
   notes?: string;
@@ -30,10 +32,11 @@ export function adSpendFromApi(dto: AdSpendApi): AdSpendEntry {
     website: dto.website || undefined,
     amount: dto.amount ?? 0,
     date: dto.spend_date,
+    time: dto.spend_time || "",
     campaignName: dto.campaign_name || undefined,
     leadsGenerated: dto.leads_generated ?? 0,
     notes: dto.notes || undefined,
-    createdAt: (dto.created_at || dto.spend_date || "").slice(0, 10),
+    createdAt: dto.created_at || "",
   };
 }
 
@@ -43,6 +46,7 @@ export function adSpendToWritePayload(
     website?: string;
     amount: number;
     date: string;
+    time?: string;
     campaignName?: string;
     leadsGenerated?: number;
     notes?: string;
@@ -53,6 +57,7 @@ export function adSpendToWritePayload(
     website: input.website ?? "",
     amount: input.amount,
     spend_date: input.date,
+    spend_time: input.time ?? "",
     campaign_name: input.campaignName ?? "",
     leads_generated: input.leadsGenerated ?? 0,
     notes: input.notes ?? "",

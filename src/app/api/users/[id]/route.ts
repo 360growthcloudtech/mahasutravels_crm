@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
-import { findUserById, setUserAutoAssignWebsite } from "@/lib/db/users";
+import { findUserById, setUserAutoAssignWebsites } from "@/lib/db/users";
 import { resolveWebsiteDomain } from "@/lib/db/masters";
 import {
   listUserPermissionKeys,
@@ -10,6 +10,16 @@ import { ALL_PERMISSION_KEYS } from "@/lib/permissions-catalog";
 import { setSessionCookie } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
+
+function parseAutoAssignWebsites(raw: unknown): string[] | { error: string } {
+  if (!Array.isArray(raw)) {
+    return { error: "auto_assign_websites must be an array of strings" };
+  }
+  if (!raw.every((item) => typeof item === "string")) {
+    return { error: "auto_assign_websites must be an array of strings" };
+  }
+  return [...new Set(raw.map((item) => item.trim()).filter(Boolean))];
+}
 
 export async function PATCH(
   request: Request,
@@ -31,11 +41,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const hasWebsite = "auto_assign_website" in body;
+  const hasWebsites = "auto_assign_websites" in body;
   const hasPerms = "permission_keys" in body;
-  if (!hasWebsite && !hasPerms) {
+  if (!hasWebsites && !hasPerms) {
     return NextResponse.json(
-      { error: "Provide auto_assign_website and/or permission_keys" },
+      { error: "Provide auto_assign_websites and/or permission_keys" },
       { status: 400 }
     );
   }
@@ -46,29 +56,32 @@ export async function PATCH(
     email: existing.email,
     role: existing.role,
     status: existing.status,
-    auto_assign_website: existing.auto_assign_website,
+    auto_assign_websites: existing.auto_assign_websites,
   };
 
-  if (hasWebsite) {
-    const raw = body.auto_assign_website;
-    let domain: string | null = null;
-    if (raw === null || raw === "") {
-      domain = null;
-    } else if (typeof raw === "string") {
-      const resolved = await resolveWebsiteDomain(raw);
-      if (!resolved) {
-        return NextResponse.json({ error: "Unknown or inactive website" }, { status: 400 });
+  if (hasWebsites) {
+    const parsed = parseAutoAssignWebsites(body.auto_assign_websites);
+    if ("error" in parsed) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const resolved: string[] = [];
+    for (const item of parsed) {
+      const domain = await resolveWebsiteDomain(item);
+      if (!domain) {
+        return NextResponse.json({ error: `Unknown or inactive website: ${item}` }, { status: 400 });
       }
-      domain = resolved;
-    } else {
+      if (!resolved.includes(domain)) resolved.push(domain);
+    }
+    try {
+      const updated = await setUserAutoAssignWebsites(id, resolved);
+      if (!updated) return NextResponse.json({ error: "User not found" }, { status: 404 });
+      user = updated;
+    } catch (error) {
       return NextResponse.json(
-        { error: "auto_assign_website must be a string or null" },
+        { error: error instanceof Error ? error.message : "Failed to update websites" },
         { status: 400 }
       );
     }
-    const updated = await setUserAutoAssignWebsite(id, domain);
-    if (!updated) return NextResponse.json({ error: "User not found" }, { status: 404 });
-    user = updated;
   }
 
   let permissionKeys = await listUserPermissionKeys(id);
@@ -90,7 +103,6 @@ export async function PATCH(
     }
     permissionKeys = await replaceUserPermissions(id, raw);
 
-    // Keep the editor's JWT in sync if they edited their own grants.
     if (id === session.sub) {
       await setSessionCookie({
         sub: session.sub,

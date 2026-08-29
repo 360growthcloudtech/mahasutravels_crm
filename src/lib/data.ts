@@ -122,6 +122,13 @@ export type Lead = {
   phone: string;
   source: string;
   website?: string;
+  pageUrl?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  formType?: string;
   tourPackage: string;
   pickup: string;
   drop: string;
@@ -475,12 +482,16 @@ export type Booking = {
   advance: number;
   balance: number;
   status: BookingStatus;
+  /** How payment was collected (Cash, UPI, etc.). */
+  paymentMode?: string;
   /** Primary / first hotel stay (backward compatible). */
   hotel?: Hotel;
   /** All hotel stays for the trip. */
   hotels?: Hotel[];
   comments?: LeadComment[];
   history?: LeadHistoryEvent[];
+  /** ISO timestamp from bookings.created_at — set when the booking row is created. */
+  createdAt?: string;
 };
 
 export function cloneStayFromHotelTemplate(
@@ -1463,8 +1474,8 @@ export type Member = {
   role: MemberRole;
   status: MemberStatus;
   permissionKeys: string[];
-  /** Website domain for auto-assigning inbound leads (optional). */
-  autoAssignWebsite?: string | null;
+  /** Website domains for auto-assigning inbound leads. */
+  autoAssignWebsites: string[];
 };
 
 export const systemPermissions: SystemPermission[] = PERMISSIONS_CATALOG.map((p, i) => ({
@@ -1495,6 +1506,7 @@ export const members: Member[] = [
     role: "Super Admin",
     status: "Active",
     permissionKeys: defaultPermissionsForRole("Super Admin"),
+    autoAssignWebsites: [],
   },
   {
     id: "MB-002",
@@ -1506,6 +1518,7 @@ export const members: Member[] = [
     role: "Admin",
     status: "Active",
     permissionKeys: defaultPermissionsForRole("Admin"),
+    autoAssignWebsites: [],
   },
   {
     id: "MB-003",
@@ -1517,6 +1530,7 @@ export const members: Member[] = [
     role: "Employee",
     status: "Active",
     permissionKeys: defaultPermissionsForRole("Employee"),
+    autoAssignWebsites: [],
   },
 ];
 
@@ -1575,6 +1589,7 @@ export type AdSpendEntry = {
   website?: string;
   amount: number;
   date: string;
+  time?: string;
   campaignName?: string;
   leadsGenerated?: number;
   notes?: string;

@@ -28,25 +28,38 @@ export async function ensureLeadWebhookSchema() {
       updated_at = now()
   `);
   await query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS auto_assign_website text
+    CREATE TABLE IF NOT EXISTS user_auto_assign_websites (
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      website_domain text NOT NULL REFERENCES websites(domain) ON DELETE CASCADE,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, website_domain)
+    )
   `);
-  try {
-    await query(`
-      DO $$ BEGIN
-        ALTER TABLE users
-          ADD CONSTRAINT users_auto_assign_website_fkey
-          FOREIGN KEY (auto_assign_website) REFERENCES websites(domain) ON DELETE SET NULL;
-      EXCEPTION WHEN duplicate_object THEN NULL;
-      END $$
-    `);
-  } catch {
-    /* already constrained */
-  }
   await query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS users_auto_assign_website_uidx
-      ON users (auto_assign_website)
-      WHERE auto_assign_website IS NOT NULL
+    CREATE INDEX IF NOT EXISTS user_auto_assign_websites_domain_idx
+      ON user_auto_assign_websites (website_domain)
+  `);
+  // One-time migrate from legacy column if it still exists.
+  await query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'auto_assign_website'
+      ) THEN
+        INSERT INTO user_auto_assign_websites (user_id, website_domain)
+        SELECT id, auto_assign_website
+        FROM users
+        WHERE auto_assign_website IS NOT NULL
+        ON CONFLICT DO NOTHING;
+
+        DROP INDEX IF EXISTS users_auto_assign_website_uidx;
+        DROP INDEX IF EXISTS users_auto_assign_website_active_idx;
+        ALTER TABLE users DROP COLUMN auto_assign_website;
+      END IF;
+    END $$
   `);
   ensured = true;
 }

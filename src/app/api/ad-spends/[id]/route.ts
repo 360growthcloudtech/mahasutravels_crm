@@ -8,6 +8,7 @@ import {
   patchAdSpend,
   type PatchAdSpendInput,
 } from "@/lib/db/ad-spends";
+import { parseLeadTime } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
 
@@ -94,6 +95,19 @@ export async function PATCH(
       );
     }
     patch.spend_date = spendDate;
+  }
+
+  if (body.spend_time !== undefined || body.time !== undefined) {
+    const spendTimeRaw =
+      readString(body.spend_time)?.trim() || readString(body.time)?.trim() || "";
+    const spendTime = parseLeadTime(spendTimeRaw);
+    if (!spendTime) {
+      return NextResponse.json(
+        { error: "spend_time must be a valid time (HH:MM)" },
+        { status: 400 }
+      );
+    }
+    patch.spend_time = spendTime;
   }
 
   if (body.campaign_name !== undefined) {

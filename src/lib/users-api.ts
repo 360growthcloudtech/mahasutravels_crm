@@ -6,7 +6,7 @@ export type UserApi = {
   email: string;
   role: string;
   status: string;
-  auto_assign_website: string | null;
+  auto_assign_websites: string[];
 };
 
 export type PermissionApi = {
@@ -42,15 +42,15 @@ export async function fetchPermissionsCatalog(): Promise<{
   };
 }
 
-export async function updateUserAutoAssignWebsite(
+export async function updateUserAutoAssignWebsites(
   id: string,
-  autoAssignWebsite: string | null
+  autoAssignWebsites: string[]
 ): Promise<UserApi> {
   const res = await fetch(`/api/users/${id}`, {
     method: "PATCH",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ auto_assign_website: autoAssignWebsite }),
+    body: JSON.stringify({ auto_assign_websites: autoAssignWebsites }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -85,6 +85,6 @@ export function userFromApi(u: PublicUser | UserApi): UserApi {
     email: u.email,
     role: u.role,
     status: "status" in u && u.status ? u.status : "Active",
-    auto_assign_website: u.auto_assign_website ?? null,
+    auto_assign_websites: u.auto_assign_websites ?? [],
   };
 }

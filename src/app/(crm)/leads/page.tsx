@@ -57,7 +57,7 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Booking, Lead } from "@/lib/data";
 import { formatDisplayTime, formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
-import { createLeadActivityApi, downloadLeadsCsv } from "@/lib/leads-api";
+import { downloadLeadsCsv } from "@/lib/leads-api";
 import { LeadsExportDialog } from "@/components/crm/leads-export-dialog";
 import { useSession } from "@/lib/session-context";
 import { useHasPermission } from "@/lib/use-has-permission";
@@ -68,6 +68,7 @@ import {
   TableRowsSkeleton,
 } from "@/components/crm/skeletons";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
+import { CreatedAtDisplay } from "@/components/crm/created-at-display";
 
 function formatNextFollowUp(date?: string, time?: string) {
   if (!date) return "—";
@@ -163,10 +164,6 @@ export default function LeadsPage() {
     addLead,
     updateLead,
     deleteLead,
-    addQuote,
-    assignLeadItinerary,
-    updateLeadCustomItinerary,
-    resetLeadItinerary,
     addLeadComment,
     loadLeadComments,
     loadLeadActivity,
@@ -572,7 +569,9 @@ export default function LeadsPage() {
                 <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Car / pax / days</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Source</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card">UTM URL</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Assigned</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-card whitespace-nowrap">Created</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card">Next follow-up</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Price</TableHead>
                 <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
@@ -580,7 +579,7 @@ export default function LeadsPage() {
             </TableHeader>
             <TableBody>
               {leadsLoading ? (
-                <TableRowsSkeleton columns={10} rows={6} avatar />
+                <TableRowsSkeleton columns={12} rows={6} avatar />
               ) : visible.map((l) => (
                 <TableRow key={l.id} className="group">
                   <TableCell>
@@ -660,7 +659,25 @@ export default function LeadsPage() {
                       )}
                     </div>
                   </TableCell>
+                  <TableCell className="max-w-[180px]">
+                    {l.pageUrl ? (
+                      <a
+                        href={l.pageUrl.startsWith("http") ? l.pageUrl : `https://${l.pageUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={l.pageUrl}
+                        className="block truncate text-sm text-marigold hover:underline"
+                      >
+                        {l.pageUrl}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-slate-soft">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-slate">{l.assignedTo?.name || "Unassigned"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-slate">
+                    <CreatedAtDisplay iso={l.createdAt} stacked />
+                  </TableCell>
                   <TableCell className="whitespace-nowrap text-sm text-slate">
                     {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
                   </TableCell>
@@ -850,7 +867,25 @@ export default function LeadsPage() {
                       {sourceLabel(l.source, leadSources)}
                       {l.website ? ` · ${l.website}` : ""}
                     </InfoItem>
+                    <InfoItem label="UTM URL" className="sm:col-span-2">
+                      {l.pageUrl ? (
+                        <a
+                          href={l.pageUrl.startsWith("http") ? l.pageUrl : `https://${l.pageUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={l.pageUrl}
+                          className="break-all text-marigold hover:underline"
+                        >
+                          {l.pageUrl}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </InfoItem>
                     <InfoItem label="Assigned">{l.assignedTo?.name || "Unassigned"}</InfoItem>
+                    <InfoItem label="Created">
+                      <CreatedAtDisplay iso={l.createdAt} />
+                    </InfoItem>
                     <InfoItem label="Next follow-up">
                       {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
                     </InfoItem>
@@ -951,77 +986,11 @@ export default function LeadsPage() {
 
       <LeadQuoteDrawer
         lead={quoteLead}
-        quotes={state.quotes}
         itineraries={state.itineraries}
         open={!!quoteLeadId}
         onOpenChange={(v) => !v && setQuoteLeadId(null)}
-        onAssignItinerary={(templateId) => {
-          if (!quoteLead) return;
-          assignLeadItinerary(quoteLead.id, templateId);
-          toast({
-            variant: "success",
-            title: "Template assigned",
-            description: "Master itinerary linked. Guest copy cleared if any.",
-          });
-        }}
-        onSaveCustomItinerary={(custom) => {
-          if (!quoteLead) return;
-          updateLeadCustomItinerary(quoteLead.id, custom);
-          toast({
-            variant: "success",
-            title: "Guest itinerary saved",
-            description: "Master template was not changed.",
-          });
-        }}
-        onResetItinerary={() => {
-          if (!quoteLead) return;
-          resetLeadItinerary(quoteLead.id);
-          toast({
-            variant: "info",
-            title: "Reset to template",
-            description: "Guest copy cleared.",
-          });
-        }}
-        onSend={({ amount, note, sentVia, saveAsDraft }) => {
-          if (!quoteLead) return;
-          const leadId = quoteLead.id;
-          const route =
-            quoteLead.pickup && quoteLead.drop
-              ? `${quoteLead.pickup} → ${quoteLead.drop}`
-              : quoteLead.tourPackage;
-          addQuote({
-            leadId,
-            customer: quoteLead.name,
-            route,
-            days: quoteLead.days,
-            cabType: quoteLead.car,
-            amount,
-            stage: saveAsDraft ? "Draft" : "Sent",
-            sentVia,
-            note: note || undefined,
-          });
-          void updateLead(leadId, {
-            status: saveAsDraft ? quoteLead.status : "Hot",
-            price: amount,
-            notes: note || quoteLead.notes,
-          });
-          if (!saveAsDraft) {
-            void createLeadActivityApi(leadId, {
-              action: "quoted",
-              label: "Quote sent",
-              detail: `₹${amount.toLocaleString("en-IN")} via ${sentVia.join(", ")}`,
-            }).catch(() => {
-              /* KPI activity is best-effort; quote still saved locally */
-            });
-          }
-          setQuoteLeadId(null);
-          toast({
-            variant: "success",
-            title: saveAsDraft ? "Quote draft saved" : "Quote sent",
-            description: saveAsDraft
-              ? `Draft quote linked to ${quoteLead.name}.`
-              : `Quote for ${quoteLead.name} sent via ${sentVia.join(", ")}.`,
-          });
+        onSent={() => {
+          void refreshLeads();
         }}
       />
 

@@ -5,11 +5,19 @@ import {
   bookingToDto,
   deleteBooking,
   findBookingById,
+  findConflictingDriverNames,
   isBookingOwnedBy,
   patchBooking,
   type PatchBookingInput,
 } from "@/lib/db/bookings";
-import { isBookingStatus, isMarketingChannel, parseDriversJson } from "@/lib/booking-utils";
+import {
+  collectAssignedDriverNames,
+  isBookingStatus,
+  isMarketingChannel,
+  normalizeBookingAssignments,
+  parseDriversJson,
+} from "@/lib/booking-utils";
+import { toDateOnly } from "@/lib/lead-utils";
 import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } from "@/lib/data";
 
 export const runtime = "nodejs";
@@ -185,6 +193,9 @@ export async function PATCH(
     }
     patch.status = status;
   }
+  if (body.payment_mode !== undefined) {
+    patch.payment_mode = readString(body.payment_mode)?.trim() ?? "";
+  }
   if (body.hotel !== undefined) patch.hotel = readHotel(body.hotel) ?? null;
   if (body.hotels !== undefined) patch.hotels = readHotels(body.hotels) ?? [];
   if (body.comments !== undefined) {
@@ -196,6 +207,53 @@ export async function PATCH(
   if (body.lead_id !== undefined) {
     const leadId = readString(body.lead_id)?.trim();
     patch.lead_id = leadId || null;
+  }
+
+  const existing = await findBookingById(id);
+  if (!existing) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+
+  const mergedDrivers = patch.drivers !== undefined
+    ? patch.drivers ?? []
+    : patch.driver !== undefined || patch.vehicle !== undefined
+      ? normalizeBookingAssignments({
+          drivers: parseDriversJson(existing.drivers, {
+            driver: existing.driver,
+            vehicle: existing.vehicle,
+          }),
+          driver: patch.driver ?? existing.driver,
+          vehicle: patch.vehicle ?? existing.vehicle,
+        }).drivers
+      : parseDriversJson(existing.drivers, {
+          driver: existing.driver,
+          vehicle: existing.vehicle,
+        });
+
+  const mergedDriver =
+    patch.driver !== undefined ? patch.driver : existing.driver;
+  const mergedTravel =
+    patch.travel_date !== undefined
+      ? patch.travel_date
+      : toDateOnly(existing.travel_date) || null;
+  const mergedReturn =
+    patch.return_date !== undefined
+      ? patch.return_date
+      : toDateOnly(existing.return_date) || null;
+
+  const assignedDrivers = collectAssignedDriverNames(mergedDriver, mergedDrivers);
+  if (assignedDrivers.length && mergedTravel) {
+    const conflicts = await findConflictingDriverNames(assignedDrivers, {
+      travelDate: mergedTravel,
+      returnDate: mergedReturn,
+      excludeBookingId: id,
+    });
+    if (conflicts.length) {
+      return NextResponse.json(
+        {
+          error: `${conflicts.join(", ")} is not available for these travel dates (already assigned to another booking).`,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   try {

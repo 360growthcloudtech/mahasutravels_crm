@@ -39,7 +39,9 @@ import {
   estimateCabPrice,
   cloneStayFromHotelTemplate,
 } from "@/lib/data";
-import { bookingDrivers, bookingFromLead, bookingHotels } from "@/lib/booking-utils";
+import { assignmentWithVehicleNumber, bookingDrivers, bookingFromLead, bookingHotels, BOOKING_PAYMENT_MODES } from "@/lib/booking-utils";
+import { formatDriverFleetLabel } from "@/lib/driver-utils";
+import { useDriverAvailability } from "@/lib/use-driver-availability";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 
@@ -97,6 +99,7 @@ function emptyForm(): BookingFormState {
     advance: 0,
     balance: estimateCabPrice(cabType, days),
     status: "Advance Pending",
+    paymentMode: "",
     hotels: [],
   };
 }
@@ -247,15 +250,18 @@ function HotelStayFields({
 function DriverAssignmentsFields({
   assignments,
   drivers,
+  occupiedDriverNames,
   onChange,
 }: {
   assignments: BookingDriverAssignment[];
   drivers: Driver[];
+  occupiedDriverNames: Set<string>;
   onChange: (next: BookingDriverAssignment[]) => void;
 }) {
   const row = assignments[0] ?? { driver: "", vehicle: "" };
 
   function pickDriver(name: string) {
+    if (occupiedDriverNames.has(name)) return;
     const d = drivers.find((item) => item.name === name);
     onChange([{ driver: name, vehicle: d?.vehicle ?? "" }]);
   }
@@ -268,15 +274,19 @@ function DriverAssignmentsFields({
             <SelectValue placeholder="Select driver" />
           </SelectTrigger>
           <SelectContent>
-            {drivers.map((d) => (
-              <SelectItem key={d.id} value={d.name}>
-                {d.name} · {d.vehicle}
-              </SelectItem>
-            ))}
+            {drivers.map((d) => {
+              const unavailable = occupiedDriverNames.has(d.name);
+              return (
+                <SelectItem key={d.id} value={d.name} disabled={unavailable}>
+                  {formatDriverFleetLabel(d)}
+                  {unavailable ? " · Not available" : ""}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </Field>
-      <Field label="Vehicle" hint="Auto-filled from driver, editable">
+      <Field label="Vehicle" hint="Auto-filled with vehicle number from driver, editable">
         <Input
           value={row.vehicle}
           onChange={(e) => onChange([{ driver: row.driver, vehicle: e.target.value }])}
@@ -323,7 +333,9 @@ export function BookingFormDialog({
   const [assignments, setAssignments] = React.useState<BookingDriverAssignment[]>(() => {
     if (!booking) return [{ driver: "", vehicle: "" }];
     const list = bookingDrivers(booking);
-    return list.length ? [list[0]] : [{ driver: "", vehicle: "" }];
+    return list.length
+      ? [assignmentWithVehicleNumber(list[0], drivers)]
+      : [{ driver: "", vehicle: "" }];
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -333,6 +345,22 @@ export function BookingFormDialog({
   const converting = !!lead && !booking;
   const hotelTemplates = state.hotelTemplates;
 
+  const { occupiedSet: occupiedDriverNames } = useDriverAvailability({
+    enabled: open,
+    travel_date: form.travelDate,
+    return_date: form.returnDate,
+    exclude_booking_id: booking?.id,
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    setAssignments((current) => {
+      const selected = current[0]?.driver?.trim();
+      if (!selected || !occupiedDriverNames.has(selected)) return current;
+      return [{ driver: "", vehicle: "" }];
+    });
+  }, [open, occupiedDriverNames, form.travelDate, form.returnDate]);
+
   React.useEffect(() => {
     if (!open) return;
     if (booking) {
@@ -341,7 +369,11 @@ export function BookingFormDialog({
       setStays(hotels.length ? hotels : []);
       setHotelEnabled(hotels.length > 0);
       const list = bookingDrivers(booking);
-      setAssignments(list.length ? [list[0]] : [{ driver: "", vehicle: "" }]);
+      setAssignments(
+        list.length
+          ? [assignmentWithVehicleNumber(list[0], drivers)]
+          : [{ driver: "", vehicle: "" }]
+      );
     } else if (lead) {
       setForm(bookingFromLead(lead));
       setHotelEnabled(false);
@@ -356,7 +388,7 @@ export function BookingFormDialog({
     setError("");
     setAddHotelOpen(false);
     setAddHotelForIndex(null);
-  }, [open, booking, lead]);
+  }, [open, booking, lead, drivers]);
 
   function set<K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) {
     setForm((f) => {
@@ -593,6 +625,7 @@ export function BookingFormDialog({
                 <DriverAssignmentsFields
                   assignments={assignments}
                   drivers={drivers}
+                  occupiedDriverNames={occupiedDriverNames}
                   onChange={setAssignments}
                 />
 
@@ -622,6 +655,24 @@ export function BookingFormDialog({
                 <Field label="Balance (₹)">
                   <Input type="number" value={form.balance} readOnly className="bg-secondary/40" />
                 </Field>
+                <Field label="Payment mode">
+                  <Select
+                    value={form.paymentMode || "__none__"}
+                    onValueChange={(v) => set("paymentMode", v === "__none__" ? "" : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Not set</SelectItem>
+                      {BOOKING_PAYMENT_MODES.map((mode) => (
+                        <SelectItem key={mode} value={mode}>
+                          {mode}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field label="Payment status">
                   <Select
                     value={form.status}
@@ -647,7 +698,7 @@ export function BookingFormDialog({
         ) : (
           <>
         <section className="space-y-3">
-          <p className="text-xs font-semibold tracking-wide text-slate uppercase">About yourself</p>
+          {/* <p className="text-xs font-semibold tracking-wide text-slate uppercase">About yourself</p> */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Name">
               <Input
@@ -797,6 +848,7 @@ export function BookingFormDialog({
             <DriverAssignmentsFields
               assignments={assignments}
               drivers={drivers}
+              occupiedDriverNames={occupiedDriverNames}
               onChange={setAssignments}
             />
 
@@ -824,6 +876,24 @@ export function BookingFormDialog({
 
             <Field label="Balance (₹)">
               <Input type="number" value={form.balance} readOnly className="bg-secondary/40" />
+            </Field>
+            <Field label="Payment mode">
+              <Select
+                value={form.paymentMode || "__none__"}
+                onValueChange={(v) => set("paymentMode", v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Not set</SelectItem>
+                  {BOOKING_PAYMENT_MODES.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {mode}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Payment status">
               <Select value={form.status} onValueChange={(v) => set("status", v as BookingStatus)}>

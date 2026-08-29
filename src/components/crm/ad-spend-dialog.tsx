@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/crm/field";
 import { DatePicker } from "@/components/crm/date-picker";
 import { AdPlatform, AdSpendEntry, trackedWebsites } from "@/lib/data";
@@ -27,7 +28,7 @@ const platforms: AdPlatform[] = [
 
 export type AdSpendFormState = Omit<AdSpendEntry, "id" | "createdAt">;
 
-function todayISO() {
+function nowDateISO() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -35,15 +36,36 @@ function todayISO() {
   return `${y}-${m}-${day}`;
 }
 
-const empty: AdSpendFormState = {
-  platform: "Google Ads",
-  website: "mahasutravels.com",
-  amount: 10000,
-  date: todayISO(),
-  campaignName: "",
-  leadsGenerated: 0,
-  notes: "",
-};
+function nowTimeHHMM() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function emptyForm(): AdSpendFormState {
+  return {
+    platform: "Google Ads",
+    website: "mahasutravels.com",
+    amount: 10000,
+    date: nowDateISO(),
+    time: nowTimeHHMM(),
+    campaignName: "",
+    leadsGenerated: 0,
+    notes: "",
+  };
+}
+
+function formFromSpend(spend: AdSpendEntry): AdSpendFormState {
+  return {
+    platform: spend.platform,
+    website: spend.website,
+    amount: spend.amount,
+    date: spend.date,
+    time: spend.time || nowTimeHHMM(),
+    campaignName: spend.campaignName,
+    leadsGenerated: spend.leadsGenerated,
+    notes: spend.notes,
+  };
+}
 
 export function AdSpendDialog({
   trigger,
@@ -55,13 +77,20 @@ export function AdSpendDialog({
   onSubmit: (data: AdSpendFormState) => void | Promise<void>;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState<AdSpendFormState>(spend ?? empty);
+  const [form, setForm] = React.useState<AdSpendFormState>(emptyForm);
+  const [useCurrentDateTime, setUseCurrentDateTime] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
 
   React.useEffect(() => {
     if (!open) return;
-    setForm(spend ?? empty);
+    if (spend) {
+      setForm(formFromSpend(spend));
+      setUseCurrentDateTime(false);
+    } else {
+      setForm(emptyForm());
+      setUseCurrentDateTime(true);
+    }
     setError("");
   }, [open, spend]);
 
@@ -69,15 +98,37 @@ export function AdSpendDialog({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  function applyCurrentDateTime() {
+    const next = { date: nowDateISO(), time: nowTimeHHMM() };
+    setForm((f) => ({ ...f, ...next }));
+    return next;
+  }
+
+  function onToggleCurrentDateTime(checked: boolean) {
+    setUseCurrentDateTime(checked);
+    if (checked) applyCurrentDateTime();
+  }
+
   async function submit() {
-    if (form.amount <= 0) {
+    const payload = useCurrentDateTime
+      ? { ...form, ...applyCurrentDateTime() }
+      : form;
+    if (payload.amount <= 0) {
       setError("Amount must be greater than 0");
+      return;
+    }
+    if (!payload.date) {
+      setError("Spend date is required");
+      return;
+    }
+    if (!payload.time) {
+      setError("Spend time is required");
       return;
     }
     setSaving(true);
     setError("");
     try {
-      await onSubmit(form);
+      await onSubmit(payload);
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save ad spend");
@@ -125,7 +176,7 @@ export function AdSpendDialog({
               </Select>
             </Field>
 
-            <Field label="Amount Spent (₹)">
+            <Field label="Amount Spent (₹)" className="sm:col-span-2">
               <Input
                 type="number"
                 min={0}
@@ -135,11 +186,29 @@ export function AdSpendDialog({
               />
             </Field>
 
+            <label className="flex items-center gap-2 text-sm text-ink-text sm:col-span-2">
+              <Checkbox
+                checked={useCurrentDateTime}
+                onCheckedChange={(v) => onToggleCurrentDateTime(v === true)}
+              />
+              Use current date & time
+            </label>
+
             <Field label="Spend Date">
               <DatePicker
                 value={form.date}
                 onChange={(v) => set("date", v)}
                 placeholder="Select date"
+                className={useCurrentDateTime ? "pointer-events-none opacity-60" : undefined}
+              />
+            </Field>
+
+            <Field label="Spend Time">
+              <Input
+                type="time"
+                value={form.time ?? ""}
+                onChange={(e) => set("time", e.target.value)}
+                disabled={useCurrentDateTime}
               />
             </Field>
 

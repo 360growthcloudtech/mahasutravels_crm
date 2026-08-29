@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { login } from "@/lib/auth";
+import { homeHrefForRole } from "@/lib/nav-permissions";
 import { useSession } from "@/lib/session-context";
 import { useData } from "@/lib/store";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
@@ -30,7 +31,9 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    if (!sessionLoading && existingSession) router.replace("/");
+    if (!sessionLoading && existingSession) {
+      router.replace(homeHrefForRole(existingSession.role));
+    }
   }, [sessionLoading, existingSession, router]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -42,9 +45,9 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    await reloadSession();
+    const next = await reloadSession();
     await reloadSessionData();
-    router.replace("/");
+    router.replace(homeHrefForRole(next?.role));
   }
 
   return (

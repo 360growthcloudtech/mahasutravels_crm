@@ -18,6 +18,7 @@ import { RevenueChart } from "@/components/crm/revenue-chart";
 import { LeadFormDialog } from "@/components/crm/lead-form-dialog";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { WebsiteFilter } from "@/components/crm/website-filter";
+import { UserFilter } from "@/components/crm/user-filter";
 import {
   DateRangeFilter,
   DashboardDateRange,
@@ -30,6 +31,16 @@ import type { EmployeeDashboardPayload } from "@/lib/db/dashboard-me";
 import type { DashboardBookingSummary } from "@/lib/db/dashboard";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
+import { useSession } from "@/lib/session-context";
+
+function firstName(name: string) {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+function possessive(name: string) {
+  const n = firstName(name);
+  return n.endsWith("s") || n.endsWith("S") ? `${n}'` : `${n}'s`;
+}
 
 function formatTripDate(iso: string) {
   if (!iso) return "—";
@@ -141,14 +152,33 @@ function EmployeeBodySkeleton() {
 }
 
 export function EmployeeDashboard() {
-  const { addLead } = useData();
+  const { addLead, assignees } = useData();
   const { toast } = useToast();
+  const { session, loading: sessionLoading } = useSession();
   const [dateRange, setDateRange] = React.useState<DashboardDateRange>(null);
   const [selectedWebsite, setSelectedWebsite] = React.useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
   const [dashboard, setDashboard] = React.useState<EmployeeDashboardPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
 
+  const canPickUser = session?.role !== "Employee";
+  const userId = selectedUserId ?? session?.memberId ?? null;
+  const userOptions = React.useMemo(() => {
+    const list = assignees.map((a) => ({ id: a.id, name: a.name, role: a.role }));
+    if (session?.memberId && !list.some((u) => u.id === session.memberId)) {
+      list.unshift({ id: session.memberId, name: session.name, role: session.role });
+    }
+    return list;
+  }, [assignees, session?.memberId, session?.name, session?.role]);
+
+  const handleUserChange = React.useCallback((id: string) => {
+    setSelectedUserId(id);
+    setDashboard(null);
+    setLoading(true);
+  }, []);
+
   React.useEffect(() => {
+    if (sessionLoading) return;
     let cancelled = false;
     const bounds = rangeToISO(dateRange);
     setLoading(true);
@@ -156,6 +186,7 @@ export function EmployeeDashboard() {
       from: bounds?.from ?? null,
       to: bounds?.to ?? null,
       website: selectedWebsite,
+      userId: canPickUser ? userId : undefined,
     })
       .then((data) => {
         if (!cancelled) setDashboard(data);
@@ -175,7 +206,7 @@ export function EmployeeDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [dateRange, selectedWebsite, toast]);
+  }, [sessionLoading, dateRange, selectedWebsite, userId, canPickUser, toast]);
 
   const kpis = dashboard?.kpis;
   const revenue = kpis?.revenue ?? 0;
@@ -186,9 +217,15 @@ export function EmployeeDashboard() {
     return "last 7 days";
   })();
 
+  const viewedName = dashboard?.viewedUser.name ?? userOptions.find((u) => u.id === userId)?.name ?? session?.name ?? "you";
+  const viewingSelf = !dashboard?.viewedUser.id || dashboard.viewedUser.id === session?.memberId;
+  const mine = viewingSelf ? "My" : possessive(viewedName);
+  const assignedLabel = viewingSelf ? "Assigned to you" : `Assigned to ${viewedName}`;
+  const assignedToYou = viewingSelf ? "you" : viewedName;
+
   const stats = [
     {
-      label: "My leads",
+      label: `${mine} leads`,
       value: String(kpis?.leadsTotal ?? 0),
       icon: Users,
       accent: "marigold" as const,
@@ -200,13 +237,13 @@ export function EmployeeDashboard() {
       accent: "violet" as const,
     },
     {
-      label: "My bookings",
+      label: `${mine} bookings`,
       value: String(kpis?.bookingsCount ?? 0),
       icon: ClipboardCheck,
       accent: "teal" as const,
     },
     {
-      label: "My revenue",
+      label: `${mine} revenue`,
       value: `₹${revenue.toLocaleString("en-IN")}`,
       icon: IndianRupee,
       accent: "signal" as const,
@@ -231,9 +268,17 @@ export function EmployeeDashboard() {
   return (
     <>
       <Topbar
-        title="My dashboard"
+        title="Employee Dashboard"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {canPickUser ? (
+              <UserFilter
+                value={userId}
+                users={userOptions}
+                currentUserId={session?.memberId}
+                onChange={handleUserChange}
+              />
+            ) : null}
             <WebsiteFilter value={selectedWebsite} onChange={setSelectedWebsite} />
             <DateRangeFilter value={dateRange} onChange={setDateRange} />
             <LeadFormDialog
@@ -268,7 +313,7 @@ export function EmployeeDashboard() {
       />
 
       <main className="page-pad">
-        {loading && !dashboard ? (
+        {loading ? (
           <EmployeeBodySkeleton />
         ) : (
           <>
@@ -297,7 +342,7 @@ export function EmployeeDashboard() {
                         <s.icon className="size-4.5" />
                       </div>
                     </div>
-                    <div className="mt-3 text-xs text-muted-foreground">Assigned to you</div>
+                    <div className="mt-3 text-xs text-muted-foreground">{assignedLabel}</div>
                   </CardContent>
                   <div className="route-line" />
                 </Card>
@@ -328,9 +373,9 @@ export function EmployeeDashboard() {
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <CardTitle>My revenue trend</CardTitle>
+                      <CardTitle>{mine} revenue trend</CardTitle>
                       <CardDescription>
-                        Your bookings by day recorded · {trendRangeLabel}
+                        {viewingSelf ? "Your" : possessive(viewedName)} bookings by day recorded · {trendRangeLabel}
                       </CardDescription>
                     </div>
                     <Badge variant="teal">
@@ -342,15 +387,15 @@ export function EmployeeDashboard() {
                   <RevenueChart
                     data={chartData}
                     color="#0d9488"
-                    sourceName="My revenue"
+                    sourceName={`${mine} revenue`}
                   />
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>My lead sources</CardTitle>
-                  <CardDescription>From leads assigned to you</CardDescription>
+                  <CardTitle>{mine} lead sources</CardTitle>
+                  <CardDescription>From leads assigned to {assignedToYou}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {sourceSplit.every((s) => s.count === 0) ? (
@@ -445,7 +490,7 @@ export function EmployeeDashboard() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <CardTitle>Recent leads</CardTitle>
-                      <CardDescription>Last assigned to you</CardDescription>
+                      <CardDescription>Last assigned to {assignedToYou}</CardDescription>
                     </div>
                     <Badge variant="secondary">{recentLeads.length}</Badge>
                   </div>
@@ -454,7 +499,7 @@ export function EmployeeDashboard() {
                   <div className="max-h-[22rem] overflow-y-auto px-5 pb-4">
                     {recentLeads.length === 0 ? (
                       <p className="py-6 text-center text-sm text-muted-foreground">
-                        No leads assigned to you yet.
+                        No leads assigned to {assignedToYou} yet.
                       </p>
                     ) : (
                       <ul className="divide-y divide-border-soft">
@@ -495,20 +540,36 @@ export function EmployeeDashboard() {
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
               <BookingListCard
-                title="My ongoing trips"
-                description="Your trips in progress today"
+                title={`${mine} ongoing trips`}
+                description={
+                  viewingSelf
+                    ? "Your trips in progress today"
+                    : `${possessive(viewedName)} trips in progress today`
+                }
                 badge={`${ongoingBookings.length} active`}
                 badgeVariant="teal"
                 items={ongoingBookings}
-                emptyLabel="No trips of yours are ongoing right now."
+                emptyLabel={
+                  viewingSelf
+                    ? "No trips of yours are ongoing right now."
+                    : `No trips of ${viewedName} are ongoing right now.`
+                }
               />
               <BookingListCard
-                title="My upcoming trips"
-                description="Your departures after today"
+                title={`${mine} upcoming trips`}
+                description={
+                  viewingSelf
+                    ? "Your departures after today"
+                    : `${possessive(viewedName)} departures after today`
+                }
                 badge={`${upcomingBookings.length} upcoming`}
                 badgeVariant="marigold"
                 items={upcomingBookings}
-                emptyLabel="No upcoming bookings assigned to you."
+                emptyLabel={
+                  viewingSelf
+                    ? "No upcoming bookings assigned to you."
+                    : `No upcoming bookings assigned to ${viewedName}.`
+                }
               />
             </div>
           </>

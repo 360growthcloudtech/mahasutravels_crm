@@ -41,6 +41,15 @@ import {
   SheetFooter,
   SheetBody,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
 import { StatusBadge } from "@/components/crm/status-badge";
@@ -56,7 +65,7 @@ import {
   defaultPermissionsForRole,
   allPermissionKeys,
 } from "@/lib/data";
-import { fetchUsers, fetchPermissionsCatalog, updateUserAutoAssignWebsite, updateUserPermissionKeys, type UserApi } from "@/lib/users-api";
+import { fetchUsers, fetchPermissionsCatalog, updateUserAutoAssignWebsites, updateUserPermissionKeys, type UserApi } from "@/lib/users-api";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { cn } from "@/lib/utils";
 import type { PermissionAction as CatalogAction } from "@/lib/permissions-catalog";
@@ -86,6 +95,19 @@ const moduleDot = [
   "bg-slate-soft",
 ];
 
+function toggleValue<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
+function formatWebsiteDomains(
+  domains: string[],
+  websites: { domain: string; label?: string }[]
+): string {
+  if (!domains.length) return "—";
+  const labelByDomain = new Map(websites.map((w) => [w.domain, w.label || w.domain]));
+  return domains.map((d) => labelByDomain.get(d) ?? d).join(", ");
+}
+
 function emptyMember(): Omit<Member, "id"> {
   return {
     name: "",
@@ -96,7 +118,7 @@ function emptyMember(): Omit<Member, "id"> {
     role: "Employee",
     status: "Active",
     permissionKeys: defaultPermissionsForRole("Employee"),
-    autoAssignWebsite: null,
+    autoAssignWebsites: [],
   };
 }
 
@@ -153,10 +175,10 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const websiteByEmail = React.useMemo(() => {
-    const map = new Map<string, string | null>();
+  const websitesByEmail = React.useMemo(() => {
+    const map = new Map<string, string[]>();
     for (const u of dbUsers) {
-      map.set(u.email.toLowerCase(), u.auto_assign_website);
+      map.set(u.email.toLowerCase(), u.auto_assign_websites ?? []);
     }
     return map;
   }, [dbUsers]);
@@ -229,7 +251,7 @@ export default function SettingsPage() {
 
   function openEditMember(m: Member) {
     setEditingMember(m);
-    const fromDb = websiteByEmail.get(m.email.toLowerCase());
+    const fromDb = websitesByEmail.get(m.email.toLowerCase());
     setForm({
       name: m.name,
       email: m.email,
@@ -239,7 +261,7 @@ export default function SettingsPage() {
       role: m.role,
       status: m.status,
       permissionKeys: [...m.permissionKeys],
-      autoAssignWebsite: fromDb ?? m.autoAssignWebsite ?? null,
+      autoAssignWebsites: fromDb ?? m.autoAssignWebsites ?? [],
     });
     setShowPassword(false);
     setMemberTab("profile");
@@ -285,7 +307,7 @@ export default function SettingsPage() {
 
     const payload = {
       ...form,
-      autoAssignWebsite: form.autoAssignWebsite || null,
+      autoAssignWebsites: form.autoAssignWebsites ?? [],
     };
 
     setSavingMember(true);
@@ -294,29 +316,16 @@ export default function SettingsPage() {
         (u) => u.email.toLowerCase() === form.email.trim().toLowerCase()
       );
       if (dbUser) {
-        const updated = await updateUserAutoAssignWebsite(
+        const updated = await updateUserAutoAssignWebsites(
           dbUser.id,
-          payload.autoAssignWebsite || null
+          payload.autoAssignWebsites
         );
         await updateUserPermissionKeys(dbUser.id, payload.permissionKeys);
         if (session?.memberId === dbUser.id) {
           await refreshSession();
         }
-        setDbUsers((prev) =>
-          prev.map((u) => {
-            if (u.id === updated.id) return updated;
-            // Ownership moved: clear from others locally
-            if (
-              updated.auto_assign_website &&
-              u.auto_assign_website === updated.auto_assign_website &&
-              u.id !== updated.id
-            ) {
-              return { ...u, auto_assign_website: null };
-            }
-            return u;
-          })
-        );
-      } else if (payload.autoAssignWebsite) {
+        setDbUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      } else if (payload.autoAssignWebsites.length > 0) {
         toast({
           variant: "error",
           title: "No matching login user",
@@ -497,9 +506,10 @@ export default function SettingsPage() {
                         {m.department || "—"}
                       </TableCell>
                       <TableCell className="text-xs text-slate">
-                        {websiteByEmail.get(m.email.toLowerCase()) ||
-                          m.autoAssignWebsite ||
-                          "—"}
+                        {formatWebsiteDomains(
+                          websitesByEmail.get(m.email.toLowerCase()) ?? m.autoAssignWebsites ?? [],
+                          websites
+                        )}
                       </TableCell>
                       <TableCell className="font-mono-data text-xs text-slate">
                         {m.permissionKeys.length}/{allPermissionKeys.length}
@@ -553,10 +563,11 @@ export default function SettingsPage() {
                     <InfoGrid>
                       <InfoItem label="Role">{m.role}</InfoItem>
                       <InfoItem label="Department">{m.department || "—"}</InfoItem>
-                      <InfoItem label="Website">
-                        {websiteByEmail.get(m.email.toLowerCase()) ||
-                          m.autoAssignWebsite ||
-                          "—"}
+                      <InfoItem label="Websites">
+                        {formatWebsiteDomains(
+                          websitesByEmail.get(m.email.toLowerCase()) ?? m.autoAssignWebsites ?? [],
+                          websites
+                        )}
                       </InfoItem>
                       <InfoItem label="Permissions">
                         {m.permissionKeys.length}/{allPermissionKeys.length}
@@ -857,30 +868,67 @@ export default function SettingsPage() {
                     </Select>
                   </Field>
                   <Field
-                    label="Website (auto-assign leads)"
-                    hint="Optional. New leads from this site are assigned to this user."
+                    label="Websites (auto-assign leads)"
+                    hint="Optional. New leads from selected sites are auto-assigned equally per day among all users mapped to that site."
                   >
-                    <Select
-                      value={form.autoAssignWebsite || "__none__"}
-                      onValueChange={(v) =>
-                        setForm((f) => ({
-                          ...f,
-                          autoAssignWebsite: v === "__none__" ? null : v,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="None" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">None</SelectItem>
-                        {websites.map((w) => (
-                          <SelectItem key={w.domain} value={w.domain}>
-                            {w.label ? `${w.label} (${w.domain})` : w.domain}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 w-full justify-between font-normal"
+                        >
+                          <span className="truncate text-left">
+                            {form.autoAssignWebsites.length > 0
+                              ? formatWebsiteDomains(form.autoAssignWebsites, websites)
+                              : "None selected"}
+                          </span>
+                          {form.autoAssignWebsites.length > 0 ? (
+                            <Badge variant="secondary" className="ml-2 shrink-0">
+                              {form.autoAssignWebsites.length}
+                            </Badge>
+                          ) : (
+                            <ChevronDown className="size-3.5 shrink-0 text-slate-soft" />
+                          )}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-[16rem] w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto">
+                        <DropdownMenuLabel>Tracked websites</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {websites.length === 0 ? (
+                          <DropdownMenuItem disabled>No websites configured</DropdownMenuItem>
+                        ) : (
+                          websites.map((w) => (
+                            <DropdownMenuCheckboxItem
+                              key={w.domain}
+                              checked={form.autoAssignWebsites.includes(w.domain)}
+                              onCheckedChange={() =>
+                                setForm((f) => ({
+                                  ...f,
+                                  autoAssignWebsites: toggleValue(f.autoAssignWebsites, w.domain),
+                                }))
+                              }
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              {w.label ? `${w.label} (${w.domain})` : w.domain}
+                            </DropdownMenuCheckboxItem>
+                          ))
+                        )}
+                        {form.autoAssignWebsites.length > 0 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-slate"
+                              onSelect={() =>
+                                setForm((f) => ({ ...f, autoAssignWebsites: [] }))
+                              }
+                            >
+                              Clear all
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </Field>
                 </form>
               </TabsContent>

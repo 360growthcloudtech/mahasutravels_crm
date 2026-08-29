@@ -1,6 +1,7 @@
 /** CRM route → required `*.view` permission key. */
 export const ROUTE_VIEW_PERMISSION: Record<string, string> = {
   "/": "dashboard.view",
+  "/employee-dashboard": "dashboard.view",
   "/leads": "leads.view",
   "/bookings": "bookings.view",
   "/marketing": "ad.spend.and.marketing.view",
@@ -10,6 +11,10 @@ export const ROUTE_VIEW_PERMISSION: Record<string, string> = {
   "/drivers": "drivers.and.vehicles.view",
   "/settings": "roles.and.permissions.view",
 };
+
+export function homeHrefForRole(role: string | null | undefined): string {
+  return role === "Employee" ? "/employee-dashboard" : "/";
+}
 
 export function viewPermissionForPath(pathname: string): string | null {
   if (ROUTE_VIEW_PERMISSION[pathname]) return ROUTE_VIEW_PERMISSION[pathname];

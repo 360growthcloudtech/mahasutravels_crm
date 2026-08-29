@@ -28,6 +28,7 @@ export const LEAD_CSV_HEADERS = [
   "UTM Source",
   "UTM Medium",
   "UTM Campaign",
+  "Page URL",
   "Last Inquiry At",
   "Created At",
 ] as const;
@@ -59,6 +60,7 @@ export function leadToCsvRow(dto: LeadDto): unknown[] {
     dto.utm_source ?? "",
     dto.utm_medium ?? "",
     dto.utm_campaign ?? "",
+    dto.page_url ?? "",
     dto.last_inquiry_at,
     dto.created_at,
   ];
