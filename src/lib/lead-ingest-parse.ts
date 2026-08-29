@@ -21,7 +21,10 @@ const LEGACY_FORM_CODES = [
 ] as const;
 
 function readString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
+  if (typeof value === "string") return value;
+  // Form plugins often send phone/numeric fields as JSON numbers.
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
 }
 
 function readNumber(value: unknown): number | undefined {
@@ -167,10 +170,11 @@ export function parseLeadIngestBody(
   const dropDateRaw = pickDateRaw(body, ["drop_date", "drop_off_date"]);
   const pickupDate = pickupDateRaw !== undefined ? parseLeadDate(pickupDateRaw) : null;
   const dropDate = dropDateRaw !== undefined ? parseLeadDate(dropDateRaw) : null;
-  if (pickupDateRaw !== undefined && !pickupDate) {
+  // Webhook: never reject the whole lead over a bad date — store null instead.
+  if (pickupDateRaw !== undefined && !pickupDate && !isWebhook) {
     return { ok: false, error: "pickup_date is invalid" };
   }
-  if (dropDateRaw !== undefined && !dropDate) {
+  if (dropDateRaw !== undefined && !dropDate && !isWebhook) {
     return { ok: false, error: "drop_date is invalid" };
   }
 
@@ -182,10 +186,20 @@ export function parseLeadIngestBody(
     body.next_follow_up_time === null || body.next_follow_up_time === ""
       ? null
       : parseLeadTime(body.next_follow_up_time);
-  if (body.next_follow_up_date && body.next_follow_up_date !== null && !followUpDate) {
+  if (
+    body.next_follow_up_date &&
+    body.next_follow_up_date !== null &&
+    !followUpDate &&
+    !isWebhook
+  ) {
     return { ok: false, error: "next_follow_up_date is invalid" };
   }
-  if (body.next_follow_up_time && body.next_follow_up_time !== null && !followUpTime) {
+  if (
+    body.next_follow_up_time &&
+    body.next_follow_up_time !== null &&
+    !followUpTime &&
+    !isWebhook
+  ) {
     return { ok: false, error: "next_follow_up_time is invalid" };
   }
 

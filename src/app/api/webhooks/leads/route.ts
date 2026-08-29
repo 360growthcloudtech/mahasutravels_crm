@@ -49,6 +49,18 @@ export async function POST(request: Request) {
 
   const parsed = parseLeadIngestBody(body, { mode: "webhook" });
   if (!parsed.ok) {
+    console.warn("[webhooks/leads] 400 parse", {
+      error: parsed.error,
+      keys: Object.keys(body),
+      phone: body.phone ?? body.phone_number ?? body.mobile,
+      email: body.email,
+      name: body.name ?? body.full_name,
+      website: body.website,
+      page_url: body.page_url ?? body.landing_url ?? body.url,
+      form_type: body.form_type,
+      source: body.source,
+      pick_up_date: body.pick_up_date ?? body.pickup_date ?? body.travel_date,
+    });
     return NextResponse.json({ error: parsed.error }, { status: 400, headers: cors });
   }
 
@@ -56,6 +68,7 @@ export async function POST(request: Request) {
 
   const sourceCode = await resolveSourceCode(parsed.input.source);
   if (!sourceCode) {
+    console.warn("[webhooks/leads] 400 unknown source", { source: parsed.input.source });
     return NextResponse.json({ error: "Unknown or inactive source" }, { status: 400, headers: cors });
   }
   parsed.input.source = sourceCode;

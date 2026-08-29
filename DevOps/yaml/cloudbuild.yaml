@@ -1,0 +1,24 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-t'
+      - 'asia-south2-docker.pkg.dev/project-b4be9b14-6c62-47dd-b1f/mahasu-travels/web:latest'
+      - '--file=./DevOps/Docker/docker'
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - 'asia-south2-docker.pkg.dev/project-b4be9b14-6c62-47dd-b1f/mahasu-travels/web:latest'
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    args:
+      - run
+      - deploy
+      - mahasu-travels-web
+      - '--image'
+      - 'asia-south2-docker.pkg.dev/project-b4be9b14-6c62-47dd-b1f/mahasu-travels/web:latest'
+      - '--region'
+      - asia-south2
+    entrypoint: gcloud
+options:
+  logging: CLOUD_LOGGING_ONLY

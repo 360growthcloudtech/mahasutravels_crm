@@ -84,19 +84,82 @@ export function tripDaysFromDates(pickupDate?: string, dropDate?: string): numbe
 }
 
 export function parseLeadDate(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Unix seconds vs ms
+    const ms = value < 1e12 ? value * 1000 : value;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return toDateOnlyFromParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    return null;
+  }
   if (typeof value !== "string") return null;
   const v = value.trim();
   if (!v) return null;
+
+  // ISO / SQL date or datetime: 2026-08-29 or 2026-08-29T10:00:00
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+
+  // DD-MM-YYYY or D-M-YYYY
   const dash = v.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if (dash) {
-    return `${dash[3]}-${dash[2].padStart(2, "0")}-${dash[1].padStart(2, "0")}`;
+    return toDateOnlyFromParts(Number(dash[3]), Number(dash[2]), Number(dash[1]));
   }
+
+  // DD/MM/YYYY (India) — prefer day-first when day > 12
   const slash = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slash) {
-    return `${slash[3]}-${slash[2].padStart(2, "0")}-${slash[1].padStart(2, "0")}`;
+    const a = Number(slash[1]);
+    const b = Number(slash[2]);
+    const y = Number(slash[3]);
+    if (a > 12) return toDateOnlyFromParts(y, b, a); // DD/MM
+    if (b > 12) return toDateOnlyFromParts(y, a, b); // MM/DD
+    // Ambiguous: treat as DD/MM (CRM is India-first)
+    return toDateOnlyFromParts(y, b, a);
   }
+
+  // DD-MMM-YYYY / DD MMM YYYY (e.g. 29-Aug-2026, 29 Aug 2026)
+  const mon = v.match(/^(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s](\d{4})$/);
+  if (mon) {
+    const month = monthNameToNumber(mon[2]);
+    if (month) return toDateOnlyFromParts(Number(mon[3]), month, Number(mon[1]));
+  }
+
+  // Fallback: Date.parse for strings like "August 29, 2026"
+  const parsed = Date.parse(v);
+  if (!Number.isNaN(parsed)) {
+    const d = new Date(parsed);
+    return toDateOnlyFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+
   return null;
+}
+
+function monthNameToNumber(name: string): number | null {
+  const key = name.slice(0, 3).toLowerCase();
+  const map: Record<string, number> = {
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    may: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    oct: 10,
+    nov: 11,
+    dec: 12,
+  };
+  return map[key] ?? null;
+}
+
+function toDateOnlyFromParts(year: number, month: number, day: number): string | null {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) {
+    return null;
+  }
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 /** Normalize to HH:MM:SS for Postgres time columns; empty → null. */
