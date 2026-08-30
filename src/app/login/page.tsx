@@ -39,6 +39,7 @@ export default function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setError("");
     const result = await login(email, password);
     if (!result.ok) {
       setError(result.error);
@@ -46,8 +47,13 @@ export default function LoginPage() {
       return;
     }
     const next = await reloadSession();
+    if (!next) {
+      setError("Signed in, but session cookie was blocked. Please try again or contact support.");
+      setLoading(false);
+      return;
+    }
     await reloadSessionData();
-    router.replace(homeHrefForRole(next?.role));
+    router.replace(homeHrefForRole(next.role));
   }
 
   return (

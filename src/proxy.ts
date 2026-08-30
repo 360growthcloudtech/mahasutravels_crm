@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth-jwt";
+import { LEGACY_SESSION_COOKIE, SESSION_COOKIE, verifySessionToken } from "@/lib/auth-jwt";
 import { homeHrefForRole } from "@/lib/nav-permissions";
 
 function isPublicPath(pathname: string) {
@@ -15,7 +15,9 @@ function isPublicPath(pathname: string) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const token =
+    request.cookies.get(SESSION_COOKIE)?.value ||
+    request.cookies.get(LEGACY_SESSION_COOKIE)?.value;
   const session = token ? await verifySessionToken(token) : null;
 
   if (!session && !isPublicPath(pathname)) {
