@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -10,7 +11,6 @@ import {
   ClipboardList,
   Route,
   Settings,
-  Compass,
   BedDouble,
   UserRound,
   CircleUser,
@@ -183,8 +183,15 @@ export function Sidebar({
           )}
         >
           <NavLabel collapsed={collapsed} label="Mahasu Travels">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-marigold text-ink">
-              <Compass className="size-5" strokeWidth={2.25} />
+            <div className="relative size-9 shrink-0 overflow-hidden rounded-md">
+              <Image
+                src="/brand/mahasu-logo.png"
+                alt="Mahasu Travels"
+                width={36}
+                height={36}
+                className="size-9 object-cover"
+                priority
+              />
             </div>
           </NavLabel>
           {!collapsed ? (
@@ -341,8 +348,14 @@ export function MobileNav({
       <SheetContent side="left" className="w-[min(20rem,100%)] bg-ink p-0 text-white sm:max-w-xs">
         <SheetHeader className="border-white/10 px-4 py-5 pr-12">
           <SheetTitle className="flex items-center gap-2.5 text-white">
-            <span className="flex size-9 items-center justify-center rounded-md bg-marigold text-ink">
-              <Compass className="size-5" strokeWidth={2.25} />
+            <span className="relative size-9 shrink-0 overflow-hidden rounded-md">
+              <Image
+                src="/brand/mahasu-logo.png"
+                alt="Mahasu Travels"
+                width={36}
+                height={36}
+                className="size-9 object-cover"
+              />
             </span>
             <span className="min-w-0 text-left">
               <span className="block font-display text-[15px] font-semibold leading-tight">

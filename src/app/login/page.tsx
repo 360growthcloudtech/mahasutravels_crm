@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
-  Compass,
   Eye,
   EyeOff,
   Lock,
@@ -63,8 +63,15 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute inset-y-0 left-10 w-px bg-[repeating-linear-gradient(to_bottom,#2a3150_0_6px,transparent_6px_14px)]" />
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-marigold text-ink shadow-lg shadow-marigold/25">
-            <Compass className="size-6" strokeWidth={2.25} />
+          <div className="relative size-11 overflow-hidden rounded-xl shadow-lg shadow-black/20">
+            <Image
+              src="/brand/mahasu-logo.png"
+              alt="Mahasu Travels"
+              width={44}
+              height={44}
+              className="size-11 object-cover"
+              priority
+            />
           </div>
           <div>
             <p className="font-display text-xl font-semibold tracking-tight">Mahasu Travels</p>
@@ -113,8 +120,15 @@ export default function LoginPage() {
 
         <div className="relative w-full max-w-[26rem]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-marigold text-ink shadow-md shadow-marigold/20">
-              <Compass className="size-5" strokeWidth={2.25} />
+            <div className="relative size-10 overflow-hidden rounded-xl shadow-md shadow-black/15">
+              <Image
+                src="/brand/mahasu-logo.png"
+                alt="Mahasu Travels"
+                width={40}
+                height={40}
+                className="size-10 object-cover"
+                priority
+              />
             </div>
             <div>
               <p className="font-display text-lg font-semibold text-ink-text">Mahasu Travels</p>

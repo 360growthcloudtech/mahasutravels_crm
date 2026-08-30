@@ -8,12 +8,15 @@ export type Theme = "light" | "dark";
 
 type ThemeCtx = {
   theme: Theme;
+  /** False until client has synced theme from DOM/localStorage (avoids hydration mismatch). */
+  ready: boolean;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 };
 
 const ThemeContext = React.createContext<ThemeCtx>({
   theme: "light",
+  ready: false,
   setTheme: () => {},
   toggleTheme: () => {},
 });
@@ -22,11 +25,26 @@ function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
+function readStoredTheme(): Theme {
+  try {
+    if (window.localStorage.getItem(THEME_KEY) === "dark") return "dark";
+  } catch {
+    // ignore
+  }
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = React.useState<Theme>(() => {
-    if (typeof document === "undefined") return "light";
-    return document.documentElement.classList.contains("dark") ? "dark" : "light";
-  });
+  // Always start as light on server + first client render so SSR HTML matches.
+  const [theme, setThemeState] = React.useState<Theme>("light");
+  const [ready, setReady] = React.useState(false);
+
+  React.useEffect(() => {
+    const initial = readStoredTheme();
+    setThemeState(initial);
+    applyTheme(initial);
+    setReady(true);
+  }, []);
 
   const setTheme = React.useCallback((next: Theme) => {
     setThemeState(next);
@@ -43,7 +61,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme, setTheme]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, ready, setTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

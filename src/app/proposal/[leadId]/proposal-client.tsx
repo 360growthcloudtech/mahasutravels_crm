@@ -10,8 +10,8 @@ import {
   MapPin,
   Phone,
   Printer,
-  Compass,
 } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import { fetchProposalQuote } from "@/lib/lead-quotes-api";
@@ -142,8 +142,15 @@ export default function ProposalPage() {
           />
           <div className="relative flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-marigold text-[#12172b] shadow-[0_8px_20px_rgba(245,165,36,0.35)]">
-                <Compass className="size-6" />
+              <div className="relative size-12 overflow-hidden rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.25)]">
+                <Image
+                  src="/brand/mahasu-logo.png"
+                  alt="Mahasu Travels"
+                  width={48}
+                  height={48}
+                  className="size-12 object-cover"
+                  priority
+                />
               </div>
               <div>
                 <p className="font-display text-xl font-semibold tracking-tight">Mahasu Travels</p>

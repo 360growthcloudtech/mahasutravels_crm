@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { DataProvider } from "@/lib/store";
 import { SessionProvider } from "@/lib/session-context";
@@ -24,14 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(localStorage.getItem("mahasu-theme")==="dark"){document.documentElement.classList.add("dark")}}catch(e){}})();`,
-          }}
-        />
-      </head>
       <body className="min-h-full">
+        <Script id="mahasu-theme-init" strategy="beforeInteractive">
+          {`(function(){try{if(localStorage.getItem("mahasu-theme")==="dark"){document.documentElement.classList.add("dark")}}catch(e){}})();`}
+        </Script>
         <ThemeProvider>
           <ToastProvider>
             <SessionProvider>
