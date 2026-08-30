@@ -1,0 +1,3 @@
+# Firebase Hosting static root — intentionally empty.
+# All traffic is rewritten to Cloud Run (Next.js). Do not put Next.js
+# `public/` assets here or Hosting will serve stale files after Cloud Run deploys.

@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "public",
+    "public": "DevOps/firebase-hosting/public",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -13,6 +13,17 @@
           "serviceId": "mahasu-travels-web",
           "region": "asia-south2"
         }
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       }
     ]
   }
