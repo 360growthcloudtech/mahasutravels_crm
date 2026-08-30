@@ -30,6 +30,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "firebase-tools": "^15.28.2",
     "jose": "^6.2.8",
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
