@@ -250,3 +250,21 @@ export async function deleteBookingApi(id: string): Promise<void> {
     throw new Error(data?.error ?? "Failed to delete booking");
   }
 }
+
+export async function sendBookingInvoiceApi(
+  id: string
+): Promise<{ ok: boolean; message_id: string | null; booking: BookingApi }> {
+  const res = await fetch(`/api/bookings/${id}/invoice/send`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to send invoice on WhatsApp");
+  }
+  return (await res.json()) as {
+    ok: boolean;
+    message_id: string | null;
+    booking: BookingApi;
+  };
+}

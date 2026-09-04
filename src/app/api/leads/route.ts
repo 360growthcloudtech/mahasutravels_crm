@@ -15,6 +15,7 @@ import {
   resolveWebsiteDomain,
 } from "@/lib/db/masters";
 import { parseLeadIngestBody } from "@/lib/lead-ingest-parse";
+import { websiteHostFromUrl } from "@/lib/utm";
 import { parseLeadsListFilters } from "@/lib/api/list-filters";
 
 export const runtime = "nodejs";
@@ -81,7 +82,10 @@ export async function POST(request: Request) {
     parsed.input.status = await getDefaultStatusCode();
   }
 
-  if (parsed.input.website) {
+  const fromPage = await resolveWebsiteDomain(websiteHostFromUrl(parsed.input.page_url));
+  if (fromPage) {
+    parsed.input.website = fromPage;
+  } else if (parsed.input.website) {
     const website = await resolveWebsiteDomain(parsed.input.website);
     if (!website) {
       return NextResponse.json({ error: "Unknown or inactive website" }, { status: 400, headers: cors });

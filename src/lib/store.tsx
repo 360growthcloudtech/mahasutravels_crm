@@ -100,13 +100,13 @@ export type LeadFormValues = {
   nextFollowUpDate: string;
   nextFollowUpTime: string;
   car: string;
-  adults: number;
-  kids: number;
-  days: number;
+  adults: number | "";
+  kids: number | "";
+  days: number | "";
   notes: string;
   status: Lead["status"];
   assignedToId: string | null;
-  price: number;
+  price: number | "";
 };
 
 type State = {

@@ -9,6 +9,8 @@ import {
   IndianRupee,
   Plus,
   Phone,
+  UserX,
+  Percent,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -32,6 +34,7 @@ import type { DashboardBookingSummary } from "@/lib/db/dashboard";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { useSession } from "@/lib/session-context";
+import { formatDisplayTime } from "@/lib/lead-utils";
 
 function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;
@@ -130,7 +133,7 @@ function BookingListCard({
 function EmployeeBodySkeleton() {
   return (
     <>
-      <StatCardsSkeleton count={4} className="mb-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" />
+      <StatCardsSkeleton count={6} className="mb-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3" />
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardContent className="space-y-3 p-5">
@@ -227,24 +230,42 @@ export function EmployeeDashboard() {
     {
       label: `${mine} leads`,
       value: String(kpis?.leadsTotal ?? 0),
+      hint: assignedLabel,
       icon: Users,
       accent: "marigold" as const,
     },
     {
       label: "Quotes sent",
       value: String(kpis?.quotesSent ?? 0),
+      hint: assignedLabel,
       icon: FileText,
       accent: "violet" as const,
     },
     {
       label: `${mine} bookings`,
       value: String(kpis?.bookingsCount ?? 0),
+      hint: "Bookings confirmed",
       icon: ClipboardCheck,
       accent: "teal" as const,
     },
     {
+      label: "Conversion rate",
+      value: `${kpis?.conversionRate ?? 0}%`,
+      hint: `${kpis?.bookingsCount ?? 0} booked of ${kpis?.leadsTotal ?? 0} leads`,
+      icon: Percent,
+      accent: "teal" as const,
+    },
+    {
+      label: "Lost leads",
+      value: String(kpis?.lostLeads ?? 0),
+      hint: assignedLabel,
+      icon: UserX,
+      accent: "signal" as const,
+    },
+    {
       label: `${mine} revenue`,
       value: `₹${revenue.toLocaleString("en-IN")}`,
+      hint: assignedLabel,
       icon: IndianRupee,
       accent: "signal" as const,
     },
@@ -317,7 +338,7 @@ export function EmployeeDashboard() {
           <EmployeeBodySkeleton />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {stats.map((s) => (
                 <Card key={s.label} className="overflow-hidden">
                   <CardContent className="p-5">
@@ -342,7 +363,7 @@ export function EmployeeDashboard() {
                         <s.icon className="size-4.5" />
                       </div>
                     </div>
-                    <div className="mt-3 text-xs text-muted-foreground">{assignedLabel}</div>
+                    <div className="mt-3 text-xs text-muted-foreground">{s.hint}</div>
                   </CardContent>
                   <div className="route-line" />
                 </Card>
@@ -462,7 +483,9 @@ export function EmployeeDashboard() {
                                 <StatusBadge status={l.status} />
                                 <span className="font-mono-data text-[11px] text-slate">
                                   {formatTripDate(l.nextFollowUpDate)}
-                                  {l.nextFollowUpTime ? ` · ${l.nextFollowUpTime}` : ""}
+                                  {l.nextFollowUpTime
+                                    ? ` · ${formatDisplayTime(l.nextFollowUpTime)}`
+                                    : ""}
                                 </span>
                                 {l.phone ? (
                                   <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">

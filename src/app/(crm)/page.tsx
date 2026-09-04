@@ -12,6 +12,8 @@ import {
   Plus,
   TrendingUp,
   Target,
+  UserX,
+  Percent,
 } from "lucide-react";
 import { Topbar } from "@/components/crm/topbar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -136,7 +138,7 @@ function BookingListCard({
 function DashboardBodySkeleton() {
   return (
     <>
-      <StatCardsSkeleton count={4} className="mb-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" />
+      <StatCardsSkeleton count={6} className="mb-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3" />
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardContent className="space-y-3 p-5">
@@ -256,6 +258,7 @@ function OrgDashboard() {
       label: "Total leads",
       value: String(leadsTotal),
       delta: formatDelta(deltas?.leadsPct),
+      hint: null as string | null,
       icon: Users,
       accent: "marigold" as const,
     },
@@ -263,6 +266,7 @@ function OrgDashboard() {
       label: "Quotes sent",
       value: String(kpis?.quotesSent ?? 0),
       delta: formatDelta(deltas?.quotesPct),
+      hint: null as string | null,
       icon: FileText,
       accent: "violet" as const,
     },
@@ -270,13 +274,31 @@ function OrgDashboard() {
       label: "Bookings confirmed",
       value: String(kpis?.bookingsCount ?? 0),
       delta: formatDelta(deltas?.bookingsPct),
+      hint: null as string | null,
       icon: ClipboardCheck,
       accent: "teal" as const,
+    },
+    {
+      label: "Conversion rate",
+      value: `${kpis?.conversionRate ?? 0}%`,
+      delta: null as string | null,
+      hint: `${kpis?.bookingsCount ?? 0} booked of ${leadsTotal} leads`,
+      icon: Percent,
+      accent: "teal" as const,
+    },
+    {
+      label: "Lost leads",
+      value: String(kpis?.lostLeads ?? 0),
+      delta: null as string | null,
+      hint: null as string | null,
+      icon: UserX,
+      accent: "signal" as const,
     },
     {
       label: "Revenue on record",
       value: `₹${revenue.toLocaleString("en-IN")}`,
       delta: formatDelta(deltas?.revenuePct),
+      hint: null as string | null,
       icon: IndianRupee,
       accent: "signal" as const,
     },
@@ -334,7 +356,7 @@ function OrgDashboard() {
           <DashboardBodySkeleton />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {stats.map((s) => {
                 const deltaNum = s.delta ? Number.parseFloat(s.delta) : null;
                 const positive = deltaNum == null || deltaNum >= 0;
@@ -379,7 +401,7 @@ function OrgDashboard() {
                         </div>
                       ) : (
                         <div className="mt-3 text-xs text-muted-foreground">
-                          Select a date range for period comparison
+                          {s.hint || "Select a date range for period comparison"}
                         </div>
                       )}
                     </CardContent>

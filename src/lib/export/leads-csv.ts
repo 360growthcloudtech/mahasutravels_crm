@@ -1,6 +1,7 @@
 import type { LeadDto } from "@/lib/db/leads";
 import { sourceLabel } from "@/lib/lead-utils";
 import { rowsToCsv } from "@/lib/csv";
+import { leadAttribution } from "@/lib/utm";
 
 export const LEAD_CSV_HEADERS = [
   "Lead No",
@@ -34,14 +35,21 @@ export const LEAD_CSV_HEADERS = [
 ] as const;
 
 export function leadToCsvRow(dto: LeadDto): unknown[] {
+  const attribution = leadAttribution({
+    source: dto.source,
+    website: dto.website,
+    pageUrl: dto.page_url,
+    utmSource: dto.utm_source,
+    utmMedium: dto.utm_medium,
+  });
   return [
     dto.lead_no,
     dto.name,
     dto.phone,
     dto.email,
     dto.status,
-    sourceLabel(dto.source),
-    dto.website ?? "",
+    sourceLabel(attribution.source),
+    attribution.website ?? "",
     dto.city,
     dto.assigned_to?.name ?? "",
     dto.tour_package,

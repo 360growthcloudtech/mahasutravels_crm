@@ -26,6 +26,8 @@ export type EmployeeDashboardPayload = {
     quotesSent: number;
     bookingsCount: number;
     revenue: number;
+    lostLeads: number;
+    conversionRate: number;
   };
   pipeline: Array<{ status: string; count: number }>;
   followUps: Array<{
@@ -62,7 +64,6 @@ const FIXED_SOURCE_SPLIT: Array<{ code: string; label: string; color: string }> 
   { code: "manual", label: "Manual", color: "#64748b" },
 ];
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -88,7 +89,12 @@ function todayIso(): string {
 
 function dayLabel(iso: string): string {
   const d = new Date(`${iso}T12:00:00Z`);
-  return DAY_LABELS[d.getUTCDay()] ?? iso;
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 function normalizeFilters(input: EmployeeDashboardFilters) {
@@ -251,6 +257,7 @@ export async function getEmployeeDashboard(
     leadsTotal,
     quotesSent,
     bookingStats,
+    lostLeads,
     pipeline,
     followUps,
     trend,
@@ -261,6 +268,7 @@ export async function getEmployeeDashboard(
     countMyLeads(userId, filters),
     countMyQuotes(userId, filters),
     myBookingKpis(userId, userName, filters),
+    countMyLostLeads(userId, filters),
     myPipeline(userId, filters),
     myFollowUps(userId, filters),
     myRevenueTrend(userId, userName, filters),
@@ -277,6 +285,13 @@ export async function getEmployeeDashboard(
     .filter((b) => b.travelDate > today)
     .sort((a, b) => a.travelDate.localeCompare(b.travelDate) || a.id.localeCompare(b.id));
 
+  const conversionRate =
+    leadsTotal > 0
+      ? Math.round((bookingStats.bookingsCount / leadsTotal) * 100)
+      : bookingStats.bookingsCount > 0
+        ? 100
+        : 0;
+
   return {
     filters: {
       from: filters.from,
@@ -292,6 +307,8 @@ export async function getEmployeeDashboard(
       quotesSent,
       bookingsCount: bookingStats.bookingsCount,
       revenue: bookingStats.revenue,
+      lostLeads,
+      conversionRate,
     },
     pipeline,
     followUps,
@@ -309,6 +326,23 @@ async function countMyLeads(
 ): Promise<number> {
   const params: unknown[] = [userId];
   const clauses = [`l.assigned_to = $1::uuid`];
+  const d = leadDateClause("l", filters.from, filters.to, params);
+  if (d) clauses.push(d);
+  const w = websiteClause("l", filters.website, params);
+  if (w) clauses.push(w);
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM leads l WHERE ${clauses.join(" AND ")}`,
+    params
+  );
+  return Number(rows[0]?.count) || 0;
+}
+
+async function countMyLostLeads(
+  userId: string,
+  filters: ReturnType<typeof normalizeFilters>
+): Promise<number> {
+  const params: unknown[] = [userId];
+  const clauses = [`l.assigned_to = $1::uuid`, `l.status = 'Lost'`];
   const d = leadDateClause("l", filters.from, filters.to, params);
   if (d) clauses.push(d);
   const w = websiteClause("l", filters.website, params);

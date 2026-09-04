@@ -170,13 +170,13 @@ export function leadToWritePayload(input: {
   nextFollowUpDate?: string;
   nextFollowUpTime?: string;
   car?: string;
-  adults?: number;
-  kids?: number;
-  days?: number;
+  adults?: number | "";
+  kids?: number | "";
+  days?: number | "";
   notes?: string;
   status?: Lead["status"];
   assignedToId?: string | null;
-  price?: number;
+  price?: number | "";
 }): LeadWritePayload {
   return {
     name: input.name,
@@ -185,20 +185,20 @@ export function leadToWritePayload(input: {
     pickup: input.pickup ?? "",
     drop: input.drop ?? "",
     car: input.car ?? "",
-    days: input.days ?? 0,
+    days: input.days === "" || input.days == null ? 0 : Number(input.days),
     pickup_date: input.pickupDate || undefined,
     drop_date: input.dropDate || undefined,
     next_follow_up_date: input.nextFollowUpDate || null,
     next_follow_up_time: input.nextFollowUpTime || null,
-    price: input.price ?? 0,
+    price: input.price === "" || input.price == null ? 0 : Number(input.price),
     source: input.source,
     city: input.city ?? "",
     website: input.website || null,
     tour_package: input.tourPackage ?? "",
     itinerary_template_id: input.itineraryTemplateId ?? null,
     vehicle_id: input.vehicleId ?? null,
-    adults: input.adults ?? 0,
-    kids: input.kids ?? 0,
+    adults: input.adults === "" || input.adults == null ? 0 : Number(input.adults),
+    kids: input.kids === "" || input.kids == null ? 0 : Number(input.kids),
     notes: input.notes ?? "",
     status: input.status,
     assigned_to: input.assignedToId ?? null,

@@ -18,6 +18,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Field } from "@/components/crm/field";
 import { DrawerFormSkeleton } from "@/components/crm/skeletons";
 import { DatePicker } from "@/components/crm/date-picker";
+import { TimePicker } from "@/components/crm/time-picker";
 import {
   Lead,
   pickupLocations,
@@ -30,6 +31,14 @@ import { useData, type LeadFormValues } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 type FormState = LeadFormValues;
+
+/** Numeric fields are always numbers when leaving the drawer. */
+export type LeadFormSubmit = Omit<LeadFormValues, "adults" | "kids" | "days" | "price"> & {
+  adults: number;
+  kids: number;
+  days: number;
+  price: number;
+};
 
 type FormErrors = {
   name?: string;
@@ -104,13 +113,13 @@ function emptyForm(defaults?: {
     nextFollowUpDate: "",
     nextFollowUpTime: "",
     car: "",
-    adults: 2,
-    kids: 0,
-    days: 2,
+    adults: "",
+    kids: "",
+    days: "",
     notes: "",
     status: defaults?.status || "New Lead",
     assignedToId: null,
-    price: 0,
+    price: "",
   };
 }
 
@@ -153,7 +162,7 @@ export function LeadFormDialog({
   trigger?: React.ReactNode;
   lead?: Lead;
   defaultWebsite?: string;
-  onSubmit: (data: FormState) => void | Promise<void>;
+  onSubmit: (data: LeadFormSubmit) => void | Promise<void>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -278,7 +287,7 @@ export function LeadFormDialog({
       }
 
       if (key === "car") {
-        next.price = estimateCabPrice(value as string, next.days || 1);
+        next.price = estimateCabPrice(value as string, Number(next.days) || 1);
       }
 
       return next;
@@ -298,7 +307,7 @@ export function LeadFormDialog({
     const vehicle = vehicles.find((v) => v.id === vehicleId);
     setForm((f) => {
       const car = vehicle?.vehicle_type ?? f.car;
-      const days = f.days || 1;
+      const days = Number(f.days) || 1;
       return {
         ...f,
         vehicleId,
@@ -315,7 +324,13 @@ export function LeadFormDialog({
 
     setSaving(true);
     try {
-      await onSubmit(form);
+      await onSubmit({
+        ...form,
+        adults: Number(form.adults) || 0,
+        kids: Number(form.kids) || 0,
+        days: Number(form.days) || 0,
+        price: Number(form.price) || 0,
+      });
       closeDrawer();
     } finally {
       setSaving(false);
@@ -495,18 +510,26 @@ export function LeadFormDialog({
 
               <Field label="Adults">
                 <Input
-                  type="number"
-                  min={0}
-                  value={form.adults}
-                  onChange={(e) => set("adults", Number(e.target.value))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="e.g. 2"
+                  value={form.adults === "" ? "" : form.adults}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, "");
+                    set("adults", raw === "" ? "" : Number(raw));
+                  }}
                 />
               </Field>
               <Field label="Kids">
                 <Input
-                  type="number"
-                  min={0}
-                  value={form.kids}
-                  onChange={(e) => set("kids", Number(e.target.value))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="e.g. 0"
+                  value={form.kids === "" ? "" : form.kids}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, "");
+                    set("kids", raw === "" ? "" : Number(raw));
+                  }}
                 />
               </Field>
 
@@ -547,12 +570,16 @@ export function LeadFormDialog({
 
               <Field label="Price (₹)">
                 <Input
-                  type="number"
-                  min={0}
-                  value={form.price}
-                  onChange={(e) => set("price", Number(e.target.value))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="e.g. 12000"
+                  value={form.price === "" ? "" : form.price}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, "");
+                    set("price", raw === "" ? "" : Number(raw));
+                  }}
                 />
-                {form.days > 0 && form.pickupDate && form.dropDate ? (
+                {Number(form.days) > 0 && form.pickupDate && form.dropDate ? (
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     {form.days} day{form.days === 1 ? "" : "s"} from trip dates
                     {form.car ? ` · ${form.car}` : ""}
@@ -618,11 +645,11 @@ export function LeadFormDialog({
                 />
               </Field>
               <Field label="Next follow-up time">
-                <Input
-                  type="time"
+                <TimePicker
                   value={form.nextFollowUpTime}
-                  onChange={(e) => set("nextFollowUpTime", e.target.value)}
+                  onChange={(v) => set("nextFollowUpTime", v)}
                 />
+                <p className="mt-1 text-[11px] text-muted-foreground">12-hour clock (AM / PM)</p>
               </Field>
             </div>
           </section>

@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { trackedWebsites } from "@/lib/data";
+import { useData } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 interface WebsiteFilterProps {
@@ -19,8 +20,29 @@ interface WebsiteFilterProps {
   onChange: (website: string | null) => void;
 }
 
+const WEBSITE_ICONS: Record<string, string> = Object.fromEntries(
+  trackedWebsites.map((w) => [w.name, w.icon])
+);
+
 export function WebsiteFilter({ value, onChange }: WebsiteFilterProps) {
-  const activeWebsite = trackedWebsites.find((w) => w.name === value);
+  const { websites } = useData();
+  const options = websites.length
+    ? websites.map((w) => ({
+        id: w.id,
+        domain: w.domain,
+        label: w.label,
+        badge: w.badge,
+        icon: WEBSITE_ICONS[w.domain] ?? "🌐",
+      }))
+    : trackedWebsites.map((w) => ({
+        id: w.id,
+        domain: w.name,
+        label: w.label,
+        badge: w.badge,
+        icon: w.icon,
+      }));
+
+  const activeWebsite = options.find((w) => w.domain === value);
 
   return (
     <DropdownMenu>
@@ -28,7 +50,7 @@ export function WebsiteFilter({ value, onChange }: WebsiteFilterProps) {
         <Button variant="outline" size="sm" className="h-9 w-full gap-2 px-3 text-xs font-medium sm:w-auto">
           <Globe className="size-3.5 text-muted-foreground text-teal" />
           <span className="max-w-[min(100%,14rem)] truncate sm:max-w-[140px]">
-            {activeWebsite ? activeWebsite.name : "All Websites"}
+            {activeWebsite ? activeWebsite.domain : "All Websites"}
           </span>
           <ChevronDown className="size-3 text-muted-foreground opacity-70" />
         </Button>
@@ -49,18 +71,20 @@ export function WebsiteFilter({ value, onChange }: WebsiteFilterProps) {
             <span className="text-base">🌐</span>
             <div>
               <p className="font-medium text-ink-text">All Websites</p>
-              <p className="text-[10px] text-muted-foreground">Aggregated 5 portals</p>
+              <p className="text-[10px] text-muted-foreground">
+                Aggregated {options.length} portal{options.length === 1 ? "" : "s"}
+              </p>
             </div>
           </div>
           {!value && <Check className="size-3.5 text-primary" />}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {trackedWebsites.map((w) => {
-          const isSelected = value === w.name;
+        {options.map((w) => {
+          const isSelected = value === w.domain;
           return (
             <DropdownMenuItem
               key={w.id}
-              onClick={() => onChange(w.name)}
+              onClick={() => onChange(w.domain)}
               className={cn(
                 "flex items-center justify-between cursor-pointer rounded-md px-2 py-2 text-xs",
                 isSelected && "bg-accent font-medium text-accent-foreground"
@@ -69,7 +93,7 @@ export function WebsiteFilter({ value, onChange }: WebsiteFilterProps) {
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-base shrink-0">{w.icon}</span>
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-ink-text">{w.name}</p>
+                  <p className="truncate font-medium text-ink-text">{w.domain}</p>
                   <p className="truncate text-[10px] text-muted-foreground">{w.label}</p>
                 </div>
               </div>

@@ -10,6 +10,8 @@ function isPublicPath(pathname: string) {
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
   if (pathname.startsWith("/proposal")) return true;
   if (pathname.startsWith("/api/proposal")) return true;
+  if (pathname.startsWith("/invoice")) return true;
+  if (pathname.startsWith("/api/invoice")) return true;
   return false;
 }
 

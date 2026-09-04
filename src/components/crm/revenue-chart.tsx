@@ -62,6 +62,8 @@ export function RevenueChart({
           dataKey="day"
           axisLine={false}
           tickLine={false}
+          minTickGap={28}
+          interval="preserveStartEnd"
           tick={{ fontSize: 11, fill: "var(--slate-soft)", fontFamily: "var(--font-mono)" }}
         />
         <YAxis
@@ -80,6 +82,20 @@ export function RevenueChart({
             fontSize: 12,
             fontFamily: "var(--font-sans)",
             boxShadow: "0 4px 14px rgba(18,23,43,0.08)",
+          }}
+          labelFormatter={(label, payload) => {
+            const iso = payload?.[0]?.payload?.date as string | undefined;
+            if (iso) {
+              const d = new Date(`${iso}T12:00:00`);
+              if (!Number.isNaN(d.getTime())) {
+                return d.toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                });
+              }
+            }
+            return String(label);
           }}
           formatter={(value, name) => [
             `₹${Number(value).toLocaleString("en-IN")}`,

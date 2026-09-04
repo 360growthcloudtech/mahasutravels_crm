@@ -43,6 +43,8 @@ export type DashboardPayload = {
     quotesSent: number;
     bookingsCount: number;
     revenue: number;
+    lostLeads: number;
+    conversionRate: number;
     deltas: DashboardKpiDeltas | null;
   };
   revenueTrend: Array<{
@@ -85,8 +87,6 @@ const FIXED_SOURCE_SPLIT: Array<{ code: string; label: string; color: string }> 
   { code: "manual", label: "Manual", color: "#64748b" },
 ];
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-
 function isDateOnly(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -114,7 +114,12 @@ function todayIso(): string {
 
 function dayLabel(iso: string): string {
   const d = new Date(`${iso}T12:00:00Z`);
-  return DAY_LABELS[d.getUTCDay()] ?? iso;
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 type RangeBounds = { from: string | null; to: string | null };
@@ -253,6 +258,22 @@ async function countLeads(filters: ReturnType<typeof normalizeFilters>): Promise
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM leads l ${where}`,
+    params
+  );
+  return Number(rows[0]?.count) || 0;
+}
+
+async function countLostLeads(filters: ReturnType<typeof normalizeFilters>): Promise<number> {
+  const params: unknown[] = [];
+  const clauses = [`l.status = 'Lost'`];
+  const d = leadDateClause("l", filters.from, filters.to, params);
+  if (d) clauses.push(d);
+  const w = websiteClause("l", filters.website, params);
+  if (w) clauses.push(w);
+  const s = sourceClause("lead", "l", filters.source, params);
+  if (s) clauses.push(s);
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM leads l WHERE ${clauses.join(" AND ")}`,
     params
   );
   return Number(rows[0]?.count) || 0;
@@ -644,11 +665,12 @@ export async function getDashboard(input: DashboardFilters): Promise<DashboardPa
   const filters = normalizeFilters(input);
   const today = todayIso();
 
-  const [leadsTotal, quotesSent, bookingStats, spend, split, trend, agents, liveBookings] =
+  const [leadsTotal, quotesSent, bookingStats, lostLeads, spend, split, trend, agents, liveBookings] =
     await Promise.all([
       countLeads(filters),
       countQuotesSent(filters),
       bookingKpis(filters),
+      countLostLeads(filters),
       marketingSpend(filters),
       sourceSplit(filters),
       revenueTrend(filters),
@@ -687,6 +709,13 @@ export async function getDashboard(input: DashboardFilters): Promise<DashboardPa
       ? Math.round((bookingStats.revenue / spend.totalSpend) * 10) / 10
       : 0;
 
+  const conversionRate =
+    leadsTotal > 0
+      ? Math.round((bookingStats.bookingsCount / leadsTotal) * 100)
+      : bookingStats.bookingsCount > 0
+        ? 100
+        : 0;
+
   return {
     filters: {
       from: filters.from,
@@ -699,6 +728,8 @@ export async function getDashboard(input: DashboardFilters): Promise<DashboardPa
       quotesSent,
       bookingsCount: bookingStats.bookingsCount,
       revenue: bookingStats.revenue,
+      lostLeads,
+      conversionRate,
       deltas,
     },
     revenueTrend: trend,

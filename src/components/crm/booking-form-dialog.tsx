@@ -59,22 +59,61 @@ const statuses: BookingStatus[] = [
 
 export type BookingFormState = Omit<Booking, "id" | "bookingNo">;
 
-const emptyHotel: Hotel = {
+type EmptyableNumber = number | "";
+
+type BookingDrawerHotel = Omit<Hotel, "roomCount" | "amount"> & {
+  roomCount: EmptyableNumber;
+  amount: EmptyableNumber;
+};
+
+type BookingDrawerForm = Omit<
+  BookingFormState,
+  "adults" | "kids" | "days" | "total" | "advance" | "balance" | "hotels"
+> & {
+  adults: EmptyableNumber;
+  kids: EmptyableNumber;
+  days: EmptyableNumber;
+  total: EmptyableNumber;
+  advance: EmptyableNumber;
+  balance: EmptyableNumber;
+  hotels: BookingDrawerHotel[];
+};
+
+function numOrZero(value: EmptyableNumber): number {
+  return value === "" ? 0 : Number(value) || 0;
+}
+
+function toSubmitPayload(form: BookingDrawerForm): BookingFormState {
+  return {
+    ...form,
+    adults: numOrZero(form.adults),
+    kids: numOrZero(form.kids),
+    days: numOrZero(form.days) || 1,
+    total: numOrZero(form.total),
+    advance: numOrZero(form.advance),
+    balance: numOrZero(form.balance),
+    hotels: form.hotels.map((h) => ({
+      ...h,
+      roomCount: numOrZero(h.roomCount) || 1,
+      amount: numOrZero(h.amount),
+    })),
+  };
+}
+
+const emptyHotel: BookingDrawerHotel = {
   hotelName: "",
   address: "",
   checkIn: "",
   checkOut: "",
   roomType: "",
-  roomCount: 1,
-  amount: 0,
+  roomCount: "",
+  amount: "",
   referenceNumber: "",
   contactNumber: "",
   notes: "",
 };
 
-function emptyForm(): BookingFormState {
-  const cabType = "Ertiga (6+1)";
-  const days = 2;
+function emptyForm(): BookingDrawerForm {
   return {
     customer: "",
     email: "",
@@ -86,27 +125,42 @@ function emptyForm(): BookingFormState {
     dropoff: "",
     travelDate: "",
     returnDate: "",
-    cabType,
-    adults: 2,
-    kids: 0,
-    days,
+    cabType: "Ertiga (6+1)",
+    adults: "",
+    kids: "",
+    days: "",
     tourPlan: "",
     agent: "Aman",
     driver: "",
     vehicle: "",
     drivers: [],
-    total: estimateCabPrice(cabType, days),
-    advance: 0,
-    balance: estimateCabPrice(cabType, days),
+    total: "",
+    advance: "",
+    balance: "",
     status: "Advance Pending",
     paymentMode: "",
     hotels: [],
   };
 }
 
-function toFormState(booking: Booking): BookingFormState {
+function toFormState(booking: Booking): BookingDrawerForm {
   const { id: _id, bookingNo: _no, ...rest } = booking;
-  return rest;
+  return {
+    ...rest,
+    hotels: bookingHotels(booking),
+  };
+}
+
+function fromLeadForm(lead: Lead): BookingDrawerForm {
+  const base = bookingFromLead(lead);
+  const { bookingNo: _no, ...rest } = base;
+  return {
+    ...rest,
+    hotels: [],
+    // Don't prefill money fields with 0 — show placeholders until the user enters values.
+    advance: "",
+    balance: "",
+  };
 }
 
 function HotelStayFields({
@@ -118,8 +172,8 @@ function HotelStayFields({
   title,
   onRemove,
 }: {
-  hotel: Hotel;
-  setHotelField: <K extends keyof Hotel>(key: K, value: Hotel[K]) => void;
+  hotel: BookingDrawerHotel;
+  setHotelField: <K extends keyof BookingDrawerHotel>(key: K, value: BookingDrawerHotel[K]) => void;
   applyTemplate: (templateId: string) => void;
   templates: HotelTemplate[];
   onAddNew: () => void;
@@ -215,18 +269,26 @@ function HotelStayFields({
       </Field>
       <Field label="Room count">
         <Input
-          type="number"
-          min={1}
-          value={hotel.roomCount}
-          onChange={(e) => setHotelField("roomCount", Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          placeholder="e.g. 1"
+          value={hotel.roomCount === "" ? "" : hotel.roomCount}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/\D/g, "");
+            setHotelField("roomCount", raw === "" ? "" : Number(raw));
+          }}
         />
       </Field>
       <Field label="Hotel amount (₹)">
         <Input
-          type="number"
-          min={0}
-          value={hotel.amount}
-          onChange={(e) => setHotelField("amount", Number(e.target.value))}
+          type="text"
+          inputMode="numeric"
+          placeholder="e.g. 5000"
+          value={hotel.amount === "" ? "" : hotel.amount}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/\D/g, "");
+            setHotelField("amount", raw === "" ? "" : Number(raw));
+          }}
         />
       </Field>
       <Field label="Hotel contact number">
@@ -319,13 +381,13 @@ export function BookingFormDialog({
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
 
-  const [form, setForm] = React.useState<BookingFormState>(
-    booking ? toFormState(booking) : lead ? bookingFromLead(lead) : emptyForm()
+  const [form, setForm] = React.useState<BookingDrawerForm>(
+    booking ? toFormState(booking) : lead ? fromLeadForm(lead) : emptyForm()
   );
   const [hotelEnabled, setHotelEnabled] = React.useState(
     () => (booking ? bookingHotels(booking).length > 0 : false)
   );
-  const [stays, setStays] = React.useState<Hotel[]>(() => {
+  const [stays, setStays] = React.useState<BookingDrawerHotel[]>(() => {
     if (!booking) return [];
     const hotels = bookingHotels(booking);
     return hotels.length ? hotels : [];
@@ -375,7 +437,7 @@ export function BookingFormDialog({
           : [{ driver: "", vehicle: "" }]
       );
     } else if (lead) {
-      setForm(bookingFromLead(lead));
+      setForm(fromLeadForm(lead));
       setHotelEnabled(false);
       setStays([]);
       setAssignments([{ driver: "", vehicle: "" }]);
@@ -390,25 +452,31 @@ export function BookingFormDialog({
     setAddHotelForIndex(null);
   }, [open, booking, lead, drivers]);
 
-  function set<K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) {
+  function set<K extends keyof BookingDrawerForm>(key: K, value: BookingDrawerForm[K]) {
     setForm((f) => {
       const next = { ...f, [key]: value };
       if (key === "cabType" || key === "days") {
         const cabType = key === "cabType" ? (value as string) : next.cabType;
-        const days = key === "days" ? (value as number) : next.days;
-        next.total = estimateCabPrice(cabType, days);
-        next.balance = Math.max(next.total - next.advance, 0);
+        const days = numOrZero(key === "days" ? (value as EmptyableNumber) : next.days);
+        if (days > 0) {
+          next.total = estimateCabPrice(cabType, days);
+          next.balance = Math.max(numOrZero(next.total) - numOrZero(next.advance), 0);
+        }
       }
       if (key === "total" || key === "advance") {
-        const total = key === "total" ? (value as number) : next.total;
-        const advance = key === "advance" ? (value as number) : next.advance;
+        const total = numOrZero(key === "total" ? (value as EmptyableNumber) : next.total);
+        const advance = numOrZero(key === "advance" ? (value as EmptyableNumber) : next.advance);
         next.balance = Math.max(total - advance, 0);
       }
       return next;
     });
   }
 
-  function setStayField<K extends keyof Hotel>(index: number, key: K, value: Hotel[K]) {
+  function setStayField<K extends keyof BookingDrawerHotel>(
+    index: number,
+    key: K,
+    value: BookingDrawerHotel[K]
+  ) {
     setStays((rows) => rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)));
   }
 
@@ -480,20 +548,29 @@ export function BookingFormDialog({
       setError("Name and phone are required");
       return;
     }
-    if (converting && form.total <= 0) {
+    if (converting && numOrZero(form.total) <= 0) {
       setError("Total amount must be greater than 0");
       return;
     }
     setSaving(true);
     setError("");
     try {
-      const balance = Math.max(form.total - form.advance, 0);
-      const hotels = hotelEnabled ? stays.filter((h) => h.hotelName.trim()) : [];
+      const hotels = hotelEnabled
+        ? stays.filter((h) => h.hotelName.trim()).map((h) => ({
+            ...h,
+            roomCount: numOrZero(h.roomCount) || 1,
+            amount: numOrZero(h.amount),
+          }))
+        : [];
       const driversList = assignments.filter((d) => d.driver.trim()).slice(0, 1);
-      await onSubmit({
+      const payload = toSubmitPayload({
         ...form,
+        hotels,
+      });
+      await onSubmit({
+        ...payload,
         leadId: lead?.id ?? form.leadId ?? null,
-        balance,
+        balance: Math.max(payload.total - payload.advance, 0),
         hotels,
         hotel: hotels[0],
         drivers: driversList,
@@ -631,12 +708,16 @@ export function BookingFormDialog({
 
                 <Field label="Total amount (₹)">
                   <Input
-                    type="number"
-                    min={0}
-                    value={form.total}
-                    onChange={(e) => set("total", Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="e.g. 15000"
+                    value={form.total === "" ? "" : form.total}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "");
+                      set("total", raw === "" ? "" : Number(raw));
+                    }}
                   />
-                  {rate ? (
+                  {rate && Number(form.days) > 0 ? (
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       ₹{rate.toLocaleString("en-IN")}/day × {form.days} day
                       {form.days === 1 ? "" : "s"}
@@ -645,15 +726,26 @@ export function BookingFormDialog({
                 </Field>
                 <Field label="Advance received (₹)">
                   <Input
-                    type="number"
-                    min={0}
-                    value={form.advance}
-                    onChange={(e) => set("advance", Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="e.g. 5000"
+                    value={form.advance === "" ? "" : form.advance}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "");
+                      set("advance", raw === "" ? "" : Number(raw));
+                    }}
                   />
                 </Field>
 
                 <Field label="Balance (₹)">
-                  <Input type="number" value={form.balance} readOnly className="bg-secondary/40" />
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="—"
+                    value={form.balance === "" ? "" : form.balance}
+                    readOnly
+                    className="bg-secondary/40"
+                  />
                 </Field>
                 <Field label="Payment mode">
                   <Select
@@ -792,27 +884,39 @@ export function BookingFormDialog({
 
             <Field label="Adults">
               <Input
-                type="number"
-                min={1}
-                value={form.adults}
-                onChange={(e) => set("adults", Number(e.target.value))}
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 2"
+                value={form.adults === "" ? "" : form.adults}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  set("adults", raw === "" ? "" : Number(raw));
+                }}
               />
             </Field>
             <Field label="Kids">
               <Input
-                type="number"
-                min={0}
-                value={form.kids}
-                onChange={(e) => set("kids", Number(e.target.value))}
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 0"
+                value={form.kids === "" ? "" : form.kids}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  set("kids", raw === "" ? "" : Number(raw));
+                }}
               />
             </Field>
 
             <Field label="Days">
               <Input
-                type="number"
-                min={1}
-                value={form.days}
-                onChange={(e) => set("days", Number(e.target.value))}
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 5"
+                value={form.days === "" ? "" : form.days}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  set("days", raw === "" ? "" : Number(raw));
+                }}
               />
             </Field>
 
@@ -854,12 +958,16 @@ export function BookingFormDialog({
 
             <Field label="Total amount (₹)">
               <Input
-                type="number"
-                min={0}
-                value={form.total}
-                onChange={(e) => set("total", Number(e.target.value))}
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 15000"
+                value={form.total === "" ? "" : form.total}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  set("total", raw === "" ? "" : Number(raw));
+                }}
               />
-              {rate ? (
+              {rate && Number(form.days) > 0 ? (
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   ₹{rate.toLocaleString("en-IN")}/day × {form.days} day{form.days === 1 ? "" : "s"}
                 </p>
@@ -867,15 +975,26 @@ export function BookingFormDialog({
             </Field>
             <Field label="Advance received (₹)">
               <Input
-                type="number"
-                min={0}
-                value={form.advance}
-                onChange={(e) => set("advance", Number(e.target.value))}
+                type="text"
+                inputMode="numeric"
+                placeholder="e.g. 5000"
+                value={form.advance === "" ? "" : form.advance}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, "");
+                  set("advance", raw === "" ? "" : Number(raw));
+                }}
               />
             </Field>
 
             <Field label="Balance (₹)">
-              <Input type="number" value={form.balance} readOnly className="bg-secondary/40" />
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="—"
+                value={form.balance === "" ? "" : form.balance}
+                readOnly
+                className="bg-secondary/40"
+              />
             </Field>
             <Field label="Payment mode">
               <Select

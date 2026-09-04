@@ -191,7 +191,11 @@ export function formatDisplayTime(value?: string): string {
   const [hour, minute] = time.split(":").map(Number);
   const d = new Date();
   d.setHours(hour, minute, 0, 0);
-  return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 export function normalizeStatus(value: unknown, fallback: LeadStatusValue = "New Lead"): LeadStatusValue {

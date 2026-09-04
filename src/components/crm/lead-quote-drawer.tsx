@@ -349,8 +349,8 @@ export function LeadQuoteDrawer({
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3">
-                <Field label="Load from template" className="min-w-[12rem] flex-1">
+              <div className="rounded-md border border-border p-3">
+                <Field label="Load from template">
                   <Select
                     value={matchedTemplate?.id || ""}
                     onValueChange={(id) => loadTemplate(id)}
@@ -367,11 +367,6 @@ export function LeadQuoteDrawer({
                     </SelectContent>
                   </Select>
                 </Field>
-                <Button asChild variant="outline" size="sm" className="mb-0.5">
-                  <a href={proposalHref} target="_blank" rel="noreferrer">
-                    <ExternalLink className="size-3.5" /> Preview PDF
-                  </a>
-                </Button>
               </div>
 
               <Tabs value={tab} onValueChange={setTab}>
@@ -779,14 +774,23 @@ export function LeadQuoteDrawer({
         </SheetBody>
 
         <SheetFooter className="sm:justify-between">
-          <Button
-            variant="outline"
-            disabled={!form || saving || sending || loading}
-            onClick={() => void handleSaveDraft()}
-          >
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Save draft
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={!form || saving || sending || loading}
+              onClick={() => void handleSaveDraft()}
+            >
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              Save draft
+            </Button>
+            {lead ? (
+              <Button asChild variant="ghost" size="sm">
+                <a href={proposalHref} target="_blank" rel="noreferrer">
+                  <ExternalLink className="size-3.5" /> Preview PDF
+                </a>
+              </Button>
+            ) : null}
+          </div>
           <Button
             variant="marigold"
             disabled={!form || saving || sending || loading}

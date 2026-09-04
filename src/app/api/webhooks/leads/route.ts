@@ -8,6 +8,7 @@ import {
   resolveWebsiteDomain,
 } from "@/lib/db/masters";
 import { parseLeadIngestBody } from "@/lib/lead-ingest-parse";
+import { websiteHostFromUrl } from "@/lib/utm";
 
 export const runtime = "nodejs";
 
@@ -74,11 +75,12 @@ export async function POST(request: Request) {
   parsed.input.source = sourceCode;
   parsed.input.status = await getDefaultStatusCode();
 
-  // Soft-resolve website: unknown domain → null, keep page_url for tracking
-  if (parsed.input.website) {
-    const website = await resolveWebsiteDomain(parsed.input.website);
-    parsed.input.website = website;
-  }
+  // Soft-resolve website: landing-page host wins, then explicit website, else null
+  const fromPage = await resolveWebsiteDomain(websiteHostFromUrl(parsed.input.page_url));
+  const fromHint = parsed.input.website
+    ? await resolveWebsiteDomain(parsed.input.website)
+    : null;
+  parsed.input.website = fromPage ?? fromHint;
 
   const actor = parsed.input.form_type
     ? `webhook:${parsed.input.form_type}`

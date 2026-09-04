@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Plus,
   Pencil,
+  Receipt,
   Search,
   Trash2,
   X,
@@ -27,9 +28,11 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   TableCell,
 } from "@/components/ui/table";
+import { TableColumnsMenu } from "@/components/crm/table-columns-menu";
+import { ResizableTableHead } from "@/components/crm/resizable-table-head";
+import { useTableColumnLayout, type TableColumnDef } from "@/lib/use-table-column-layout";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,7 +45,14 @@ import {
 import { BookingFormDialog } from "@/components/crm/booking-form-dialog";
 import { BookingCommentsDrawer } from "@/components/crm/booking-comments-drawer";
 import { BookingHistoryDrawer } from "@/components/crm/booking-history-drawer";
+import { BookingInvoiceDrawer } from "@/components/crm/booking-invoice-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
@@ -53,7 +63,7 @@ import { useToast } from "@/lib/toast";
 import { downloadBookingsCsv } from "@/lib/bookings-api";
 import { BookingsExportDialog } from "@/components/crm/bookings-export-dialog";
 import { useHasPermission } from "@/lib/use-has-permission";
-import { Booking, BookingStatus, Driver, bookingRoute, makeLeadHistoryEvent, trackedWebsites } from "@/lib/data";
+import { Booking, BookingStatus, Driver, bookingRoute, makeLeadHistoryEvent } from "@/lib/data";
 import { assignedVehicleLabel, bookingDrivers, bookingHotels } from "@/lib/booking-utils";
 import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
@@ -80,8 +90,6 @@ function formatHotelsLabel(b: Booking) {
   return `${list[0].hotelName} +${list.length - 1}`;
 }
 
-const websiteNames = trackedWebsites.map((w) => w.name);
-
 const statuses: BookingStatus[] = [
   "Advance Pending",
   "Advance Received",
@@ -92,9 +100,23 @@ const statuses: BookingStatus[] = [
 ];
 
 const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-card";
+  "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-card";
 const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[8.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+  "relative sticky right-0 z-20 min-w-[10.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+
+const BOOKING_TABLE_COLUMNS: TableColumnDef[] = [
+  { id: "booking", label: "Booking", locked: true, defaultWidth: 200 },
+  { id: "tour", label: "Tour package / Route", defaultWidth: 200 },
+  { id: "travel", label: "Travel dates", defaultWidth: 150 },
+  { id: "cab", label: "Cab / pax / days", defaultWidth: 150 },
+  { id: "driver", label: "Driver / Vehicle", defaultWidth: 170 },
+  { id: "total", label: "Total", align: "right", defaultWidth: 110 },
+  { id: "advance", label: "Advance", align: "right", defaultWidth: 110 },
+  { id: "balance", label: "Balance", align: "right", defaultWidth: 110 },
+  { id: "payment", label: "Payment status", defaultWidth: 150 },
+  { id: "created", label: "Created", defaultWidth: 120 },
+  { id: "actions", label: "Actions", locked: true, align: "right", defaultWidth: 168 },
+];
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -154,7 +176,7 @@ function MultiFilter<T extends string>({
 }
 
 export default function BookingsPage() {
-  const { state, bookingsLoading, refreshBookings, addBooking, updateBooking, deleteBooking } =
+  const { state, websites, bookingsLoading, refreshBookings, addBooking, updateBooking, deleteBooking } =
     useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
@@ -169,6 +191,7 @@ export default function BookingsPage() {
   const [deleting, setDeleting] = React.useState(false);
   const [commentBookingId, setCommentBookingId] = React.useState<string | null>(null);
   const [historyBookingId, setHistoryBookingId] = React.useState<string | null>(null);
+  const [invoiceBookingId, setInvoiceBookingId] = React.useState<string | null>(null);
   const [editingBookingId, setEditingBookingId] = React.useState<string | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
@@ -177,6 +200,13 @@ export default function BookingsPage() {
   const canEditBooking = useHasPermission("bookings.edit");
   const canDeleteBooking = useHasPermission("bookings.delete");
   const canCommentBooking = useHasPermission("bookings.comment");
+  const columnLayout = useTableColumnLayout("crm.table.bookings", BOOKING_TABLE_COLUMNS);
+
+  const websiteDomains = React.useMemo(() => websites.map((w) => w.domain), [websites]);
+
+  React.useEffect(() => {
+    setWebsiteFilter((prev) => prev.filter((d) => websiteDomains.includes(d)));
+  }, [websiteDomains.join("|")]);
 
   const driverNames = React.useMemo(
     () =>
@@ -193,6 +223,9 @@ export default function BookingsPage() {
     : null;
   const historyBooking = historyBookingId
     ? state.bookings.find((b) => b.id === historyBookingId) ?? null
+    : null;
+  const invoiceBooking = invoiceBookingId
+    ? state.bookings.find((b) => b.id === invoiceBookingId) ?? null
     : null;
   const editingBooking = editingBookingId
     ? state.bookings.find((b) => b.id === editingBookingId) ?? null
@@ -460,7 +493,7 @@ export default function BookingsPage() {
               </div>
               <MultiFilter
                 label="Website"
-                options={websiteNames}
+                options={websiteDomains}
                 selected={websiteFilter}
                 onChange={setWebsiteFilter}
               />
@@ -517,41 +550,63 @@ export default function BookingsPage() {
                 </Button>
               )}
             </div>
-            {canExportBookings ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 shrink-0"
-                disabled={exporting || bookingsLoading}
-                onClick={() => setExportOpen(true)}
-              >
-                <Download className="size-3.5" />
-                Export CSV
-              </Button>
-            ) : null}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {canExportBookings ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  disabled={exporting || bookingsLoading}
+                  onClick={() => setExportOpen(true)}
+                >
+                  <Download className="size-3.5" />
+                  Export CSV
+                </Button>
+              ) : null}
+              <TableColumnsMenu
+                columns={columnLayout.columns}
+                isHidden={columnLayout.isHidden}
+                onToggle={columnLayout.toggle}
+                onReset={columnLayout.reset}
+                isDirty={columnLayout.isDirty}
+              />
+            </div>
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
-          <Table containerClassName="min-h-0 flex-1 overflow-auto">
+          <Table containerClassName="min-h-0 flex-1 overflow-auto" className="table-fixed min-w-max">
             <TableHeader>
               <TableRow className="group hover:bg-transparent">
-                <TableHead className="sticky top-0 z-20 bg-card">Booking</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Tour package / Route</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Cab / pax / days</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Driver / Vehicle</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Total</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Advance</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Balance</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Payment status</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card whitespace-nowrap">Created</TableHead>
-                <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
+                {columnLayout.visibleIds.map((id) => {
+                  const def = BOOKING_TABLE_COLUMNS.find((column) => column.id === id);
+                  if (!def) return null;
+                  return (
+                    <ResizableTableHead
+                      key={id}
+                      id={id}
+                      label={def.label}
+                      width={columnLayout.widthFor(id)}
+                      locked={def.locked}
+                      align={def.align}
+                      className={id === "actions" ? stickyActionHead : undefined}
+                      onMove={columnLayout.move}
+                      onResize={columnLayout.setWidth}
+                    />
+                  );
+                })}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((b) => (
+              {bookingsLoading ? (
+                <TableRowsSkeleton columns={columnLayout.visibleIds.length} rows={6} />
+              ) : visible.map((b) => (
                 <TableRow key={b.id} className="group">
-                  <TableCell>
+                  {columnLayout.visibleIds.map((columnId) => {
+                    const width = columnLayout.widthFor(columnId);
+                    const cellStyle = { width, minWidth: width, maxWidth: width };
+                    if (columnId === "booking") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 text-sm font-medium text-ink-text">
                         <span className="truncate">{b.customer}</span>
@@ -562,36 +617,68 @@ export default function BookingsPage() {
                       <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="min-w-0">
+                      );
+                    }
+                    if (columnId === "tour") {
+                      return (
+                  <TableCell key={columnId} className="min-w-0" style={cellStyle}>
                     <p className="truncate text-sm text-ink-text">{b.tourPackage}</p>
                     <p className="truncate text-[11px] text-slate-soft">{bookingRoute(b)}</p>
                   </TableCell>
-                  <TableCell className="text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "travel") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
                     <p>{formatDisplayDate(b.travelDate)}</p>
                     {b.returnDate ? (
                       <p className="text-[11px] text-slate-soft">to {formatDisplayDate(b.returnDate)}</p>
                     ) : null}
                   </TableCell>
-                  <TableCell className="text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "cab") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
                     {b.cabType}{" "}
                     <span className="text-slate-soft">
                       · {b.adults}A{b.kids > 0 ? `+${b.kids}K` : ""} · {b.days}d
                     </span>
                   </TableCell>
-                  <TableCell>
+                      );
+                    }
+                    if (columnId === "driver") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     <p className="text-sm text-ink-text">{formatDriversLabel(b)}</p>
                     <p className="font-mono-data text-[11px] text-slate-soft">{formatVehiclesLabel(b, state.drivers)}</p>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text">
+                      );
+                    }
+                    if (columnId === "total") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text" style={cellStyle}>
                     ₹{b.total.toLocaleString("en-IN")}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono-data text-sm text-teal">
+                      );
+                    }
+                    if (columnId === "advance") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-teal" style={cellStyle}>
                     ₹{b.advance.toLocaleString("en-IN")}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap pr-6 text-right font-mono-data text-sm text-signal">
+                      );
+                    }
+                    if (columnId === "balance") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-signal" style={cellStyle}>
                     {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
                   </TableCell>
-                  <TableCell>
+                      );
+                    }
+                    if (columnId === "payment") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     <div className="space-y-0.5">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -621,16 +708,24 @@ export default function BookingsPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                       {b.paymentMode ? (
-                        <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                        <p className="truncate text-[10px] text-muted-foreground">
                           {b.paymentMode}
                         </p>
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "created") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
                     <CreatedAtDisplay iso={b.createdAt} stacked />
                   </TableCell>
-                  <TableCell className={stickyActionCell}>
+                      );
+                    }
+                    if (columnId === "actions") {
+                      return (
+                  <TableCell key={columnId} className={stickyActionCell} style={cellStyle}>
                     <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
                       <Button
                         size="icon"
@@ -651,6 +746,24 @@ export default function BookingsPage() {
                       >
                         <MessageCircle className="size-3.5" />
                       </Button>
+                      ) : null}
+                      {canEditBooking ? (
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Invoice for ${b.customer}`}
+                              onClick={() => setInvoiceBookingId(b.id)}
+                            >
+                              <Receipt className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Invoice</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                       ) : null}
                       {canEditBooking || canDeleteBooking ? (
                       <DropdownMenu>
@@ -686,11 +799,15 @@ export default function BookingsPage() {
                       ) : null}
                     </div>
                   </TableCell>
+                      );
+                    }
+                    return null;
+                  })}
                 </TableRow>
               ))}
-              {visible.length === 0 && (
+              {!bookingsLoading && visible.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={columnLayout.visibleIds.length} className="py-10 text-center text-sm text-muted-foreground">
                     No bookings match these filters.
                   </TableCell>
                 </TableRow>
@@ -782,6 +899,11 @@ export default function BookingsPage() {
                     </Button>
                     ) : null}
                     {canEditBooking ? (
+                    <Button size="sm" variant="outline" onClick={() => setInvoiceBookingId(b.id)}>
+                      <Receipt className="size-3.5" /> Invoice
+                    </Button>
+                    ) : null}
+                    {canEditBooking ? (
                     <Button size="sm" variant="outline" onClick={() => setEditingBookingId(b.id)}>
                       <Pencil className="size-3.5" /> Edit
                     </Button>
@@ -851,12 +973,18 @@ export default function BookingsPage() {
         onOpenChange={(v) => !v && setHistoryBookingId(null)}
       />
 
+      <BookingInvoiceDrawer
+        booking={invoiceBooking}
+        open={!!invoiceBookingId}
+        onOpenChange={(v) => !v && setInvoiceBookingId(null)}
+      />
+
       <BookingsExportDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
         initialFilters={exportInitialFilters}
         statusOptions={statuses}
-        websiteOptions={websiteNames}
+        websiteOptions={websiteDomains}
         driverOptions={driverNames}
         exporting={exporting}
         onExport={async (query) => {

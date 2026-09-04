@@ -1,4 +1,11 @@
-import { normalizeWebsiteDomain } from "@/lib/db/masters";
+function normalizeWebsiteDomain(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "");
+}
 
 export const MARKETING_SOURCE_CODES = ["google_ads", "meta_ads", "website", "manual"] as const;
 export type MarketingSourceCode = (typeof MARKETING_SOURCE_CODES)[number];
@@ -21,6 +28,10 @@ export type UtmFields = {
 function cleanParam(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, "_");
 }
 
 export function parseUtmFromUrl(url: string | null | undefined): UtmFields & { page_url?: string } {
@@ -73,38 +84,63 @@ const META_SOURCES = new Set([
   "ig",
   "paid_social",
 ]);
+const GOOGLE_MEDIA = new Set(["cpc", "ppc", "paid", "paid_search", "sem"]);
+const META_MEDIA = new Set(["paid_social", "social", "facebook", "instagram", "meta"]);
+
+function urlHasParam(url: string, key: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes(`?${key}=`) ||
+    lower.includes(`&${key}=`)
+  );
+}
+
+function looksLikeGoogleAds(utm: string, medium: string, pageUrl: string): boolean {
+  if (GOOGLE_SOURCES.has(utm) || utm.includes("google") || utm.includes("adwords")) return true;
+  if (GOOGLE_MEDIA.has(medium) && !looksLikeMetaAds(utm, medium, pageUrl)) return true;
+  return (
+    urlHasParam(pageUrl, "gclid") ||
+    urlHasParam(pageUrl, "gad_source") ||
+    urlHasParam(pageUrl, "gad_campaignid") ||
+    urlHasParam(pageUrl, "gbraid") ||
+    urlHasParam(pageUrl, "wbraid")
+  );
+}
+
+function looksLikeMetaAds(utm: string, medium: string, pageUrl: string): boolean {
+  if (META_SOURCES.has(utm)) return true;
+  if (utm.includes("facebook") || utm.includes("instagram") || utm.includes("meta")) return true;
+  if (META_MEDIA.has(medium)) return true;
+  return urlHasParam(pageUrl, "fbclid") || urlHasParam(pageUrl, "igshid");
+}
 
 /**
  * Resolve marketing channel code from UTM / explicit source / CRM actor.
- * - Website forms with no utm_source → website (organic)
- * - CRM session create without UTM → manual
+ * - Paid URL signals (gclid, gad_source, fbclid, utm_medium=cpc) win over a blank source
+ * - Website forms with no paid signals → website (organic)
+ * - CRM session create without paid/UTM signals → manual
  */
 export function resolveMarketingSourceCode(input: {
   utm_source?: string | null;
   utm_medium?: string | null;
   page_url?: string | null;
+  landing_url?: string | null;
   explicitSource?: string | null;
   /** When true (CRM agent create), empty UTM defaults to manual instead of website */
   fromCrm?: boolean;
 }): MarketingSourceCode {
   const merged = mergeUtmFields(input);
-  const utm = (merged.utm_source || "").toLowerCase().replace(/\s+/g, "_");
-  const medium = (merged.utm_medium || "").toLowerCase().replace(/\s+/g, "_");
+  const utm = slug(merged.utm_source || "");
+  const medium = slug(merged.utm_medium || "");
+  const pageUrl = merged.page_url;
 
-  if (utm) {
-    if (GOOGLE_SOURCES.has(utm) || (utm.includes("google") && medium === "cpc")) {
-      return "google_ads";
-    }
-    if (META_SOURCES.has(utm) || utm.includes("facebook") || utm.includes("instagram")) {
-      return "meta_ads";
-    }
-    if (utm === "website" || utm === "organic" || utm === "direct") {
-      return "website";
-    }
-    if (utm === "manual") return "manual";
-  }
+  if (looksLikeGoogleAds(utm, medium, pageUrl)) return "google_ads";
+  if (looksLikeMetaAds(utm, medium, pageUrl)) return "meta_ads";
+  if (utm === "website" || utm === "organic" || utm === "direct") return "website";
+  if (utm === "manual") return "manual";
 
-  const explicit = cleanParam(input.explicitSource).toLowerCase().replace(/\s+/g, "_");
+  const explicit = slug(cleanParam(input.explicitSource));
   if (explicit) {
     if (
       explicit === "google_ads" ||
@@ -128,7 +164,6 @@ export function resolveMarketingSourceCode(input: {
       return "website";
     }
     if (explicit === "manual") return "manual";
-    // Legacy form codes → website (organic) unless CRM manual path
     if (
       ["taxi_calculator", "quick_inquiry", "plan_your_trip", "request_callback"].includes(explicit)
     ) {
@@ -140,25 +175,58 @@ export function resolveMarketingSourceCode(input: {
   return "website";
 }
 
-/** Normalize website domain from explicit field or page URL hostname. */
+/** Hostname from a page/landing URL, without www. */
+export function websiteHostFromUrl(url: string | null | undefined): string | null {
+  const pageUrl = cleanParam(url);
+  if (!pageUrl) return null;
+  try {
+    const parsed = new URL(pageUrl.includes("://") ? pageUrl : `https://${pageUrl}`);
+    return normalizeWebsiteDomain(parsed.hostname) || null;
+  } catch {
+    const host = normalizeWebsiteDomain(pageUrl);
+    return host || null;
+  }
+}
+
+/**
+ * Website domain from explicit field or page URL hostname.
+ * Landing-page host wins when both are present — forms often hardcode the wrong website.
+ */
 export function resolveWebsiteHint(input: {
   website?: string | null;
   page_url?: string | null;
   landing_url?: string | null;
 }): string | null {
+  const fromUrl = websiteHostFromUrl(cleanParam(input.page_url) || cleanParam(input.landing_url));
+  if (fromUrl) return fromUrl;
+
   const explicit = cleanParam(input.website);
   if (explicit) return normalizeWebsiteDomain(explicit);
 
-  const pageUrl = cleanParam(input.page_url) || cleanParam(input.landing_url);
-  if (!pageUrl) return null;
-  try {
-    const parsed = new URL(pageUrl.includes("://") ? pageUrl : `https://${pageUrl}`);
-    return normalizeWebsiteDomain(parsed.hostname);
-  } catch {
-    return normalizeWebsiteDomain(pageUrl);
-  }
+  return null;
 }
 
 export function isMarketingSourceCode(value: string): value is MarketingSourceCode {
   return (MARKETING_SOURCE_CODES as readonly string[]).includes(value);
+}
+
+/** Display attribution from stored fields + landing URL (URL wins when they disagree). */
+export function leadAttribution(lead: {
+  source?: string | null;
+  website?: string | null;
+  pageUrl?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+}): { source: MarketingSourceCode; website?: string } {
+  const fromCrm = lead.source === "manual";
+  return {
+    source: resolveMarketingSourceCode({
+      utm_source: lead.utmSource,
+      utm_medium: lead.utmMedium,
+      page_url: lead.pageUrl,
+      explicitSource: lead.source,
+      fromCrm,
+    }),
+    website: websiteHostFromUrl(lead.pageUrl) || lead.website || undefined,
+  };
 }

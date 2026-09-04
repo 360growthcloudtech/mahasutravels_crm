@@ -35,7 +35,7 @@ import {
 } from "@/components/crm/skeletons";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { AdPlatform, AdSpendEntry, trackedWebsites } from "@/lib/data";
+import { AdPlatform, AdSpendEntry } from "@/lib/data";
 import { formatDisplayTime } from "@/lib/lead-utils";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
@@ -46,8 +46,6 @@ const platformsList: AdPlatform[] = [
   "Offline / Print",
   "Other",
 ];
-
-const websiteNames = trackedWebsites.map((w) => w.name);
 
 const stickyActionHead =
   "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-card";
@@ -150,7 +148,7 @@ function MultiFilter<T extends string>({
 }
 
 export default function MarketingPage() {
-  const { state, adSpendsLoading, refreshAdSpends, addAdSpend, updateAdSpend, deleteAdSpend } =
+  const { state, websites, adSpendsLoading, refreshAdSpends, addAdSpend, updateAdSpend, deleteAdSpend } =
     useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
@@ -161,6 +159,12 @@ export default function MarketingPage() {
   const canEditAdSpend = useHasPermission("ad.spend.and.marketing.edit");
   const canDeleteAdSpend = useHasPermission("ad.spend.and.marketing.delete");
   const [deleting, setDeleting] = React.useState(false);
+
+  const websiteDomains = React.useMemo(() => websites.map((w) => w.domain), [websites]);
+
+  React.useEffect(() => {
+    setWebsiteFilter((prev) => prev.filter((d) => websiteDomains.includes(d)));
+  }, [websiteDomains.join("|")]);
 
   const adSpends = state.adSpends || [];
 
@@ -344,7 +348,7 @@ export default function MarketingPage() {
 
               <MultiFilter
                 label="Website"
-                options={websiteNames}
+                options={websiteDomains}
                 selected={websiteFilter}
                 onChange={setWebsiteFilter}
               />

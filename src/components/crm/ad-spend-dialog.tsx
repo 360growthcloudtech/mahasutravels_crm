@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/crm/field";
 import { DatePicker } from "@/components/crm/date-picker";
 import { AdPlatform, AdSpendEntry, trackedWebsites } from "@/lib/data";
+import { useData } from "@/lib/store";
 
 const platforms: AdPlatform[] = [
   "Google Ads",
@@ -76,6 +77,10 @@ export function AdSpendDialog({
   spend?: AdSpendEntry;
   onSubmit: (data: AdSpendFormState) => void | Promise<void>;
 }) {
+  const { websites } = useData();
+  const websiteOptions = websites.length
+    ? websites.map((w) => ({ id: w.id, domain: w.domain, label: w.label }))
+    : trackedWebsites.map((w) => ({ id: w.id, domain: w.name, label: w.label }));
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState<AdSpendFormState>(emptyForm);
   const [useCurrentDateTime, setUseCurrentDateTime] = React.useState(true);
@@ -167,9 +172,9 @@ export function AdSpendDialog({
               <Select value={form.website || "mahasutravels.com"} onValueChange={(v) => set("website", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {trackedWebsites.map((w) => (
-                    <SelectItem key={w.id} value={w.name}>
-                      {w.icon} {w.name} ({w.label})
+                  {websiteOptions.map((w) => (
+                    <SelectItem key={w.id} value={w.domain}>
+                      {w.domain} ({w.label})
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -154,9 +154,10 @@ export function parseLeadIngestBody(
   const source = resolveMarketingSourceCode({
     utm_source: utm.utm_source,
     utm_medium: utm.utm_medium,
-    page_url: utm.page_url,
+    page_url: utm.page_url || pageUrlRaw,
+    landing_url: readString(body.landing_url),
     explicitSource: explicitSource || undefined,
-    fromCrm: fromCrm && !utm.utm_source,
+    fromCrm,
   });
 
   const websiteHint =

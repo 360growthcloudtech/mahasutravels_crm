@@ -89,11 +89,10 @@ export type LeadCustomItinerary = {
 };
 
 export const trackedWebsites = [
-  { id: "web-1", name: "mahasutravels.com", label: "Mahasu Main Portal", badge: "Main", icon: "🌐" },
-  { id: "web-2", name: "himachaltaxiservice.in", label: "Himachal Taxi Service", badge: "Cab Rentals", icon: "🚗" },
-  { id: "web-3", name: "spitivalleytours.com", label: "Spiti Valley Tours", badge: "Expeditions", icon: "🏔️" },
-  { id: "web-4", name: "shimlamanalicabs.com", label: "Shimla Manali Cabs", badge: "Packages", icon: "🌲" },
-  { id: "web-5", name: "lehladakhcabs.in", label: "Leh Ladakh Cabs", badge: "Luxury Fleet", icon: "❄️" },
+  { id: "web-1", name: "mahasutravels.com", label: "Mahasu Travels", badge: "Main", icon: "🌐" },
+  { id: "web-2", name: "himachaltaxitrip.com", label: "Himachal Taxi Trip", badge: "Taxi", icon: "🚕" },
+  { id: "web-3", name: "himachaltouristcabs.com", label: "Himachal Tourist Cabs", badge: "Cabs", icon: "🚗" },
+  { id: "web-4", name: "himachaltourismcab.com", label: "Himachal Tourism Cab", badge: "Tourism", icon: "🏔️" },
 ] as const;
 
 export type TrackedWebsiteName = typeof trackedWebsites[number]["name"];
@@ -1272,13 +1271,7 @@ const bookingSeed: Omit<Booking, "history">[] = [
   },
 ];
 
-const defaultWebsites = [
-  "mahasutravels.com",
-  "himachaltaxiservice.in",
-  "spitivalleytours.com",
-  "shimlamanalicabs.com",
-  "lehladakhcabs.in",
-];
+const defaultWebsites = trackedWebsites.map((w) => w.name);
 
 export const bookings: Booking[] = bookingSeed.map((b, index) => ({
   ...b,

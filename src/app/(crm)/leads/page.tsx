@@ -35,9 +35,11 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   TableCell,
 } from "@/components/ui/table";
+import { TableColumnsMenu } from "@/components/crm/table-columns-menu";
+import { ResizableTableHead } from "@/components/crm/resizable-table-head";
+import { useTableColumnLayout, type TableColumnDef } from "@/lib/use-table-column-layout";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -57,6 +59,7 @@ import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { Booking, Lead } from "@/lib/data";
 import { formatDisplayTime, formatRelativeTime, sourceLabel } from "@/lib/lead-utils";
+import { leadAttribution } from "@/lib/utm";
 import { downloadLeadsCsv } from "@/lib/leads-api";
 import { LeadsExportDialog } from "@/components/crm/leads-export-dialog";
 import { useSession } from "@/lib/session-context";
@@ -81,6 +84,21 @@ const stickyActionHead =
   "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-card";
 const stickyActionCell =
   "relative sticky right-0 z-20 min-w-[10.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+
+const LEAD_TABLE_COLUMNS: TableColumnDef[] = [
+  { id: "lead", label: "Lead", locked: true, defaultWidth: 220 },
+  { id: "tour", label: "Tour package / Route", defaultWidth: 200 },
+  { id: "status", label: "Status", defaultWidth: 120 },
+  { id: "travel", label: "Travel dates", defaultWidth: 150 },
+  { id: "car", label: "Car / pax / days", defaultWidth: 150 },
+  { id: "source", label: "Source", defaultWidth: 140 },
+  { id: "assigned", label: "Assigned", defaultWidth: 130 },
+  { id: "created", label: "Created", defaultWidth: 120 },
+  { id: "followup", label: "Next follow-up", defaultWidth: 150 },
+  { id: "price", label: "Price", align: "right", defaultWidth: 110 },
+  { id: "utm", label: "UTM URL", defaultWidth: 180 },
+  { id: "actions", label: "Actions", locked: true, align: "right", defaultWidth: 176 },
+];
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -196,6 +214,7 @@ export default function LeadsPage() {
   const canCommentLead = useHasPermission("leads.comment");
   const canQuoteLead = useHasPermission("leads.quote");
   const canCreateBookingFromLead = useHasPermission("leads.create_booking");
+  const columnLayout = useTableColumnLayout("crm.table.leads.v2", LEAD_TABLE_COLUMNS);
 
   const editingLead = editingLeadId
     ? state.leads.find((l) => l.id === editingLeadId) ?? null
@@ -380,13 +399,16 @@ export default function LeadsPage() {
       const matchesPhone = l.phone.toLowerCase().includes(q) || l.leadNo.toLowerCase().includes(q);
       if (!matchesName && !matchesEmail && !matchesPhone) return false;
     }
+    const attribution = leadAttribution(l);
     if (statusFilter.length > 0 && !statusFilter.includes(l.status)) return false;
-    if (sourceFilter.length > 0 && !sourceFilter.includes(l.source)) return false;
+    if (sourceFilter.length > 0 && !sourceFilter.includes(attribution.source)) return false;
     if (agentFilter.length > 0) {
       const agentId = l.assignedTo?.id || "unassigned";
       if (!agentFilter.includes(agentId)) return false;
     }
-    if (websiteFilter.length > 0 && (!l.website || !websiteFilter.includes(l.website))) return false;
+    if (websiteFilter.length > 0 && (!attribution.website || !websiteFilter.includes(attribution.website))) {
+      return false;
+    }
     return true;
   });
 
@@ -545,44 +567,65 @@ export default function LeadsPage() {
                 </Button>
               )}
             </div>
-            {canExportLeads ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 shrink-0"
-                disabled={exporting || leadsLoading}
-                onClick={() => setExportOpen(true)}
-              >
-                <Download className="size-3.5" />
-                Export CSV
-              </Button>
-            ) : null}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {canExportLeads ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  disabled={exporting || leadsLoading}
+                  onClick={() => setExportOpen(true)}
+                >
+                  <Download className="size-3.5" />
+                  Export CSV
+                </Button>
+              ) : null}
+              <TableColumnsMenu
+                columns={columnLayout.columns}
+                isHidden={columnLayout.isHidden}
+                onToggle={columnLayout.toggle}
+                onReset={columnLayout.reset}
+                isDirty={columnLayout.isDirty}
+              />
+            </div>
           </div>
 
           <div className="hidden min-h-0 flex-1 md:block">
-          <Table containerClassName="min-h-0 flex-1 overflow-auto">
+          <Table containerClassName="min-h-0 flex-1 overflow-auto" className="table-fixed min-w-max">
             <TableHeader>
               <TableRow className="group hover:bg-transparent">
-                <TableHead className="sticky top-0 z-20 bg-card">Lead</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Tour package / Route</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Travel dates</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Car / pax / days</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Source</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">UTM URL</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Assigned</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card whitespace-nowrap">Created</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card">Next follow-up</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-card text-right whitespace-nowrap">Price</TableHead>
-                <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
+                {columnLayout.visibleIds.map((id) => {
+                  const def = LEAD_TABLE_COLUMNS.find((column) => column.id === id);
+                  if (!def) return null;
+                  return (
+                    <ResizableTableHead
+                      key={id}
+                      id={id}
+                      label={def.label}
+                      width={columnLayout.widthFor(id)}
+                      locked={def.locked}
+                      align={def.align}
+                      className={id === "actions" ? stickyActionHead : undefined}
+                      onMove={columnLayout.move}
+                      onResize={columnLayout.setWidth}
+                    />
+                  );
+                })}
               </TableRow>
             </TableHeader>
             <TableBody>
               {leadsLoading ? (
-                <TableRowsSkeleton columns={12} rows={6} avatar />
-              ) : visible.map((l) => (
+                <TableRowsSkeleton columns={columnLayout.visibleIds.length} rows={6} avatar />
+              ) : visible.map((l) => {
+                const attribution = leadAttribution(l);
+                return (
                 <TableRow key={l.id} className="group">
-                  <TableCell>
+                  {columnLayout.visibleIds.map((columnId) => {
+                    const width = columnLayout.widthFor(columnId);
+                    const cellStyle = { width, minWidth: width, maxWidth: width };
+                    if (columnId === "lead") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     <div className="flex items-center gap-3">
                       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-ink-text">
                         {l.name.split(" ").map((n) => n[0]).join("")}
@@ -602,13 +645,21 @@ export default function LeadsPage() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="min-w-0">
+                      );
+                    }
+                    if (columnId === "tour") {
+                      return (
+                  <TableCell key={columnId} className="min-w-0" style={cellStyle}>
                     <p className="truncate text-sm text-ink-text">{l.tourPackage || "—"}</p>
                     <p className="truncate text-[11px] text-slate-soft">
                       {l.pickup}{l.drop ? ` → ${l.drop}` : ""}
                     </p>
                   </TableCell>
-                  <TableCell>
+                      );
+                    }
+                    if (columnId === "status") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -637,29 +688,47 @@ export default function LeadsPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
-                  <TableCell className="text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "travel") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
                     <p>{formatDisplayDate(l.pickupDate)}</p>
                     {l.dropDate ? (
                       <p className="text-[11px] text-slate-soft">to {formatDisplayDate(l.dropDate)}</p>
                     ) : null}
                   </TableCell>
-                  <TableCell className="text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "car") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
                     {l.car || "—"}{" "}
                     <span className="text-slate-soft">
                       · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
                     </span>
                   </TableCell>
-                  <TableCell>
+                      );
+                    }
+                    if (columnId === "source") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     <div className="space-y-0.5">
-                      <Badge variant="outline" className="font-normal">{sourceLabel(l.source, leadSources)}</Badge>
-                      {l.website && (
-                        <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">
-                          {l.website}
+                      <Badge variant="outline" className="font-normal">
+                        {sourceLabel(attribution.source, leadSources)}
+                      </Badge>
+                      {attribution.website && (
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {attribution.website}
                         </p>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[180px]">
+                      );
+                    }
+                    if (columnId === "utm") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
                     {l.pageUrl ? (
                       <a
                         href={l.pageUrl.startsWith("http") ? l.pageUrl : `https://${l.pageUrl}`}
@@ -674,17 +743,39 @@ export default function LeadsPage() {
                       <span className="text-sm text-slate-soft">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-slate">{l.assignedTo?.name || "Unassigned"}</TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "assigned") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
+                    {l.assignedTo?.name || "Unassigned"}
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "created") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
                     <CreatedAtDisplay iso={l.createdAt} stacked />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-slate">
+                      );
+                    }
+                    if (columnId === "followup") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
                     {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap pr-6 text-right font-mono-data text-sm text-ink-text">
+                      );
+                    }
+                    if (columnId === "price") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text" style={cellStyle}>
                     ₹{l.price.toLocaleString("en-IN")}
                   </TableCell>
-                  <TableCell className={stickyActionCell}>
+                      );
+                    }
+                    if (columnId === "actions") {
+                      return (
+                  <TableCell key={columnId} className={stickyActionCell} style={cellStyle}>
                     <TooltipProvider delayDuration={200}>
                       <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
                         <Tooltip>
@@ -791,11 +882,16 @@ export default function LeadsPage() {
                       </div>
                     </TooltipProvider>
                   </TableCell>
+                      );
+                    }
+                    return null;
+                  })}
                 </TableRow>
-              ))}
+                );
+              })}
               {!leadsLoading && visible.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={columnLayout.visibleIds.length} className="py-10 text-center text-sm text-muted-foreground">
                     No leads match these filters.
                   </TableCell>
                 </TableRow>
@@ -812,7 +908,9 @@ export default function LeadsPage() {
                 No leads match these filters.
               </p>
             ) : (
-              visible.map((l) => (
+              visible.map((l) => {
+                const attribution = leadAttribution(l);
+                return (
                 <RecordCard key={l.id}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -864,8 +962,8 @@ export default function LeadsPage() {
                       {l.car || "—"} · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
                     </InfoItem>
                     <InfoItem label="Source">
-                      {sourceLabel(l.source, leadSources)}
-                      {l.website ? ` · ${l.website}` : ""}
+                      {sourceLabel(attribution.source, leadSources)}
+                      {attribution.website ? ` · ${attribution.website}` : ""}
                     </InfoItem>
                     <InfoItem label="UTM URL" className="sm:col-span-2">
                       {l.pageUrl ? (
@@ -923,7 +1021,8 @@ export default function LeadsPage() {
                     ) : null}
                   </div>
                 </RecordCard>
-              ))
+                );
+              })
             )}
           </div>
           <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-4 py-3 text-xs text-muted-foreground sm:px-5">
