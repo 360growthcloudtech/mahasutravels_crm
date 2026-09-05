@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Loader2, Plus } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -11,12 +12,26 @@ import {
   SheetBody,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Field } from "@/components/crm/field";
 import { DrawerFormSkeleton, useDrawerReady } from "@/components/crm/skeletons";
 import { DatePicker } from "@/components/crm/date-picker";
@@ -25,9 +40,19 @@ import {
   DRIVER_FORM_STATUS_OPTIONS,
   driverFormStatusValue,
 } from "@/lib/driver-utils";
+import { createVehicleTypeApi, fetchVehicleTypes } from "@/lib/vehicle-types-api";
+import { useHasPermission } from "@/lib/use-has-permission";
+import { useToast } from "@/lib/toast";
 
 const fuelTypes: NonNullable<Driver["fuelType"]>[] = ["Petrol", "Diesel", "CNG", "Electric"];
-const vehicleTypes = ["Swift Dzire", "Ertiga", "Innova Crysta", "Tempo Traveller", "Sedan", "SUV"];
+const FALLBACK_VEHICLE_TYPES = [
+  "Swift Dzire",
+  "Ertiga",
+  "Innova Crysta",
+  "Tempo Traveller",
+  "Sedan",
+  "SUV",
+];
 
 export type DriverFormState = Omit<Driver, "id" | "driverNo">;
 
@@ -36,7 +61,7 @@ const empty: DriverFormState = {
   phone: "",
   address: "",
   vehicle: "",
-  vehicleType: "Innova Crysta",
+  vehicleType: "",
   vehicleCapacity: 7,
   fuelType: "Diesel",
   licenseNumber: "",
@@ -68,10 +93,39 @@ export function DriverFormDialog({
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
+  const { toast } = useToast();
+  const canCreateVehicleType = useHasPermission("drivers.and.vehicles.create");
   const [form, setForm] = React.useState<DriverFormState>(empty);
   const [error, setError] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [vehicleTypes, setVehicleTypes] = React.useState<string[]>(FALLBACK_VEHICLE_TYPES);
+  const [addTypeOpen, setAddTypeOpen] = React.useState(false);
+  const [newTypeName, setNewTypeName] = React.useState("");
+  const [addingType, setAddingType] = React.useState(false);
   const ready = useDrawerReady(open);
+
+  const reloadVehicleTypes = React.useCallback(async () => {
+    try {
+      const rows = await fetchVehicleTypes({ activeOnly: true });
+      const names = rows.map((r) => r.name).filter(Boolean);
+      setVehicleTypes(names.length ? names : FALLBACK_VEHICLE_TYPES);
+      return names;
+    } catch {
+      setVehicleTypes(FALLBACK_VEHICLE_TYPES);
+      return FALLBACK_VEHICLE_TYPES;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void reloadVehicleTypes().then(() => {
+      if (cancelled) return;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reloadVehicleTypes]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -95,7 +149,45 @@ export function DriverFormDialog({
     }
     setError("");
     setSaving(false);
+    setAddTypeOpen(false);
+    setNewTypeName("");
   }, [open, driver]);
+
+  async function handleAddVehicleType() {
+    const trimmed = newTypeName.trim();
+    if (!trimmed) {
+      toast({
+        variant: "error",
+        title: "Name required",
+        description: "Enter a vehicle type name.",
+      });
+      return;
+    }
+    setAddingType(true);
+    try {
+      const created = await createVehicleTypeApi({
+        name: trimmed,
+        sort_order: (vehicleTypes.length + 1) * 10,
+      });
+      await reloadVehicleTypes();
+      set("vehicleType", created.name);
+      setAddTypeOpen(false);
+      setNewTypeName("");
+      toast({
+        variant: "success",
+        title: "Vehicle type added",
+        description: created.name,
+      });
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "Could not add type",
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setAddingType(false);
+    }
+  }
 
   function set<K extends keyof DriverFormState>(key: K, value: DriverFormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -104,6 +196,10 @@ export function DriverFormDialog({
   async function submit() {
     if (!form.name.trim() || !form.phone.trim() || !form.vehicle.trim()) {
       setError("Name, phone, and vehicle number are required.");
+      return;
+    }
+    if (!form.vehicleType.trim()) {
+      setError("Vehicle type is required.");
       return;
     }
     setSaving(true);
@@ -223,18 +319,51 @@ export function DriverFormDialog({
               />
             </Field>
             <Field label="Vehicle type">
-              <Select value={form.vehicleType} onValueChange={(v) => set("vehicleType", v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicleTypes.map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {v}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1.5">
+                <Select
+                  value={form.vehicleType || undefined}
+                  onValueChange={(v) => set("vehicleType", v)}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select vehicle type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const options = [...vehicleTypes];
+                      if (form.vehicleType && !options.includes(form.vehicleType)) {
+                        options.unshift(form.vehicleType);
+                      }
+                      return options.map((v) => (
+                        <SelectItem key={v} value={v}>
+                          {v}
+                        </SelectItem>
+                      ));
+                    })()}
+                  </SelectContent>
+                </Select>
+                {canCreateVehicleType ? (
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="size-9 shrink-0"
+                          aria-label="Add vehicle type"
+                          onClick={() => {
+                            setNewTypeName("");
+                            setAddTypeOpen(true);
+                          }}
+                        >
+                          <Plus className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Add vehicle type</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : null}
+              </div>
             </Field>
             <Field label="Seating capacity">
               <Input
@@ -317,6 +446,48 @@ export function DriverFormDialog({
           </Button>
         </SheetFooter>
       </SheetContent>
+
+      <Dialog open={addTypeOpen} onOpenChange={(v) => !addingType && setAddTypeOpen(v)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add vehicle type</DialogTitle>
+            <DialogDescription>
+              New types appear in this dropdown and in Vehicle types management.
+            </DialogDescription>
+          </DialogHeader>
+          <Field label="Type name">
+            <Input
+              value={newTypeName}
+              onChange={(e) => setNewTypeName(e.target.value)}
+              placeholder="e.g. Fortuner"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void handleAddVehicleType();
+                }
+              }}
+            />
+          </Field>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={addingType}
+              onClick={() => setAddTypeOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="marigold"
+              disabled={addingType}
+              onClick={() => void handleAddVehicleType()}
+            >
+              {addingType ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              Add type
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }

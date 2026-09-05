@@ -43,6 +43,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { DriverFormDialog, DriverFormState } from "@/components/crm/driver-form-dialog";
+import { VehicleTypesManager } from "@/components/crm/vehicle-types-manager";
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
@@ -239,6 +240,7 @@ export default function DriversPage() {
   const canEditDriver = useHasPermission("drivers.and.vehicles.edit");
   const canDeleteDriver = useHasPermission("drivers.and.vehicles.delete");
   const [editingDriverId, setEditingDriverId] = React.useState<string | null>(null);
+  const [vehicleTypesOpen, setVehicleTypesOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [statusBusyId, setStatusBusyId] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
@@ -360,6 +362,11 @@ export default function DriversPage() {
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <TableRefreshButton onRefresh={refreshDrivers} loading={driversLoading} />
+            {canCreateDriver || canEditDriver || canDeleteDriver ? (
+              <Button variant="outline" onClick={() => setVehicleTypesOpen(true)}>
+                <Car className="size-4" /> Vehicle types
+              </Button>
+            ) : null}
             {canCreateDriver ? (
               <DriverFormDialog
                 trigger={
@@ -697,6 +704,14 @@ export default function DriversPage() {
         confirming={deleting}
         closeOnConfirm={false}
         onConfirm={() => handleDelete()}
+      />
+
+      <VehicleTypesManager
+        open={vehicleTypesOpen}
+        onOpenChange={setVehicleTypesOpen}
+        canCreate={canCreateDriver}
+        canEdit={canEditDriver}
+        canDelete={canDeleteDriver}
       />
     </>
   );
