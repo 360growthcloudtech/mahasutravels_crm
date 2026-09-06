@@ -281,7 +281,7 @@ async function countLostLeads(filters: ReturnType<typeof normalizeFilters>): Pro
 
 async function countQuotesSent(filters: ReturnType<typeof normalizeFilters>): Promise<number> {
   const params: unknown[] = [];
-  const clauses = [`a.action = 'quoted'`];
+  const clauses = [`a.action IN ('quoted', 'whatsapp')`];
   const d = activityDateClause("a", filters.from, filters.to, params);
   if (d) clauses.push(d);
   const w = websiteClause("l", filters.website, params);

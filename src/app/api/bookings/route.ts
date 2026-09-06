@@ -3,9 +3,9 @@ import { forbidUnlessAnyPermission, forbidUnlessPermission, requireSession } fro
 import {
   bookingToDto,
   createBooking,
-  findBookingById,
   findConflictingDriverNames,
   listBookings,
+  patchBooking,
   type CreateBookingInput,
 } from "@/lib/db/bookings";
 import {
@@ -15,10 +15,14 @@ import {
   normalizeBookingAssignments,
   parseDriversJson,
 } from "@/lib/booking-utils";
+import {
+  notifyBookingConfirmed,
+  notifyDriversAssigned,
+} from "@/lib/booking-whatsapp-notify";
 import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } from "@/lib/data";
 import { makeLeadHistoryEvent } from "@/lib/data";
 import { query } from "@/lib/db";
-import { formatLeadNo } from "@/lib/lead-utils";
+import { formatLeadNo, parseLeadTime } from "@/lib/lead-utils";
 import { parseBookingsListFilters } from "@/lib/api/list-filters";
 
 export const runtime = "nodejs";
@@ -168,6 +172,15 @@ export async function POST(request: Request) {
           }),
         ];
 
+  const pickupTimeRaw = readString(body.pickup_time)?.trim() || "";
+  let pickupTime: string | null = null;
+  if (pickupTimeRaw) {
+    pickupTime = parseLeadTime(pickupTimeRaw);
+    if (!pickupTime) {
+      return NextResponse.json({ error: "pickup_time is invalid" }, { status: 400 });
+    }
+  }
+
   const input: CreateBookingInput = {
     lead_id: leadId,
     customer,
@@ -181,6 +194,7 @@ export async function POST(request: Request) {
     dropoff: readString(body.dropoff)?.trim() ?? "",
     travel_date: readString(body.travel_date)?.trim() || null,
     return_date: readString(body.return_date)?.trim() || null,
+    pickup_time: pickupTime,
     cab_type: readString(body.cab_type)?.trim() ?? "",
     adults: readNumber(body.adults) ?? 0,
     kids: readNumber(body.kids) ?? 0,
@@ -221,5 +235,24 @@ export async function POST(request: Request) {
   }
 
   const booking = await createBooking(input);
-  return NextResponse.json({ booking: bookingToDto(booking) }, { status: 201 });
+  let dto = bookingToDto(booking);
+  const actor = session.name || session.email || "Staff";
+
+  const waEvents = [
+    ...(await notifyBookingConfirmed(dto, { actor })),
+    ...(await notifyDriversAssigned(dto, assignedDrivers, { actor })),
+  ];
+
+  if (waEvents.length) {
+    try {
+      const updated = await patchBooking(booking.id, {
+        history: [...dto.history, ...waEvents],
+      });
+      dto = bookingToDto(updated);
+    } catch (err) {
+      console.error("[bookings/create] failed to append WhatsApp history", err);
+    }
+  }
+
+  return NextResponse.json({ booking: dto }, { status: 201 });
 }

@@ -7,7 +7,7 @@ import type {
   LeadHistoryEvent,
   MarketingChannel,
 } from "@/lib/data";
-import { toDateOnly, toIso } from "@/lib/lead-utils";
+import { parseLeadTime, toDateOnly, toIso, toTimeOnly } from "@/lib/lead-utils";
 import {
   formatBookingNo,
   isBookingStatus,
@@ -34,6 +34,9 @@ export type BookingRow = {
   dropoff: string;
   travel_date: unknown;
   return_date: unknown;
+  pickup_time: unknown;
+  trip_reminder_sent_at: unknown;
+  payment_reminder_sent_at: unknown;
   cab_type: string;
   adults: number;
   kids: number;
@@ -70,6 +73,10 @@ export type BookingDto = {
   dropoff: string;
   travel_date: string;
   return_date: string;
+  /** HH:MM pickup/start time (Asia/Kolkata), empty if unset. */
+  pickup_time: string;
+  trip_reminder_sent_at: string | null;
+  payment_reminder_sent_at: string | null;
   cab_type: string;
   adults: number;
   kids: number;
@@ -105,6 +112,10 @@ export type CreateBookingInput = {
   dropoff?: string;
   travel_date?: string | null;
   return_date?: string | null;
+  /** HH:MM or HH:MM:SS; empty/null clears. */
+  pickup_time?: string | null;
+  trip_reminder_sent_at?: string | null;
+  payment_reminder_sent_at?: string | null;
   cab_type?: string;
   adults?: number;
   kids?: number;
@@ -158,6 +169,9 @@ const BOOKING_SELECT = `
     dropoff,
     travel_date,
     return_date,
+    pickup_time,
+    trip_reminder_sent_at,
+    payment_reminder_sent_at,
     cab_type,
     adults,
     kids,
@@ -203,6 +217,13 @@ export function bookingToDto(row: BookingRow): BookingDto {
     dropoff: row.dropoff ?? "",
     travel_date: toDateOnly(row.travel_date),
     return_date: toDateOnly(row.return_date),
+    pickup_time: toTimeOnly(row.pickup_time),
+    trip_reminder_sent_at: row.trip_reminder_sent_at
+      ? toIso(row.trip_reminder_sent_at)
+      : null,
+    payment_reminder_sent_at: row.payment_reminder_sent_at
+      ? toIso(row.payment_reminder_sent_at)
+      : null,
     cab_type: row.cab_type ?? "",
     adults: Number(row.adults) || 0,
     kids: Number(row.kids) || 0,
@@ -358,12 +379,12 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
   const { rows } = await query<{ id: string }>(
     `INSERT INTO bookings (
       lead_id, customer, email, city, phone, source, website, tour_package,
-      pickup, dropoff, travel_date, return_date, cab_type, adults, kids, days,
+      pickup, dropoff, travel_date, return_date, pickup_time, cab_type, adults, kids, days,
       tour_plan, agent, driver, vehicle, total, advance, balance, status, payment_mode,
       hotel, drivers, comments, history, created_at, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-      $17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb,$27::jsonb,$28::jsonb,$29::jsonb,
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+      $18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,$28::jsonb,$29::jsonb,$30::jsonb,
       now(), now()
     )
     RETURNING id`,
@@ -380,6 +401,7 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
       input.dropoff?.trim() ?? "",
       emptyDate(input.travel_date),
       emptyDate(input.return_date),
+      parseLeadTime(input.pickup_time ?? null),
       input.cab_type?.trim() ?? "",
       Math.max(0, Math.floor(Number(input.adults) || 0)),
       Math.max(0, Math.floor(Number(input.kids) || 0)),
@@ -490,6 +512,32 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
   const hotelJson = normalized.hotels.length ? JSON.stringify(normalized.hotels) : null;
   const driversJson = JSON.stringify(normalized.drivers);
 
+  const nextTravelDate =
+    patch.travel_date !== undefined
+      ? emptyDate(patch.travel_date)
+      : emptyDate(toDateOnly(existing.travel_date));
+  const nextPickupTime =
+    patch.pickup_time !== undefined
+      ? parseLeadTime(patch.pickup_time)
+      : parseLeadTime(toTimeOnly(existing.pickup_time) || null);
+  const scheduleChanged =
+    nextTravelDate !== emptyDate(toDateOnly(existing.travel_date)) ||
+    (nextPickupTime || null) !== (parseLeadTime(toTimeOnly(existing.pickup_time) || null) || null);
+  const nextReminderSentAt = scheduleChanged
+    ? null
+    : patch.trip_reminder_sent_at !== undefined
+      ? patch.trip_reminder_sent_at
+      : existing.trip_reminder_sent_at
+        ? toIso(existing.trip_reminder_sent_at)
+        : null;
+  const nextPaymentReminderSentAt = scheduleChanged
+    ? null
+    : patch.payment_reminder_sent_at !== undefined
+      ? patch.payment_reminder_sent_at
+      : existing.payment_reminder_sent_at
+        ? toIso(existing.payment_reminder_sent_at)
+        : null;
+
   await query(
     `UPDATE bookings SET
       lead_id = $2,
@@ -504,23 +552,26 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
       dropoff = $11,
       travel_date = $12,
       return_date = $13,
-      cab_type = $14,
-      adults = $15,
-      kids = $16,
-      days = $17,
-      tour_plan = $18,
-      agent = $19,
-      driver = $20,
-      vehicle = $21,
-      total = $22,
-      advance = $23,
-      balance = $24,
-      status = $25,
-      payment_mode = $26,
-      hotel = $27::jsonb,
-      drivers = $28::jsonb,
-      comments = $29::jsonb,
-      history = $30::jsonb,
+      pickup_time = $14,
+      cab_type = $15,
+      adults = $16,
+      kids = $17,
+      days = $18,
+      tour_plan = $19,
+      agent = $20,
+      driver = $21,
+      vehicle = $22,
+      total = $23,
+      advance = $24,
+      balance = $25,
+      status = $26,
+      payment_mode = $27,
+      hotel = $28::jsonb,
+      drivers = $29::jsonb,
+      comments = $30::jsonb,
+      history = $31::jsonb,
+      trip_reminder_sent_at = $32,
+      payment_reminder_sent_at = $33,
       updated_at = now()
      WHERE id = $1`,
     [
@@ -535,12 +586,11 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
       patch.tour_package !== undefined ? patch.tour_package.trim() : existing.tour_package,
       patch.pickup !== undefined ? patch.pickup.trim() : existing.pickup,
       patch.dropoff !== undefined ? patch.dropoff.trim() : existing.dropoff,
-      patch.travel_date !== undefined
-        ? emptyDate(patch.travel_date)
-        : emptyDate(toDateOnly(existing.travel_date)),
+      nextTravelDate,
       patch.return_date !== undefined
         ? emptyDate(patch.return_date)
         : emptyDate(toDateOnly(existing.return_date)),
+      nextPickupTime,
       patch.cab_type !== undefined ? patch.cab_type.trim() : existing.cab_type,
       patch.adults !== undefined
         ? Math.max(0, Math.floor(Number(patch.adults) || 0))
@@ -568,6 +618,8 @@ export async function patchBooking(id: string, patch: PatchBookingInput): Promis
       JSON.stringify(
         patch.history !== undefined ? patch.history : parseHistoryJson(existing.history)
       ),
+      nextReminderSentAt,
+      nextPaymentReminderSentAt,
     ]
   );
 
@@ -630,6 +682,104 @@ export async function findConflictingDriverNames(
   if (!driverNames.length) return [];
   const occupied = new Set(await listOccupiedDriverNames(opts));
   return driverNames.filter((name) => occupied.has(name));
+}
+
+/** Bookings whose travel_date+pickup_time (IST) falls in the trip reminder window. */
+export async function listBookingsDueForTripReminder(opts?: {
+  hoursBefore?: number;
+  windowMinutes?: number;
+}): Promise<BookingRow[]> {
+  const hoursBefore = opts?.hoursBefore ?? 3;
+  const windowMinutes = opts?.windowMinutes ?? 15;
+  const center = Math.round(hoursBefore * 60);
+  const half = Math.round(windowMinutes);
+  const lowerMinutes = Math.max(0, center - half);
+  const upperMinutes = center + half;
+
+  const { rows } = await query<BookingRow>(
+    `${BOOKING_SELECT}
+     WHERE pickup_time IS NOT NULL
+       AND travel_date IS NOT NULL
+       AND trip_reminder_sent_at IS NULL
+       AND status NOT IN ('Cancelled', 'Refunded')
+       AND ((travel_date + pickup_time) AT TIME ZONE 'Asia/Kolkata')
+           BETWEEN (now() + make_interval(mins => $1::int))
+               AND (now() + make_interval(mins => $2::int))
+     ORDER BY travel_date ASC, pickup_time ASC`,
+    [lowerMinutes, upperMinutes]
+  );
+  return rows;
+}
+
+/** Mark reminder sent and optionally append history in one update. */
+export async function markTripReminderSent(
+  id: string,
+  history: LeadHistoryEvent[],
+  opts?: { claimOnly?: boolean }
+): Promise<BookingRow | null> {
+  const claimOnly = opts?.claimOnly !== false;
+  const { rows } = await query<BookingRow>(
+    `UPDATE bookings SET
+       trip_reminder_sent_at = COALESCE(trip_reminder_sent_at, now()),
+       history = $2::jsonb,
+       updated_at = now()
+     WHERE id = $1
+       AND ($3::boolean = false OR trip_reminder_sent_at IS NULL)
+     RETURNING *`,
+    [id, JSON.stringify(history), claimOnly]
+  );
+  return rows[0] ?? null;
+}
+
+/** Bookings due before pickup with unpaid balance (window from env/cron config). */
+export async function listBookingsDueForPaymentReminder(opts?: {
+  hoursBefore?: number;
+  windowMinutes?: number;
+}): Promise<BookingRow[]> {
+  const hoursBefore = opts?.hoursBefore ?? 12;
+  const windowMinutes = opts?.windowMinutes ?? 15;
+  const center = Math.round(hoursBefore * 60);
+  const half = Math.round(windowMinutes);
+  const lowerMinutes = Math.max(0, center - half);
+  const upperMinutes = center + half;
+
+  const { rows } = await query<BookingRow>(
+    `${BOOKING_SELECT}
+     WHERE pickup_time IS NOT NULL
+       AND travel_date IS NOT NULL
+       AND payment_reminder_sent_at IS NULL
+       AND balance > 0
+       AND status NOT IN ('Cancelled', 'Refunded')
+       AND ((travel_date + pickup_time) AT TIME ZONE 'Asia/Kolkata')
+           BETWEEN (now() + make_interval(mins => $1::int))
+               AND (now() + make_interval(mins => $2::int))
+     ORDER BY travel_date ASC, pickup_time ASC`,
+    [lowerMinutes, upperMinutes]
+  );
+  return rows;
+}
+
+/**
+ * Claim payment reminder + set history. First call (claim) only succeeds when
+ * payment_reminder_sent_at IS NULL so overlapping cron ticks do not double-send.
+ */
+export async function markPaymentReminderSent(
+  id: string,
+  history: LeadHistoryEvent[],
+  opts?: { claimOnly?: boolean }
+): Promise<BookingRow | null> {
+  const claimOnly = opts?.claimOnly !== false;
+  const { rows } = await query<BookingRow>(
+    `UPDATE bookings SET
+       payment_reminder_sent_at = COALESCE(payment_reminder_sent_at, now()),
+       history = $2::jsonb,
+       updated_at = now()
+     WHERE id = $1
+       AND ($3::boolean = false OR payment_reminder_sent_at IS NULL)
+     RETURNING *`,
+    [id, JSON.stringify(history), claimOnly]
+  );
+  return rows[0] ?? null;
 }
 
 export async function deleteBooking(id: string): Promise<boolean> {

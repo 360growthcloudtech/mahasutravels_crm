@@ -47,6 +47,7 @@ import {
   saveLeadQuoteDraft,
   sendLeadQuoteApi,
 } from "@/lib/lead-quotes-api";
+import { isValidMobilePhone } from "@/lib/lead-utils";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 
@@ -280,11 +281,32 @@ export function LeadQuoteDrawer({
     }
   }
 
+  const guestPhone = form?.guest_phone?.trim() || "";
+  const phoneOk = guestPhone ? isValidMobilePhone(guestPhone) : false;
+
   async function handleSend() {
     if (!lead || !form) return;
     if (form.amount <= 0) {
       toast({ variant: "error", title: "Enter a quote amount" });
       setTab("pricing");
+      return;
+    }
+    if (!guestPhone) {
+      toast({
+        variant: "error",
+        title: "Phone required",
+        description: "Add a guest phone before sending the quote on WhatsApp.",
+      });
+      setTab("guest");
+      return;
+    }
+    if (!phoneOk) {
+      toast({
+        variant: "error",
+        title: "Invalid phone",
+        description: "Enter a valid 10-digit Indian mobile number.",
+      });
+      setTab("guest");
       return;
     }
     setSending(true);
@@ -293,8 +315,8 @@ export function LeadQuoteDrawer({
       setSaved(quote);
       toast({
         variant: "success",
-        title: "Quote sent",
-        description: `₹${quote.amount.toLocaleString("en-IN")} · marked Hot`,
+        title: "Quote sent on WhatsApp",
+        description: `WhatsApp message sent to ${guestPhone}.`,
       });
       onSent?.();
       onOpenChange(false);
@@ -765,7 +787,8 @@ export function LeadQuoteDrawer({
                     />
                   </Field>
                   <div className="rounded-md border border-marigold bg-marigold-soft px-3 py-2 text-sm text-marigold-ink">
-                    Send marks the lead Hot and logs a quoted activity (WhatsApp label).
+                    Send marks the lead Hot and sends the Meta WhatsApp template{" "}
+                    <span className="font-mono">quote_proposal</span> with a link to this proposal.
                   </div>
                 </TabsContent>
               </Tabs>
@@ -793,7 +816,7 @@ export function LeadQuoteDrawer({
           </div>
           <Button
             variant="marigold"
-            disabled={!form || saving || sending || loading}
+            disabled={!form || saving || sending || loading || !phoneOk}
             onClick={() => void handleSend()}
           >
             {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}

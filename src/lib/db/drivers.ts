@@ -196,6 +196,17 @@ export async function findDriverById(id: string): Promise<DriverJoinedRow | null
   return rows[0] ?? null;
 }
 
+/** Case-insensitive exact name match (trim). Used to resolve assignment → phone. */
+export async function findDriverByName(name: string): Promise<DriverJoinedRow | null> {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const { rows } = await query<DriverJoinedRow>(
+    `${DRIVER_SELECT} WHERE lower(d.name) = lower($1) ORDER BY d.updated_at DESC LIMIT 1`,
+    [trimmed]
+  );
+  return rows[0] ?? null;
+}
+
 export async function listDrivers(filters: ListDriversFilters = {}): Promise<DriverJoinedRow[]> {
   const clauses: string[] = [];
   const params: unknown[] = [];

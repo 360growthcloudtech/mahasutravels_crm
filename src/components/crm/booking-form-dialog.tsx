@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Field } from "@/components/crm/field";
 import { DatePicker } from "@/components/crm/date-picker";
+import { TimePicker } from "@/components/crm/time-picker";
 import { Separator } from "@/components/ui/separator";
 import {
   HotelTemplateFormDialog,
@@ -125,6 +126,7 @@ function emptyForm(): BookingDrawerForm {
     dropoff: "",
     travelDate: "",
     returnDate: "",
+    pickupTime: "",
     cabType: "Ertiga (6+1)",
     adults: "",
     kids: "",
@@ -852,6 +854,15 @@ export function BookingFormDialog({
                 onChange={(v) => set("travelDate", v)}
                 placeholder="Select travel date"
               />
+            </Field>
+            <Field label="Pickup time">
+              <TimePicker
+                value={form.pickupTime || ""}
+                onChange={(v) => set("pickupTime", v)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Used for the 3-hour WhatsApp trip reminder (IST).
+              </p>
             </Field>
             <Field label="Date of return">
               <DatePicker

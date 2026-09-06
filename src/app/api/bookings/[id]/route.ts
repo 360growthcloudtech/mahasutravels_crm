@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { forbidUnlessAnyPermission, forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
 import { sessionHasPermission } from "@/lib/permission-check";
 import {
   bookingToDto,
@@ -17,7 +17,12 @@ import {
   normalizeBookingAssignments,
   parseDriversJson,
 } from "@/lib/booking-utils";
-import { toDateOnly } from "@/lib/lead-utils";
+import {
+  newlyAssignedDriverNames,
+  notifyBookingConfirmed,
+  notifyDriversAssigned,
+} from "@/lib/booking-whatsapp-notify";
+import { toDateOnly, parseLeadTime } from "@/lib/lead-utils";
 import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } from "@/lib/data";
 
 export const runtime = "nodejs";
@@ -174,6 +179,17 @@ export async function PATCH(
   if (body.return_date !== undefined) {
     patch.return_date = readString(body.return_date)?.trim() || null;
   }
+  if (body.pickup_time !== undefined) {
+    if (body.pickup_time === null || body.pickup_time === "") {
+      patch.pickup_time = null;
+    } else {
+      const parsed = parseLeadTime(body.pickup_time);
+      if (!parsed) {
+        return NextResponse.json({ error: "pickup_time is invalid" }, { status: 400 });
+      }
+      patch.pickup_time = parsed;
+    }
+  }
   if (body.cab_type !== undefined) patch.cab_type = readString(body.cab_type)?.trim() ?? "";
   if (body.adults !== undefined) patch.adults = readNumber(body.adults) ?? 0;
   if (body.kids !== undefined) patch.kids = readNumber(body.kids) ?? 0;
@@ -211,6 +227,17 @@ export async function PATCH(
 
   const existing = await findBookingById(id);
   if (!existing) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+
+  const previousDrivers = collectAssignedDriverNames(
+    existing.driver,
+    parseDriversJson(existing.drivers, {
+      driver: existing.driver,
+      vehicle: existing.vehicle,
+    })
+  );
+
+  const driversTouched =
+    body.drivers !== undefined || body.driver !== undefined || body.vehicle !== undefined;
 
   const mergedDrivers = patch.drivers !== undefined
     ? patch.drivers ?? []
@@ -258,7 +285,31 @@ export async function PATCH(
 
   try {
     const booking = await patchBooking(id, patch);
-    return NextResponse.json({ booking: bookingToDto(booking) });
+    let dto = bookingToDto(booking);
+    const actor = session.name || session.email || "Staff";
+
+    if (driversTouched) {
+      const nextDrivers = collectAssignedDriverNames(dto.driver, dto.drivers);
+      const newlyAssigned = newlyAssignedDriverNames(previousDrivers, nextDrivers);
+      if (newlyAssigned.length) {
+        const waEvents = [
+          ...(await notifyBookingConfirmed(dto, { actor })),
+          ...(await notifyDriversAssigned(dto, newlyAssigned, { actor })),
+        ];
+        if (waEvents.length) {
+          try {
+            const updated = await patchBooking(id, {
+              history: [...dto.history, ...waEvents],
+            });
+            dto = bookingToDto(updated);
+          } catch (err) {
+            console.error("[bookings/patch] failed to append WhatsApp history", err);
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ booking: dto });
   } catch (error) {
     if (error instanceof Error && error.message === "NOT_FOUND") {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });

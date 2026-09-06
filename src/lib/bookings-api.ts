@@ -25,6 +25,8 @@ export type BookingApi = {
   dropoff: string;
   travel_date: string;
   return_date: string;
+  pickup_time: string;
+  trip_reminder_sent_at: string | null;
   cab_type: string;
   adults: number;
   kids: number;
@@ -60,6 +62,7 @@ export type BookingWritePayload = {
   dropoff?: string;
   travel_date?: string | null;
   return_date?: string | null;
+  pickup_time?: string | null;
   cab_type?: string;
   adults?: number;
   kids?: number;
@@ -106,6 +109,7 @@ export function bookingFromApi(dto: BookingApi): Booking {
     dropoff: dto.dropoff ?? "",
     travelDate: dto.travel_date ?? "",
     returnDate: dto.return_date ?? "",
+    pickupTime: dto.pickup_time ?? "",
     cabType: dto.cab_type ?? "",
     adults: dto.adults ?? 0,
     kids: dto.kids ?? 0,
@@ -151,6 +155,7 @@ export function bookingToWritePayload(
     dropoff: input.dropoff ?? "",
     travel_date: input.travelDate || null,
     return_date: input.returnDate || null,
+    pickup_time: input.pickupTime || null,
     cab_type: input.cabType ?? "",
     adults: input.adults ?? 0,
     kids: input.kids ?? 0,

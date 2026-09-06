@@ -3,6 +3,7 @@ import { forbidUnlessAnyPermission, requireSession } from "@/lib/api-auth";
 import { findLeadById, patchLead, recordLeadActivity } from "@/lib/db/leads";
 import { sendLeadQuote } from "@/lib/db/lead-quotes";
 import { normalizeQuoteDays, normalizeQuoteHotels, type LeadQuoteInput } from "@/lib/quote-defaults";
+import { toWhatsAppRecipient, sendQuoteProposalWhatsApp, WhatsAppConfigError, WhatsAppSendError } from "@/lib/whatsapp";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,17 @@ function readNumber(value: unknown, fallback = 0): number {
 function readStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((v) => String(v).trim()).filter(Boolean);
+}
+
+function moneyPlain(n: number): string {
+  return n.toLocaleString("en-IN");
+}
+
+function formatQuoteDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 function parseQuoteBody(body: Record<string, unknown>): LeadQuoteInput {
@@ -92,7 +104,22 @@ export async function POST(
     return NextResponse.json({ error: "amount must be greater than 0" }, { status: 400 });
   }
 
-  const quote = await sendLeadQuote(id, input);
+  const phone = (input.guest_phone.trim() || lead.phone || "").trim();
+  if (!phone) {
+    return NextResponse.json(
+      { error: "Guest phone is required. Add a phone before sending the quote on WhatsApp." },
+      { status: 400 }
+    );
+  }
+  if (!toWhatsAppRecipient(phone)) {
+    return NextResponse.json(
+      { error: "Guest phone is not a valid Indian mobile number." },
+      { status: 400 }
+    );
+  }
+
+  // Persist Sent first so /proposal/{leadId} is public for guests, then send WhatsApp.
+  const quote = await sendLeadQuote(id, { ...input, guest_phone: phone });
   await patchLead(
     id,
     {
@@ -102,13 +129,53 @@ export async function POST(
     },
     session.name || session.email
   );
-  await recordLeadActivity(
-    id,
-    "quoted",
-    "Quote sent",
-    session.name || session.email,
-    `₹${quote.amount.toLocaleString("en-IN")} · ${quote.tour_title || "package"} via WhatsApp`
-  );
 
-  return NextResponse.json({ quote });
+  const travelDates = [
+    quote.travel_date ? formatQuoteDate(quote.travel_date) : "",
+    quote.return_date ? formatQuoteDate(quote.return_date) : "",
+  ]
+    .filter(Boolean)
+    .join(" to ");
+
+  try {
+    const result = await sendQuoteProposalWhatsApp(phone, {
+      customer: quote.guest_name,
+      tourTitle: quote.tour_title,
+      destination: quote.destination,
+      travelDates: travelDates || "as per enquiry",
+      vehicle: quote.vehicle_label,
+      amount: moneyPlain(quote.amount),
+      leadId: id,
+    });
+
+    await recordLeadActivity(
+      id,
+      "whatsapp",
+      "Quote sent on WhatsApp",
+      session.name || session.email,
+      `WhatsApp to ${phone} · ₹${quote.amount.toLocaleString("en-IN")} · ${
+        quote.tour_title || "package"
+      }${result.messageId ? ` · ${result.messageId}` : ""}`
+    );
+
+    return NextResponse.json({
+      quote,
+      message_id: result.messageId,
+    });
+  } catch (err) {
+    if (err instanceof WhatsAppConfigError) {
+      return NextResponse.json(
+        { error: `${err.message}. Set WhatsApp env vars on the server.` },
+        { status: 503 }
+      );
+    }
+    if (err instanceof WhatsAppSendError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: err.status >= 400 && err.status < 600 ? err.status : 502 }
+      );
+    }
+    console.error("[quote/send]", err);
+    return NextResponse.json({ error: "Failed to send quote on WhatsApp" }, { status: 500 });
+  }
 }

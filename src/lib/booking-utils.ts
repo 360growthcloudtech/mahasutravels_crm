@@ -86,6 +86,7 @@ export function bookingFromLead(lead: Lead): Omit<Booking, "id"> {
     dropoff: lead.drop ?? "",
     travelDate: lead.pickupDate ?? "",
     returnDate: lead.dropDate ?? "",
+    pickupTime: "",
     cabType: lead.car || "Ertiga (6+1)",
     adults: lead.adults ?? 2,
     kids: lead.kids ?? 0,

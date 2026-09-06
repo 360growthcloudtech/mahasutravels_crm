@@ -359,7 +359,7 @@ async function countMyQuotes(
   filters: ReturnType<typeof normalizeFilters>
 ): Promise<number> {
   const params: unknown[] = [userId];
-  const clauses = [`a.action = 'quoted'`, `l.assigned_to = $1::uuid`];
+  const clauses = [`a.action IN ('quoted', 'whatsapp')`, `l.assigned_to = $1::uuid`];
   const d = activityDateClause("a", filters.from, filters.to, params);
   if (d) clauses.push(d);
   const w = websiteClause("l", filters.website, params);

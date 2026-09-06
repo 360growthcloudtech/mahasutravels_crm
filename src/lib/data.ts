@@ -466,6 +466,8 @@ export type Booking = {
   dropoff: string;
   travelDate: string;
   returnDate: string;
+  /** HH:MM pickup/start time (IST). Empty if unset — no 3h reminder. */
+  pickupTime?: string;
   cabType: string;
   adults: number;
   kids: number;

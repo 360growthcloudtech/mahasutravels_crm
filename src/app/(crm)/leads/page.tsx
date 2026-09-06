@@ -1181,6 +1181,7 @@ export default function LeadsPage() {
         onOpenChange={(v) => !v && setQuoteLeadId(null)}
         onSent={() => {
           void reloadLeads();
+          if (quoteLeadId) void loadLeadActivity(quoteLeadId);
         }}
       />
 

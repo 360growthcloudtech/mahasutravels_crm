@@ -504,6 +504,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (patch.dropoff !== undefined) payload.dropoff = patch.dropoff;
     if (patch.travelDate !== undefined) payload.travel_date = patch.travelDate || null;
     if (patch.returnDate !== undefined) payload.return_date = patch.returnDate || null;
+    if (patch.pickupTime !== undefined) payload.pickup_time = patch.pickupTime || null;
     if (patch.cabType !== undefined) payload.cab_type = patch.cabType;
     if (patch.adults !== undefined) payload.adults = patch.adults;
     if (patch.kids !== undefined) payload.kids = patch.kids;
