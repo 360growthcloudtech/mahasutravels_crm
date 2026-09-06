@@ -2,6 +2,7 @@ import { query, getPool } from "@/lib/db";
 import { getDefaultStatusCode } from "@/lib/db/masters";
 import { pickAutoAssignUserForWebsiteWithClient } from "@/lib/db/lead-auto-assign";
 import { ensureLeadWebhookSchema } from "@/lib/db/ensure-lead-webhook-schema";
+import { notifyLeadAssignmentAudience } from "@/lib/db/notifications";
 import {
   formatLeadNo,
   normalizePhone,
@@ -561,6 +562,11 @@ export async function createLead(input: IngestLeadInput, actor: string): Promise
   }
   const lead = await findLeadById(id);
   if (!lead) throw new Error("Failed to load created lead");
+  try {
+    await notifyLeadAssignmentAudience(lead);
+  } catch (err) {
+    console.error("[notifications] createLead notify failed", id, err);
+  }
   return lead;
 }
 
@@ -832,6 +838,13 @@ export async function patchLead(
       nextAssigned ? `Assigned to ${updated?.assigned_to_name ?? "agent"}` : "Unassigned",
       actor
     );
+    if (updated) {
+      try {
+        await notifyLeadAssignmentAudience(updated);
+      } catch (err) {
+        console.error("[notifications] patchLead notify failed", id, err);
+      }
+    }
   }
   const fieldUpdates = Object.keys(patch).filter(
     (key) => !["status", "assigned_to"].includes(key)

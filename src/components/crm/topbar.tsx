@@ -26,73 +26,12 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/crm/theme-toggle";
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  detail: string;
-  time: string;
-  href: string;
-  unread: boolean;
-  kind: "lead" | "booking" | "comment" | "trip";
-};
-
-const seedNotifications: NotificationItem[] = [
-  {
-    id: "N-1",
-    title: "New lead · Ritika Sharma",
-    detail: "Google Ads · Shimla Manali package enquiry",
-    time: "6m ago",
-    href: "/leads",
-    unread: true,
-    kind: "lead",
-  },
-  {
-    id: "N-2",
-    title: "Booking advance pending",
-    detail: "BK-1201 · Naina Bhatia · Kasauli weekend",
-    time: "28m ago",
-    href: "/bookings",
-    unread: true,
-    kind: "booking",
-  },
-  {
-    id: "N-3",
-    title: "Driver reassigned",
-    detail: "BK-1195 · Harsh Vardhan linked to Suresh Thakur",
-    time: "1h ago",
-    href: "/assignments",
-    unread: true,
-    kind: "trip",
-  },
-  {
-    id: "N-4",
-    title: "Comment on booking",
-    detail: "Pooja Rawat · Customer will pay on pickup",
-    time: "Yesterday",
-    href: "/bookings",
-    unread: false,
-    kind: "comment",
-  },
-  {
-    id: "N-5",
-    title: "Lead booked",
-    detail: "Ananya Rao moved to Booked · advance pending",
-    time: "Yesterday",
-    href: "/leads",
-    unread: false,
-    kind: "lead",
-  },
-  {
-    id: "N-6",
-    title: "Upcoming departure",
-    detail: "BK-1181 · Manish Verma leaves 5 Aug",
-    time: "2 days ago",
-    href: "/bookings",
-    unread: false,
-    kind: "trip",
-  },
-];
+import {
+  fetchNotifications,
+  markAllNotificationsReadApi,
+  markNotificationReadApi,
+  type NotificationItem,
+} from "@/lib/notifications-api";
 
 const kindIcon = {
   lead: UserPlus,
@@ -108,6 +47,8 @@ const kindTone = {
   trip: "bg-signal-soft text-signal",
 };
 
+const POLL_MS = 60_000;
+
 export function Topbar({
   title,
   eyebrow,
@@ -118,17 +59,81 @@ export function Topbar({
   action?: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
-  const [items, setItems] = React.useState(seedNotifications);
-  const unreadCount = items.filter((n) => n.unread).length;
+  const [items, setItems] = React.useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+  const [loading, setLoading] = React.useState(false);
   const openMobileNav = useOpenMobileNav();
 
-  function markAllRead() {
-    setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const data = await fetchNotifications();
+        if (cancelled) return;
+        setItems(data.items);
+        setUnreadCount(data.unreadCount);
+      } catch (err) {
+        console.error("[notifications] load failed", err);
+      }
+    }
+
+    void load();
+    const id = window.setInterval(() => {
+      void load();
+    }, POLL_MS);
+    function onFocus() {
+      void load();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await fetchNotifications();
+        if (cancelled) return;
+        setItems(data.items);
+        setUnreadCount(data.unreadCount);
+      } catch (err) {
+        console.error("[notifications] load failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  async function markAllRead() {
+    setLoading(true);
+    try {
+      const nextUnread = await markAllNotificationsReadApi();
+      setUnreadCount(nextUnread);
+      setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
+    } catch (err) {
+      console.error("[notifications] mark all read failed", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function openItem(id: string) {
+  async function openItem(id: string) {
     setItems((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+    setUnreadCount((c) => Math.max(0, c - 1));
     setOpen(false);
+    try {
+      const nextUnread = await markNotificationReadApi(id);
+      setUnreadCount(nextUnread);
+    } catch (err) {
+      console.error("[notifications] mark read failed", err);
+    }
   }
 
   return (
@@ -206,43 +211,55 @@ export function Topbar({
           </SheetHeader>
 
           <SheetBody className="space-y-1 p-0">
-            {items.map((n) => {
-              const Icon = kindIcon[n.kind];
-              return (
-                <Link
-                  key={n.id}
-                  href={n.href}
-                  onClick={() => openItem(n.id)}
-                  className={cn(
-                    "flex gap-3 border-b border-border-soft px-5 py-3.5 transition-colors hover:bg-secondary/50",
-                    n.unread && "bg-marigold-soft/30"
-                  )}
-                >
-                  <div
+            {items.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+                No notifications
+              </p>
+            ) : (
+              items.map((n) => {
+                const Icon = kindIcon[n.kind] ?? UserPlus;
+                return (
+                  <Link
+                    key={n.id}
+                    href={n.href}
+                    onClick={() => void openItem(n.id)}
                     className={cn(
-                      "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md",
-                      kindTone[n.kind]
+                      "flex gap-3 border-b border-border-soft px-5 py-3.5 transition-colors hover:bg-secondary/50",
+                      n.unread && "bg-marigold-soft/30"
                     )}
                   >
-                    <Icon className="size-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-medium text-ink-text">{n.title}</p>
-                      {n.unread ? (
-                        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-signal" />
-                      ) : null}
+                    <div
+                      className={cn(
+                        "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md",
+                        kindTone[n.kind] ?? kindTone.lead
+                      )}
+                    >
+                      <Icon className="size-3.5" />
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{n.detail}</p>
-                    <p className="mt-1 font-mono-data text-[11px] text-slate-soft">{n.time}</p>
-                  </div>
-                </Link>
-              );
-            })}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium text-ink-text">{n.title}</p>
+                        {n.unread ? (
+                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-signal" />
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{n.detail}</p>
+                      <p className="mt-1 font-mono-data text-[11px] text-slate-soft">{n.time}</p>
+                    </div>
+                  </Link>
+                );
+              })
+            )}
           </SheetBody>
 
           <SheetFooter className="sm:justify-between">
-            <Button type="button" variant="outline" size="sm" onClick={markAllRead}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loading || unreadCount === 0}
+              onClick={() => void markAllRead()}
+            >
               Mark all read
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
