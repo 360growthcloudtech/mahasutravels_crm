@@ -66,7 +66,7 @@ export function ResizableTableHead({
       }}
       style={{ width, minWidth: width, maxWidth: width }}
       className={cn(
-        "sticky top-0 z-20 bg-card",
+        "sticky top-0 z-20 bg-secondary",
         !locked && "cursor-grab active:cursor-grabbing",
         align === "right" && "text-right",
         className

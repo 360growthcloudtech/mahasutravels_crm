@@ -168,6 +168,19 @@ export type ListLeadsFilters = {
   website?: string[];
 };
 
+export type LeadsListStats = {
+  total: number;
+  booked: number;
+  open: number;
+  repeat: number;
+};
+
+export type ListLeadsPageResult = {
+  rows: LeadRow[];
+  total: number;
+  stats: LeadsListStats;
+};
+
 const LEAD_SELECT = `
   SELECT
     l.id,
@@ -309,15 +322,36 @@ export async function findLatestLeadByPhone(phoneNormalized: string): Promise<Le
   return rows[0] ?? null;
 }
 
-export async function listLeads(filters: ListLeadsFilters = {}): Promise<LeadRow[]> {
+function buildLeadsFilterClauses(filters: ListLeadsFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
   if (filters.search?.trim()) {
-    params.push(`%${filters.search.trim().toLowerCase()}%`);
-    clauses.push(
-      `(lower(l.name) LIKE $${params.length} OR lower(l.email) LIKE $${params.length} OR l.phone_normalized LIKE $${params.length} OR lower(l.phone) LIKE $${params.length})`
-    );
+    const raw = filters.search.trim().toLowerCase();
+    const digits = raw.replace(/\D/g, "");
+    const leadNoMatch = raw.match(/(?:^|\bld-?)(\d+)\b/);
+    params.push(`%${raw}%`);
+    const searchIdx = params.length;
+    const parts = [
+      `lower(l.name) LIKE $${searchIdx}`,
+      `lower(l.email) LIKE $${searchIdx}`,
+      `l.phone_normalized LIKE $${searchIdx}`,
+      `lower(l.phone) LIKE $${searchIdx}`,
+      `l.lead_no::text LIKE $${searchIdx}`,
+      `lower(concat('ld-', l.lead_no::text)) LIKE $${searchIdx}`,
+    ];
+    if (leadNoMatch?.[1]) {
+      params.push(Number(leadNoMatch[1]));
+      parts.push(`l.lead_no = $${params.length}`);
+    }
+    if (digits.length >= 3) {
+      params.push(`%${digits}%`);
+      parts.push(`l.phone_normalized LIKE $${params.length}`);
+    }
+    clauses.push(`(${parts.join(" OR ")})`);
   }
   if (filters.status?.length) {
     params.push(filters.status);
@@ -345,12 +379,70 @@ export async function listLeads(filters: ListLeadsFilters = {}): Promise<LeadRow
     clauses.push(`l.website = ANY($${params.length}::text[])`);
   }
 
+  return { clauses, params };
+}
+
+export async function listLeads(filters: ListLeadsFilters = {}): Promise<LeadRow[]> {
+  const { clauses, params } = buildLeadsFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<LeadRow>(
     `${LEAD_SELECT} ${where} ORDER BY l.last_inquiry_at DESC, l.created_at DESC`,
     params
   );
   return rows;
+}
+
+/**
+ * Paginated lead list for CRM tables. Same filters as listLeads, plus LIMIT/OFFSET
+ * and aggregate stats for the filtered set.
+ */
+export async function listLeadsPage(
+  filters: ListLeadsFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListLeadsPageResult> {
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildLeadsFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const { rows: statsRows } = await query<{
+    total: string;
+    booked: string;
+    open_count: string;
+    repeat: string;
+  }>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE l.status = 'Booked')::text AS booked,
+       COUNT(*) FILTER (WHERE l.status NOT IN ('Lost', 'Booked'))::text AS open_count,
+       COUNT(*) FILTER (
+         WHERE l.inquiry_count > 1 OR l.previous_lead_id IS NOT NULL
+       )::text AS repeat
+     FROM leads l
+     ${where}`,
+    params
+  );
+
+  const total = Number(statsRows[0]?.total) || 0;
+  const stats: LeadsListStats = {
+    total,
+    booked: Number(statsRows[0]?.booked) || 0,
+    open: Number(statsRows[0]?.open_count) || 0,
+    repeat: Number(statsRows[0]?.repeat) || 0,
+  };
+
+  if (total === 0 || offset >= total) {
+    return { rows: [], total, stats };
+  }
+
+  const { rows } = await query<LeadRow>(
+    `${LEAD_SELECT} ${where}
+     ORDER BY l.last_inquiry_at DESC, l.created_at DESC
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+
+  return { rows, total, stats };
 }
 
 async function insertActivity(

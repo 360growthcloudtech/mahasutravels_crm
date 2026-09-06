@@ -206,10 +206,79 @@ export function leadToWritePayload(input: {
 }
 
 export async function fetchLeads(): Promise<LeadApi[]> {
-  const res = await fetch("/api/leads", { credentials: "include" });
+  const res = await fetch("/api/leads?all=1", { credentials: "include", cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load leads");
   const data = (await res.json()) as { leads?: LeadApi[] };
   return data.leads ?? [];
+}
+
+export type LeadsListQuery = {
+  search?: string;
+  status?: string[];
+  source?: string[];
+  website?: string[];
+  assigned_to?: string[];
+  page?: number;
+  pageSize?: number;
+};
+
+export type LeadsListStatsApi = {
+  total: number;
+  booked: number;
+  open: number;
+  repeat: number;
+};
+
+export type LeadsListPaginationApi = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+};
+
+export type LeadsListResponse = {
+  leads: LeadApi[];
+  pagination: LeadsListPaginationApi;
+  stats: LeadsListStatsApi;
+};
+
+export async function fetchLeadsPage(query: LeadsListQuery = {}): Promise<LeadsListResponse> {
+  const params = buildExportParams({
+    search: query.search,
+    status: query.status,
+    source: query.source,
+    website: query.website,
+    assigned_to: query.assigned_to,
+  });
+  params.set("page", String(query.page ?? 1));
+  params.set("pageSize", String(query.pageSize ?? 25));
+  const qs = params.toString();
+  const res = await fetch(`/api/leads?${qs}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to load leads");
+  }
+  const data = (await res.json()) as LeadsListResponse;
+  return {
+    leads: data.leads ?? [],
+    pagination: data.pagination ?? {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 25,
+      total: data.leads?.length ?? 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+    stats: data.stats ?? {
+      total: data.leads?.length ?? 0,
+      booked: 0,
+      open: 0,
+      repeat: 0,
+    },
+  };
 }
 
 export type LeadsExportQuery = {

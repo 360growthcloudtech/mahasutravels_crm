@@ -14,7 +14,12 @@ function Table({
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
-  return <thead className={cn("[&_tr]:border-b [&_tr]:border-border", className)} {...props} />;
+  return (
+    <thead
+      className={cn("[&_tr]:border-b [&_tr]:border-border [&_tr]:bg-secondary", className)}
+      {...props}
+    />
+  );
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
@@ -34,7 +39,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (
     <th
       className={cn(
-        "h-10 whitespace-nowrap px-3 text-left align-middle text-xs font-medium text-muted-foreground first:pl-4 last:pr-4 sm:px-4 sm:first:pl-5 sm:last:pr-5",
+        "h-10 whitespace-nowrap bg-secondary px-3 text-left align-middle text-xs font-semibold tracking-wide text-slate first:pl-4 last:pr-4 sm:px-4 sm:first:pl-5 sm:last:pr-5",
         className
       )}
       {...props}

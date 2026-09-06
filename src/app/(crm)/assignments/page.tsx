@@ -438,12 +438,12 @@ export default function AssignmentsPage() {
               <Table containerClassName="min-w-[56rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-card">Booking</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Travel</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Package / Route</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Driver</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Vehicle</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card w-[10rem]">Assign</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Booking</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Travel</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Package / Route</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Driver</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Vehicle</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary w-[10rem]">Assign</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

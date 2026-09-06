@@ -60,7 +60,7 @@ import {
 const statuses: ItineraryStatus[] = ["Active", "Draft", "Archived"];
 
 const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[8rem] whitespace-nowrap border-l border-border-soft bg-card";
+  "sticky right-0 top-0 z-30 min-w-[8rem] whitespace-nowrap border-l border-border-soft bg-secondary";
 const stickyActionCell =
   "relative sticky right-0 z-20 min-w-[8rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
 
@@ -302,13 +302,13 @@ export default function ItinerariesPage() {
               <Table containerClassName="min-w-[52rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-card">Template</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Package</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Duration</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">From</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Discount</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Updated</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Template</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Package</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Duration</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">From</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Discount</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Status</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Updated</TableHead>
                     <TableHead className={stickyActionHead}>Actions</TableHead>
                   </TableRow>
                 </TableHeader>

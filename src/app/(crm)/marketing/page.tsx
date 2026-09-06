@@ -48,7 +48,7 @@ const platformsList: AdPlatform[] = [
 ];
 
 const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-card";
+  "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-secondary";
 const stickyActionCell =
   "relative sticky right-0 z-20 min-w-[8.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
 
@@ -374,11 +374,11 @@ export default function MarketingPage() {
             <Table containerClassName="min-h-0 flex-1 overflow-auto">
               <TableHeader>
                 <TableRow className="group hover:bg-transparent">
-                  <TableHead className="sticky top-0 z-20 bg-card">Platform</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-card">Website Domain</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-card">Campaign Name & Details</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-card">Date</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-card text-right">Amount (₹)</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-secondary">Platform</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-secondary">Website Domain</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-secondary">Campaign Name & Details</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-secondary">Date</TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-secondary text-right">Amount (₹)</TableHead>
                   <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
                 </TableRow>
               </TableHeader>

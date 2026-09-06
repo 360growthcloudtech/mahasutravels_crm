@@ -33,6 +33,23 @@ export function parseLeadsListFilters(
   };
 }
 
+export function parseLeadsPagination(searchParams: URLSearchParams): {
+  page: number;
+  pageSize: number;
+  /** When true (default), return paginated payload with total/stats. */
+  paginated: boolean;
+} {
+  const pageRaw = Number(searchParams.get("page") || "1");
+  const sizeRaw = Number(searchParams.get("pageSize") || searchParams.get("limit") || "25");
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+  const pageSize = Number.isFinite(sizeRaw)
+    ? Math.min(Math.max(Math.floor(sizeRaw), 1), 100)
+    : 25;
+  // Unbounded list only when explicitly requested (store bootstrap / legacy).
+  const paginated = searchParams.get("all") !== "1";
+  return { page, pageSize, paginated };
+}
+
 export function hasLeadsExportFilters(searchParams: URLSearchParams): boolean {
   return Boolean(
     searchParams.get("search")?.trim() ||

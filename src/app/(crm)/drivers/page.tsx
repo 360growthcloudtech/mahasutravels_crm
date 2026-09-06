@@ -67,7 +67,7 @@ import {
 type DriverStatusFilter = (typeof DRIVER_STATUS_FILTER_GROUPS)[number]["label"];
 
 const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[9rem] whitespace-nowrap border-l border-border-soft bg-card";
+  "sticky right-0 top-0 z-30 min-w-[9rem] whitespace-nowrap border-l border-border-soft bg-secondary";
 const stickyActionCell =
   "relative sticky right-0 z-20 min-w-[9rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
 
@@ -473,13 +473,13 @@ export default function DriversPage() {
               <Table containerClassName="min-w-[64rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-card">Driver</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Vehicle</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Contact</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Location</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Documents</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Rating</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Driver</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Vehicle</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Contact</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Location</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Documents</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Rating</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Status</TableHead>
                     <TableHead className={stickyActionHead}>Actions</TableHead>
                   </TableRow>
                 </TableHeader>

@@ -284,13 +284,13 @@ export default function HotelsPage() {
               <Table containerClassName="min-w-[48rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-card">Hotel</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">City</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Default room</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Typical rate / day</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Status</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-card">Updated</TableHead>
-                    <TableHead className="sticky top-0 z-20 w-[5.5rem] bg-card">Actions</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Hotel</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">City</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Default room</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Typical rate / day</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Status</TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-secondary">Updated</TableHead>
+                    <TableHead className="sticky top-0 z-20 w-[5.5rem] bg-secondary">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

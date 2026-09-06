@@ -4,6 +4,7 @@ import {
   ingestLead,
   leadToDto,
   listLeads,
+  listLeadsPage,
   userExists,
 } from "@/lib/db/leads";
 import { resolveItineraryPackage } from "@/lib/db/itineraries";
@@ -16,7 +17,7 @@ import {
 } from "@/lib/db/masters";
 import { parseLeadIngestBody } from "@/lib/lead-ingest-parse";
 import { websiteHostFromUrl } from "@/lib/utm";
-import { parseLeadsListFilters } from "@/lib/api/list-filters";
+import { parseLeadsListFilters, parseLeadsPagination } from "@/lib/api/list-filters";
 
 export const runtime = "nodejs";
 
@@ -33,9 +34,29 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const url = new URL(request.url);
-  const leads = await listLeads(parseLeadsListFilters(url.searchParams, session));
+  const filters = parseLeadsListFilters(url.searchParams, session);
+  const { page, pageSize, paginated } = parseLeadsPagination(url.searchParams);
 
-  return NextResponse.json({ leads: leads.map(leadToDto) });
+  if (!paginated) {
+    const leads = await listLeads(filters);
+    return NextResponse.json({ leads: leads.map(leadToDto) });
+  }
+
+  const offset = (page - 1) * pageSize;
+  const result = await listLeadsPage(filters, { limit: pageSize, offset });
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize) || 1);
+
+  return NextResponse.json({
+    leads: result.rows.map(leadToDto),
+    pagination: {
+      page,
+      pageSize,
+      total: result.total,
+      totalPages,
+      hasMore: page * pageSize < result.total,
+    },
+    stats: result.stats,
+  });
 }
 
 export async function POST(request: Request) {
