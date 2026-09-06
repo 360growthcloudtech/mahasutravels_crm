@@ -9,6 +9,7 @@ import {
   Filter,
   FileText,
   History,
+  MoreHorizontal,
   MessageCircle,
   Plus,
   Pencil,
@@ -23,6 +24,22 @@ import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import { TableColumnsMenu } from "@/components/crm/table-columns-menu";
+import { ResizableTableHead } from "@/components/crm/resizable-table-head";
+import { useTableColumnLayout, type TableColumnDef } from "@/lib/use-table-column-layout";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -54,6 +71,7 @@ import {
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
+  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { CreatedAtDisplay } from "@/components/crm/created-at-display";
@@ -67,14 +85,25 @@ function formatNextFollowUp(date?: string, time?: string) {
   return timePart ? `${datePart} · ${timePart}` : datePart;
 }
 
-function leadInitials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
+const stickyActionHead =
+  "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-secondary";
+const stickyActionCell =
+  "relative sticky right-0 z-20 min-w-[10.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+
+const LEAD_TABLE_COLUMNS: TableColumnDef[] = [
+  { id: "lead", label: "Lead", locked: true, defaultWidth: 220 },
+  { id: "tour", label: "Tour package / Route", defaultWidth: 200 },
+  { id: "status", label: "Status", defaultWidth: 120 },
+  { id: "travel", label: "Travel dates", defaultWidth: 150 },
+  { id: "car", label: "Car / pax / days", defaultWidth: 150 },
+  { id: "source", label: "Source", defaultWidth: 140 },
+  { id: "assigned", label: "Assigned", defaultWidth: 130 },
+  { id: "created", label: "Created", defaultWidth: 120 },
+  { id: "followup", label: "Next follow-up", defaultWidth: 150 },
+  { id: "price", label: "Price", align: "right", defaultWidth: 110 },
+  { id: "utm", label: "UTM URL", defaultWidth: 180 },
+  { id: "actions", label: "Actions", locked: true, align: "right", defaultWidth: 176 },
+];
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -207,6 +236,7 @@ export default function LeadsPage() {
   const canCommentLead = useHasPermission("leads.comment");
   const canQuoteLead = useHasPermission("leads.quote");
   const canCreateBookingFromLead = useHasPermission("leads.create_booking");
+  const columnLayout = useTableColumnLayout("crm.table.leads.v2", LEAD_TABLE_COLUMNS);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -634,184 +664,449 @@ export default function LeadsPage() {
                   Export CSV
                 </Button>
               ) : null}
+              <TableColumnsMenu
+                columns={columnLayout.columns}
+                isHidden={columnLayout.isHidden}
+                onToggle={columnLayout.toggle}
+                onReset={columnLayout.reset}
+                isDirty={columnLayout.isDirty}
+              />
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto p-3">
+          <div className="hidden min-h-0 flex-1 md:block">
+          <Table containerClassName="min-h-0 flex-1 overflow-auto" className="table-fixed min-w-max">
+            <TableHeader>
+              <TableRow className="group hover:bg-transparent">
+                {columnLayout.visibleIds.map((id) => {
+                  const def = LEAD_TABLE_COLUMNS.find((column) => column.id === id);
+                  if (!def) return null;
+                  return (
+                    <ResizableTableHead
+                      key={id}
+                      id={id}
+                      label={def.label}
+                      width={columnLayout.widthFor(id)}
+                      locked={def.locked}
+                      align={def.align}
+                      className={id === "actions" ? stickyActionHead : undefined}
+                      onMove={columnLayout.move}
+                      onResize={columnLayout.setWidth}
+                    />
+                  );
+                })}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {listLoading && visible.length === 0 ? (
+                <TableRowsSkeleton columns={columnLayout.visibleIds.length} rows={6} avatar />
+              ) : visible.map((l) => {
+                const attribution = leadAttribution(l);
+                return (
+                <TableRow key={l.id} className="group">
+                  {columnLayout.visibleIds.map((columnId) => {
+                    const width = columnLayout.widthFor(columnId);
+                    const cellStyle = { width, minWidth: width, maxWidth: width };
+                    if (columnId === "lead") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-ink-text">
+                        {l.name.split(" ").map((n) => n[0]).join("")}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-sm font-medium text-ink-text">{l.name}</p>
+                          {l.inquiryCount > 1 && (
+                            <span title={`Repeat inquiry · ${l.inquiryCount} times`}>
+                              <Copy className="size-3 text-signal" />
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-mono-data text-[11px] text-slate-soft">
+                          {l.leadNo} · {l.phone}
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "tour") {
+                      return (
+                  <TableCell key={columnId} className="min-w-0" style={cellStyle}>
+                    <p className="truncate text-sm text-ink-text">{l.tourPackage || "—"}</p>
+                    <p className="truncate text-[11px] text-slate-soft">
+                      {l.pickup}{l.drop ? ` → ${l.drop}` : ""}
+                    </p>
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "status") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
+                          aria-label={`Change status for ${l.name}`}
+                        >
+                          <StatusBadge status={l.status} />
+                          <ChevronDown className="size-3.5 text-slate-soft" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {leadStatuses.map((s) => (
+                          <DropdownMenuItem
+                            key={s.code}
+                            disabled={s.code === l.status}
+                            onSelect={() => {
+                              handleLeadStatusChange(l, s.code, s.label);
+                            }}
+                          >
+                            <StatusBadge status={s.code} />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "travel") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
+                    <p>{formatDisplayDate(l.pickupDate)}</p>
+                    {l.dropDate ? (
+                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(l.dropDate)}</p>
+                    ) : null}
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "car") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
+                    {l.car || "—"}{" "}
+                    <span className="text-slate-soft">
+                      · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
+                    </span>
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "source") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
+                    <div className="space-y-0.5">
+                      <Badge variant="outline" className="font-normal">
+                        {sourceLabel(attribution.source, leadSources)}
+                      </Badge>
+                      {attribution.website && (
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {attribution.website}
+                        </p>
+                      )}
+                    </div>
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "utm") {
+                      return (
+                  <TableCell key={columnId} style={cellStyle}>
+                    {l.pageUrl ? (
+                      <a
+                        href={l.pageUrl.startsWith("http") ? l.pageUrl : `https://${l.pageUrl}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={l.pageUrl}
+                        className="block truncate text-sm text-marigold hover:underline"
+                      >
+                        {l.pageUrl}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-slate-soft">—</span>
+                    )}
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "assigned") {
+                      return (
+                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
+                    {l.assignedTo?.name || "Unassigned"}
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "created") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
+                    <CreatedAtDisplay iso={l.createdAt} stacked />
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "followup") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
+                    {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "price") {
+                      return (
+                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text" style={cellStyle}>
+                    ₹{l.price.toLocaleString("en-IN")}
+                  </TableCell>
+                      );
+                    }
+                    if (columnId === "actions") {
+                      return (
+                  <TableCell key={columnId} className={stickyActionCell} style={cellStyle}>
+                    <TooltipProvider delayDuration={200}>
+                      <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Tracking history for ${l.name}`}
+                              onClick={() => setHistoryLeadId(l.id)}
+                            >
+                              <History className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">History</TooltipContent>
+                        </Tooltip>
+                        {canCommentLead ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Comments for ${l.name}`}
+                              onClick={() => setCommentLeadId(l.id)}
+                            >
+                              <MessageCircle className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Comments</TooltipContent>
+                        </Tooltip>
+                        ) : null}
+                        {canQuoteLead ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8"
+                              aria-label={`Send quote for ${l.name}`}
+                              onClick={() => setQuoteLeadId(l.id)}
+                            >
+                              <FileText className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Send quote</TooltipContent>
+                        </Tooltip>
+                        ) : null}
+                        {leadCanConvertToBooking(l) ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8"
+                                aria-label={`Create booking for ${l.name}`}
+                                onClick={() => setBookingLead(l)}
+                              >
+                                <CalendarPlus className="size-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">Create booking</TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                        {canEditLead || canDeleteLead ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="icon" variant="ghost" className="size-8">
+                                    <MoreHorizontal className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {canEditLead ? (
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      setEditingLeadId(l.id);
+                                    }}
+                                  >
+                                    <Pencil className="size-3.5" /> Edit lead
+                                  </DropdownMenuItem>
+                                  ) : null}
+                                  {canEditLead && canDeleteLead ? <DropdownMenuSeparator /> : null}
+                                  {canDeleteLead ? (
+                                  <DropdownMenuItem
+                                    className="text-signal focus:bg-signal-soft"
+                                    onSelect={(e) => {
+                                      e.preventDefault();
+                                      setDeleteTarget(l);
+                                    }}
+                                  >
+                                    <Trash2 className="size-3.5" /> Delete lead
+                                  </DropdownMenuItem>
+                                  ) : null}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">More actions</TooltipContent>
+                        </Tooltip>
+                        ) : null}
+                      </div>
+                    </TooltipProvider>
+                  </TableCell>
+                      );
+                    }
+                    return null;
+                  })}
+                </TableRow>
+                );
+              })}
+              {!listLoading && visible.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={columnLayout.visibleIds.length} className="py-10 text-center text-sm text-muted-foreground">
+                    No leads match these filters.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
             {listLoading && visible.length === 0 ? (
-              <RecordCardsSkeleton count={6} />
+              <RecordCardsSkeleton count={4} />
             ) : visible.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 No leads match these filters.
               </p>
             ) : (
-              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                {visible.map((l) => {
-                  const attribution = leadAttribution(l);
-                  return (
-                    <RecordCard key={l.id}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-ink-text">
-                            {leadInitials(l.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-base font-semibold break-words text-ink-text">
-                                {l.name}
-                              </p>
-                              {l.inquiryCount > 1 ? (
-                                <span title={`Repeat inquiry · ${l.inquiryCount} times`}>
-                                  <Copy className="size-3.5 shrink-0 text-signal" />
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="font-mono-data text-[11px] text-slate-soft">
-                              {l.leadNo} · {l.phone || "—"}
-                            </p>
-                          </div>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="inline-flex shrink-0 items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
-                              aria-label={`Change status for ${l.name}`}
-                            >
-                              <StatusBadge status={l.status} />
-                              <ChevronDown className="size-3.5 text-slate-soft" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Set status</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {leadStatuses.map((s) => (
-                              <DropdownMenuItem
-                                key={s.code}
-                                disabled={s.code === l.status}
-                                onSelect={() => {
-                                  handleLeadStatusChange(l, s.code, s.label);
-                                }}
-                              >
-                                <StatusBadge status={s.code} />
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+              visible.map((l) => {
+                const attribution = leadAttribution(l);
+                return (
+                <RecordCard key={l.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-base font-semibold break-words text-ink-text">{l.name}</p>
+                        {l.inquiryCount > 1 ? <Copy className="size-3.5 shrink-0 text-signal" /> : null}
                       </div>
-                      <InfoGrid>
-                        <InfoItem label="Email">{l.email || "—"}</InfoItem>
-                        <InfoItem label="Assigned">{l.assignedTo?.name || "Unassigned"}</InfoItem>
-                        <InfoItem label="Tour package" className="sm:col-span-2">
-                          {l.tourPackage || "—"}
-                        </InfoItem>
-                        <InfoItem label="Route" className="sm:col-span-2">
-                          {l.pickup}
-                          {l.drop ? ` → ${l.drop}` : ""}
-                        </InfoItem>
-                        <InfoItem label="Travel dates">
-                          {formatDisplayDate(l.pickupDate)}
-                          {l.dropDate ? ` → ${formatDisplayDate(l.dropDate)}` : ""}
-                        </InfoItem>
-                        <InfoItem label="Car / pax / days">
-                          {l.car || "—"} · {l.adults}A
-                          {l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
-                        </InfoItem>
-                        <InfoItem label="Source">
-                          {sourceLabel(attribution.source, leadSources)}
-                          {attribution.website ? ` · ${attribution.website}` : ""}
-                        </InfoItem>
-                        <InfoItem label="Price">
-                          ₹{l.price.toLocaleString("en-IN")}
-                        </InfoItem>
-                        <InfoItem label="UTM URL" className="sm:col-span-2">
-                          {l.pageUrl ? (
-                            <a
-                              href={
-                                l.pageUrl.startsWith("http")
-                                  ? l.pageUrl
-                                  : `https://${l.pageUrl}`
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={l.pageUrl}
-                              className="break-all text-marigold hover:underline"
-                            >
-                              {l.pageUrl}
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </InfoItem>
-                        <InfoItem label="Created">
-                          <CreatedAtDisplay iso={l.createdAt} />
-                        </InfoItem>
-                        <InfoItem label="Next follow-up">
-                          {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
-                        </InfoItem>
-                        <InfoItem label="Last inquiry">
-                          {formatRelativeTime(l.lastInquiryAt)}
-                        </InfoItem>
-                      </InfoGrid>
-                      <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setHistoryLeadId(l.id)}
+                      <p className="font-mono-data text-[11px] text-slate-soft">{l.leadNo}</p>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className="inline-flex items-center gap-1">
+                          <StatusBadge status={l.status} />
+                          <ChevronDown className="size-3.5 text-slate-soft" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {leadStatuses.map((s) => (
+                          <DropdownMenuItem
+                            key={s.code}
+                            disabled={s.code === l.status}
+                            onSelect={() => {
+                              handleLeadStatusChange(l, s.code, s.label);
+                            }}
+                          >
+                            <StatusBadge status={s.code} />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <InfoGrid>
+                    <InfoItem label="Phone">{l.phone || "—"}</InfoItem>
+                    <InfoItem label="Email">{l.email || "—"}</InfoItem>
+                    <InfoItem label="Tour package" className="sm:col-span-2">
+                      {l.tourPackage || "—"}
+                    </InfoItem>
+                    <InfoItem label="Route" className="sm:col-span-2">
+                      {l.pickup}
+                      {l.drop ? ` → ${l.drop}` : ""}
+                    </InfoItem>
+                    <InfoItem label="Travel dates">
+                      {formatDisplayDate(l.pickupDate)}
+                      {l.dropDate ? ` → ${formatDisplayDate(l.dropDate)}` : ""}
+                    </InfoItem>
+                    <InfoItem label="Car / pax / days">
+                      {l.car || "—"} · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
+                    </InfoItem>
+                    <InfoItem label="Source">
+                      {sourceLabel(attribution.source, leadSources)}
+                      {attribution.website ? ` · ${attribution.website}` : ""}
+                    </InfoItem>
+                    <InfoItem label="UTM URL" className="sm:col-span-2">
+                      {l.pageUrl ? (
+                        <a
+                          href={l.pageUrl.startsWith("http") ? l.pageUrl : `https://${l.pageUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={l.pageUrl}
+                          className="break-all text-marigold hover:underline"
                         >
-                          <History className="size-3.5" /> History
-                        </Button>
-                        {canCommentLead ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setCommentLeadId(l.id)}
-                          >
-                            <MessageCircle className="size-3.5" /> Comments
-                          </Button>
-                        ) : null}
-                        {canQuoteLead ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setQuoteLeadId(l.id)}
-                          >
-                            <FileText className="size-3.5" /> Quote
-                          </Button>
-                        ) : null}
-                        {leadCanConvertToBooking(l) ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setBookingLead(l)}
-                          >
-                            <CalendarPlus className="size-3.5" /> Create booking
-                          </Button>
-                        ) : null}
-                        {canEditLead ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setEditingLeadId(l.id)}
-                          >
-                            <Pencil className="size-3.5" /> Edit
-                          </Button>
-                        ) : null}
-                        {canDeleteLead ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-signal"
-                            onClick={() => setDeleteTarget(l)}
-                          >
-                            <Trash2 className="size-3.5" /> Delete
-                          </Button>
-                        ) : null}
-                      </div>
-                    </RecordCard>
-                  );
-                })}
-              </div>
+                          {l.pageUrl}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </InfoItem>
+                    <InfoItem label="Assigned">{l.assignedTo?.name || "Unassigned"}</InfoItem>
+                    <InfoItem label="Created">
+                      <CreatedAtDisplay iso={l.createdAt} />
+                    </InfoItem>
+                    <InfoItem label="Next follow-up">
+                      {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
+                    </InfoItem>
+                    <InfoItem label="Price">₹{l.price.toLocaleString("en-IN")}</InfoItem>
+                    <InfoItem label="Last inquiry">{formatRelativeTime(l.lastInquiryAt)}</InfoItem>
+                  </InfoGrid>
+                  <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                    <Button size="sm" variant="outline" onClick={() => setHistoryLeadId(l.id)}>
+                      <History className="size-3.5" /> History
+                    </Button>
+                    {canCommentLead ? (
+                    <Button size="sm" variant="outline" onClick={() => setCommentLeadId(l.id)}>
+                      <MessageCircle className="size-3.5" /> Comments
+                    </Button>
+                    ) : null}
+                    {canQuoteLead ? (
+                    <Button size="sm" variant="outline" onClick={() => setQuoteLeadId(l.id)}>
+                      <FileText className="size-3.5" /> Quote
+                    </Button>
+                    ) : null}
+                    {leadCanConvertToBooking(l) ? (
+                      <Button size="sm" variant="outline" onClick={() => setBookingLead(l)}>
+                        <CalendarPlus className="size-3.5" /> Create booking
+                      </Button>
+                    ) : null}
+                    {canEditLead ? (
+                    <Button size="sm" variant="outline" onClick={() => setEditingLeadId(l.id)}>
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
+                    ) : null}
+                    {canDeleteLead ? (
+                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(l)}>
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                    ) : null}
+                  </div>
+                </RecordCard>
+                );
+              })
             )}
           </div>
           <PagePagination
