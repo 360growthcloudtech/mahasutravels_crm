@@ -1,6 +1,11 @@
 import { query } from "@/lib/db";
 import { formatBookingNo } from "@/lib/booking-utils";
 import { toDateOnly } from "@/lib/lead-utils";
+import {
+  createdAtIstClause,
+  createdAtIstDayExpr,
+  todayIsoIst,
+} from "@/lib/db/ist-calendar";
 
 export type DashboardFilters = {
   from?: string | null;
@@ -109,7 +114,7 @@ function diffDaysInclusive(from: string, to: string): number {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayIsoIst();
 }
 
 function dayLabel(iso: string): string {
@@ -146,19 +151,7 @@ function priorRange(from: string, to: string): { from: string; to: string } {
 }
 
 function leadDateClause(alias: string, from: string | null, to: string | null, params: unknown[]): string | null {
-  if (!from && !to) return null;
-  if (from && to) {
-    params.push(from, to);
-    const a = params.length - 1;
-    const b = params.length;
-    return `${alias}.pickup_date IS NOT NULL AND ${alias}.pickup_date::date BETWEEN $${a}::date AND $${b}::date`;
-  }
-  if (from) {
-    params.push(from);
-    return `${alias}.pickup_date IS NOT NULL AND ${alias}.pickup_date::date >= $${params.length}::date`;
-  }
-  params.push(to);
-  return `${alias}.pickup_date IS NOT NULL AND ${alias}.pickup_date::date <= $${params.length}::date`;
+  return createdAtIstClause(alias, from, to, params);
 }
 
 function bookingOverlapClause(
@@ -203,19 +196,7 @@ function spendDateClause(alias: string, from: string | null, to: string | null, 
 }
 
 function activityDateClause(alias: string, from: string | null, to: string | null, params: unknown[]): string | null {
-  if (!from && !to) return null;
-  if (from && to) {
-    params.push(from, to);
-    const a = params.length - 1;
-    const b = params.length;
-    return `${alias}.created_at::date BETWEEN $${a}::date AND $${b}::date`;
-  }
-  if (from) {
-    params.push(from);
-    return `${alias}.created_at::date >= $${params.length}::date`;
-  }
-  params.push(to);
-  return `${alias}.created_at::date <= $${params.length}::date`;
+  return createdAtIstClause(alias, from, to, params);
 }
 
 function websiteClause(alias: string, website: string | null, params: unknown[]): string | null {
@@ -304,7 +285,7 @@ async function bookingKpis(filters: ReturnType<typeof normalizeFilters>): Promis
 }> {
   const params: unknown[] = [];
   const clauses = [`b.status NOT IN ('Cancelled', 'Refunded')`];
-  const d = bookingOverlapClause("b", filters.from, filters.to, params);
+  const d = createdAtIstClause("b", filters.from, filters.to, params);
   if (d) clauses.push(d);
   const w = websiteClause("b", filters.website, params);
   if (w) clauses.push(w);
@@ -431,7 +412,7 @@ async function revenueTrend(
     )`);
   }
 
-  // Bucket by created_at so newly confirmed revenue shows even when travel_date is outside the window.
+  // Bucket by Created on (IST) so KPIs match the Created on column.
   const { rows: revRows } = await query<{
     day: string;
     revenue: string;
@@ -449,7 +430,7 @@ async function revenueTrend(
      FROM generate_series($1::date, $2::date, '1 day'::interval) gs
      LEFT JOIN bookings b
        ON b.status NOT IN ('Cancelled', 'Refunded')
-      AND b.created_at::date = gs::date
+      AND ${createdAtIstDayExpr("b")} = gs::date
       ${bookingExtra.join(" ")}
      GROUP BY gs::date
      ORDER BY gs::date`,
@@ -460,7 +441,7 @@ async function revenueTrend(
     `SELECT gs::date::text AS day, COUNT(l.id)::text AS leads
      FROM generate_series($1::date, $2::date, '1 day'::interval) gs
      LEFT JOIN leads l
-       ON l.created_at::date = gs::date
+       ON ${createdAtIstDayExpr("l")} = gs::date
       ${leadExtra.join(" ")}
      GROUP BY gs::date
      ORDER BY gs::date`,
@@ -508,7 +489,7 @@ async function agentPerformance(
     `b.status NOT IN ('Cancelled', 'Refunded')`,
     `trim(COALESCE(b.agent, '')) <> ''`,
   ];
-  const bd = bookingOverlapClause("b", filters.from, filters.to, bookingParams);
+  const bd = createdAtIstClause("b", filters.from, filters.to, bookingParams);
   if (bd) bookingClauses.push(bd);
   const bw = websiteClause("b", filters.website, bookingParams);
   if (bw) bookingClauses.push(bw);

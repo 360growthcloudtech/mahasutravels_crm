@@ -233,12 +233,13 @@ export function DateRangeFilter({
                   weekday:
                     "w-8 text-[0.7rem] font-medium text-muted-foreground [&:nth-child(6)]:text-signal [&:nth-child(7)]:text-signal",
                   range_start:
-                    "[&>button]:bg-ink [&>button]:text-white [&>button]:rounded-md",
+                    "[&>button]:!bg-ink [&>button]:!text-white [&>button]:rounded-md [&>button]:hover:!bg-ink-soft [&>button]:hover:!text-white",
                   range_end:
-                    "[&>button]:bg-ink [&>button]:text-white [&>button]:rounded-md",
-                  range_middle: "[&>button]:bg-secondary [&>button]:rounded-none",
+                    "[&>button]:!bg-ink [&>button]:!text-white [&>button]:rounded-md [&>button]:hover:!bg-ink-soft [&>button]:hover:!text-white",
+                  range_middle:
+                    "bg-marigold-soft [&>button]:!bg-transparent [&>button]:!text-ink-text [&>button]:rounded-none [&>button]:hover:!bg-transparent",
                   selected:
-                    "[&>button]:bg-secondary [&>button]:text-ink-text [&>button]:hover:bg-secondary",
+                    "[&>button]:bg-ink [&>button]:text-white [&>button]:hover:bg-ink-soft [&>button]:hover:text-white",
                 }}
                 components={{
                   DayButton: ({ day, ...buttonProps }) => (
