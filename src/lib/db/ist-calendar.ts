@@ -15,6 +15,20 @@ export function todayIsoIst(now = new Date()): string {
 }
 
 /**
+ * Midnight IST as timestamptz. Use `::timestamp` not `::date`: Postgres
+ * treats `date AT TIME ZONE` as timestamptz-in-session-TZ (UTC here), so the
+ * bound becomes 05:30 UTC and drops leads created before ~5:30am IST.
+ */
+function istMidnight(paramIndex: number): string {
+  return `($${paramIndex}::timestamp AT TIME ZONE '${IST_TIME_ZONE}')`;
+}
+
+/** Exclusive end: midnight IST of the day after a yyyy-MM-dd parameter. */
+function istNextMidnight(paramIndex: number): string {
+  return `(($${paramIndex}::date + 1)::timestamp AT TIME ZONE '${IST_TIME_ZONE}')`;
+}
+
+/**
  * Inclusive [from, to] match on a timestamptz column using IST calendar days.
  * Index-friendly range compare (not `created_at::date`).
  */
@@ -31,15 +45,15 @@ export function createdAtIstClause(
     params.push(from, to);
     const a = params.length - 1;
     const b = params.length;
-    return `${col} >= ($${a}::date AT TIME ZONE '${IST_TIME_ZONE}')
-      AND ${col} < (($${b}::date + 1) AT TIME ZONE '${IST_TIME_ZONE}')`;
+    return `${col} >= ${istMidnight(a)}
+      AND ${col} < ${istNextMidnight(b)}`;
   }
   if (from) {
     params.push(from);
-    return `${col} >= ($${params.length}::date AT TIME ZONE '${IST_TIME_ZONE}')`;
+    return `${col} >= ${istMidnight(params.length)}`;
   }
   params.push(to);
-  return `${col} < (($${params.length}::date + 1) AT TIME ZONE '${IST_TIME_ZONE}')`;
+  return `${col} < ${istNextMidnight(params.length)}`;
 }
 
 /** IST calendar date of a timestamptz column (for grouping by day). */

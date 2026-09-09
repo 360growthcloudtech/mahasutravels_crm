@@ -6,11 +6,13 @@ export function formatCreatedAt(iso?: string) {
   if (!Number.isFinite(d.getTime())) return null;
   return {
     date: d.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "numeric",
       month: "short",
       year: "numeric",
     }),
     time: d.toLocaleTimeString("en-IN", {
+      timeZone: "Asia/Kolkata",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
