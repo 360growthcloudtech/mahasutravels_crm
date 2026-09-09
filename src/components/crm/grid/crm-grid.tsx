@@ -5,6 +5,7 @@ import { AgGridReact } from "ag-grid-react";
 import type {
   ColDef,
   ColumnState,
+  FilterChangedEvent,
   GridApi,
   GridReadyEvent,
   IDatasource,
@@ -75,6 +76,8 @@ export type CrmGridProps<T extends { id: string }> = {
   extractExtra?: CreateGridDatasourceOptions<T>["extractExtra"];
   getRowId?: (data: T) => string;
   onGridApi?: (api: GridApi<T> | null) => void;
+  /** Fired when AG Grid column filters become active or inactive */
+  onColumnFiltersChange?: (active: boolean) => void;
 };
 
 /**
@@ -94,49 +97,111 @@ export function CrmGrid<T extends { id: string }>({
   extractExtra,
   getRowId,
   onGridApi,
+  onColumnFiltersChange,
 }: CrmGridProps<T>) {
   const dark = useIsDark();
   const apiRef = React.useRef<GridApi<T> | null>(null);
   const fetchPageRef = React.useRef(fetchPage);
+  const onErrorRef = React.useRef(onError);
+  const onStatsRef = React.useRef(onStats);
+  const extractExtraRef = React.useRef(extractExtra);
+  const fieldMapRef = React.useRef(fieldMap);
+  const onGridApiRef = React.useRef(onGridApi);
+  const onColumnFiltersChangeRef = React.useRef(onColumnFiltersChange);
+  const datasourceRef = React.useRef<IDatasource | null>(null);
+  const readyRef = React.useRef(false);
+  const toolbarKeyRef = React.useRef(toolbarKey);
+
   fetchPageRef.current = fetchPage;
+  onErrorRef.current = onError;
+  onStatsRef.current = onStats;
+  extractExtraRef.current = extractExtra;
+  fieldMapRef.current = fieldMap;
+  onGridApiRef.current = onGridApi;
+  onColumnFiltersChangeRef.current = onColumnFiltersChange;
+
+  const notifyColumnFilters = React.useCallback((api: GridApi<T>) => {
+    const model = api.getFilterModel() ?? {};
+    onColumnFiltersChangeRef.current?.(Object.keys(model).length > 0);
+  }, []);
 
   const makeDatasource = React.useCallback((): IDatasource => {
     return createGridDatasource<T>({
       fetchPage: (req) => fetchPageRef.current(req),
-      fieldMap,
-      onError,
-      onStats,
-      extractExtra,
+      fieldMap: fieldMapRef.current,
+      onError: (error) => onErrorRef.current?.(error),
+      onStats: (meta) => onStatsRef.current?.(meta),
+      extractExtra: (result) => extractExtraRef.current?.(result),
     });
-  }, [extractExtra, fieldMap, onError, onStats]);
+  }, []);
+
+  /** Reload rows for new toolbar filters without replacing the datasource (that clears column filters). */
+  const reloadForToolbar = React.useCallback((api: GridApi<T>) => {
+    const filterModel = api.getFilterModel() ?? {};
+    const hadFilters = Object.keys(filterModel).length > 0;
+    try {
+      api.paginationGoToFirstPage();
+    } catch {
+      /* grid may not be pagination-ready yet */
+    }
+    try {
+      // Keep the same datasource — fetchPage already reads latest toolbar filters via refs.
+      // Replacing it with a new instance resets AG Grid column filters.
+      api.purgeInfiniteCache();
+    } catch {
+      /* ignore if model not ready */
+    }
+    if (!hadFilters) return;
+    const after = api.getFilterModel() ?? {};
+    if (Object.keys(after).length === 0) {
+      api.setFilterModel(filterModel);
+    }
+  }, []);
 
   const onGridReady = React.useCallback(
     (event: GridReadyEvent<T>) => {
       apiRef.current = event.api;
-      onGridApi?.(event.api);
+      readyRef.current = true;
+      onGridApiRef.current?.(event.api);
       if (storageKey) {
         const stored = readLayout(storageKey);
         if (stored?.state?.length) {
           event.api.applyColumnState({ state: stored.state, applyOrder: true });
         }
       }
-      event.api.setGridOption("datasource", makeDatasource());
+      datasourceRef.current = makeDatasource();
+      event.api.setGridOption("datasource", datasourceRef.current);
+      notifyColumnFilters(event.api);
     },
-    [makeDatasource, onGridApi, storageKey]
+    [makeDatasource, notifyColumnFilters, storageKey]
+  );
+
+  const onFilterChanged = React.useCallback(
+    (event: FilterChangedEvent<T>) => {
+      notifyColumnFilters(event.api);
+    },
+    [notifyColumnFilters]
   );
 
   React.useEffect(() => {
     const api = apiRef.current;
-    if (!api) return;
-    api.setGridOption("datasource", makeDatasource());
-  }, [toolbarKey, makeDatasource]);
+    if (!api || !readyRef.current) return;
+    // Skip the mount/ready pass — onGridReady already set the datasource.
+    if (toolbarKeyRef.current === toolbarKey) return;
+    toolbarKeyRef.current = toolbarKey;
+    reloadForToolbar(api);
+  }, [toolbarKey, reloadForToolbar]);
 
+  // Unmount only — do not clear api when parent passes a new onGridApi identity
+  // (that used to break toolbar filter reloads).
   React.useEffect(() => {
     return () => {
-      onGridApi?.(null);
+      readyRef.current = false;
+      onColumnFiltersChangeRef.current?.(false);
+      onGridApiRef.current?.(null);
       apiRef.current = null;
     };
-  }, [onGridApi]);
+  }, []);
 
   const persistColumns = React.useCallback(() => {
     if (!storageKey || !apiRef.current) return;
@@ -162,6 +227,7 @@ export function CrmGrid<T extends { id: string }>({
         paginationPageSize={CRM_GRID_PAGE_SIZE}
         getRowId={(p) => (getRowId && p.data ? getRowId(p.data) : String(p.data?.id ?? ""))}
         onGridReady={onGridReady}
+        onFilterChanged={onFilterChanged}
         onColumnMoved={persistColumns}
         onColumnVisible={persistColumns}
         onColumnResized={(e) => {

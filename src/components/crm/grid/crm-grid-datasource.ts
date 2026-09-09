@@ -41,6 +41,8 @@ function mapSort(sortModel: SortModelItem[] | undefined, fieldMap?: Record<strin
 export function createGridDatasource<T>(
   options: CreateGridDatasourceOptions<T>
 ): IDatasource {
+  let requestSeq = 0;
+
   return {
     getRows(params: IGetRowsParams) {
       const pageSize = Math.max(1, params.endRow - params.startRow) || DEFAULT_GRID_PAGE_SIZE;
@@ -50,6 +52,7 @@ export function createGridDatasource<T>(
         params.filterModel as Record<string, unknown> | null,
         options.fieldMap
       );
+      const seq = ++requestSeq;
 
       void (async () => {
         try {
@@ -60,6 +63,8 @@ export function createGridDatasource<T>(
             sortDir,
             colFilters: colFilters.length ? colFilters : undefined,
           });
+          // Drop stale responses so an older unfiltered fetch can't overwrite a newer filter.
+          if (seq !== requestSeq) return;
           const lastRow = result.total;
           options.onStats?.({
             total: result.total,
@@ -69,6 +74,7 @@ export function createGridDatasource<T>(
           });
           params.successCallback(result.rows, lastRow);
         } catch (error) {
+          if (seq !== requestSeq) return;
           options.onError?.(error);
           params.failCallback();
         }

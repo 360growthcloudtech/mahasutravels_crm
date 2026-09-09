@@ -194,6 +194,7 @@ export default function BookingsPage() {
   const canDeleteBooking = useHasPermission("bookings.delete");
   const canCommentBooking = useHasPermission("bookings.comment");
   const gridApiRef = React.useRef<GridApi<Booking> | null>(null);
+  const [hasColumnFilters, setHasColumnFilters] = React.useState(false);
   const columnDefs = React.useMemo(() => buildBookingsColumnDefs(), []);
   const [isDesktop, setIsDesktop] = React.useState(false);
 
@@ -473,7 +474,8 @@ export default function BookingsPage() {
     hotelFilter.length > 0 ||
     websiteFilter.length > 0 ||
     travelFrom.length > 0 ||
-    travelTo.length > 0;
+    travelTo.length > 0 ||
+    hasColumnFilters;
 
   const exportInitialFilters = React.useMemo(
     () => ({
@@ -629,6 +631,8 @@ export default function BookingsPage() {
                     setWebsiteFilter([]);
                     setTravelFrom("");
                     setTravelTo("");
+                    gridApiRef.current?.setFilterModel(null);
+                    setHasColumnFilters(false);
                   }}
                 >
                   <X className="size-3.5" /> Clear filters
@@ -662,6 +666,7 @@ export default function BookingsPage() {
               onGridApi={(api) => {
                 gridApiRef.current = api;
               }}
+              onColumnFiltersChange={setHasColumnFilters}
               onError={(error) => {
                 toast({
                   variant: "error",

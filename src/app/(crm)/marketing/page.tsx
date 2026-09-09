@@ -167,6 +167,7 @@ export default function MarketingPage() {
     hasMore: false,
   });
   const gridApiRef = React.useRef<GridApi<AdSpendEntry> | null>(null);
+  const [hasColumnFilters, setHasColumnFilters] = React.useState(false);
   const columnDefs = React.useMemo(() => buildAdSpendsColumnDefs(), []);
   const [isDesktop, setIsDesktop] = React.useState(false);
 
@@ -206,7 +207,10 @@ export default function MarketingPage() {
   );
 
   const hasFilters =
-    query.trim().length > 0 || platformFilter.length > 0 || websiteFilter.length > 0;
+    query.trim().length > 0 ||
+    platformFilter.length > 0 ||
+    websiteFilter.length > 0 ||
+    hasColumnFilters;
 
   const visibleSpends = adSpends.filter((s) => {
     const q = debouncedQuery.toLowerCase();
@@ -478,6 +482,8 @@ export default function MarketingPage() {
                     setQuery("");
                     setPlatformFilter([]);
                     setWebsiteFilter([]);
+                    gridApiRef.current?.setFilterModel(null);
+                    setHasColumnFilters(false);
                   }}
                 >
                   <X className="size-3.5" /> Clear filters
@@ -498,6 +504,7 @@ export default function MarketingPage() {
               onGridApi={(api) => {
                 gridApiRef.current = api;
               }}
+              onColumnFiltersChange={setHasColumnFilters}
               onError={(error) => {
                 toast({
                   variant: "error",

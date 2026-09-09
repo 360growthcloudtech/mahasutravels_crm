@@ -143,6 +143,7 @@ export default function AssignmentsPage() {
     hasMore: false,
   });
   const gridApiRef = React.useRef<GridApi<Booking> | null>(null);
+  const [hasColumnFilters, setHasColumnFilters] = React.useState(false);
   const columnDefs = React.useMemo(() => buildAssignmentsColumnDefs(), []);
   const [isDesktop, setIsDesktop] = React.useState(false);
 
@@ -352,7 +353,7 @@ export default function AssignmentsPage() {
     [state.drivers, assignableDrivers, canAssignDriver]
   );
 
-  const hasFilters = query.trim().length > 0 || driverFilter.length > 0;
+  const hasFilters = query.trim().length > 0 || driverFilter.length > 0 || hasColumnFilters;
 
   const rangeStart =
     listPagination.total === 0 ? 0 : (listPagination.page - 1) * listPagination.pageSize + 1;
@@ -471,6 +472,8 @@ export default function AssignmentsPage() {
               onClick={() => {
                 setQuery("");
                 setDriverFilter([]);
+                gridApiRef.current?.setFilterModel(null);
+                setHasColumnFilters(false);
               }}
             >
               <X className="size-3.5" /> Clear
@@ -495,6 +498,7 @@ export default function AssignmentsPage() {
                 onGridApi={(api) => {
                   gridApiRef.current = api;
                 }}
+                onColumnFiltersChange={setHasColumnFilters}
                 onError={(error) => {
                   toast({
                     variant: "error",

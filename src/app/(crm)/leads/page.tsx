@@ -218,6 +218,7 @@ export default function LeadsPage() {
   const canQuoteLead = useHasPermission("leads.quote");
   const canCreateBookingFromLead = useHasPermission("leads.create_booking");
   const gridApiRef = React.useRef<GridApi<Lead> | null>(null);
+  const [hasColumnFilters, setHasColumnFilters] = React.useState(false);
   const columnDefs = React.useMemo(() => buildLeadsColumnDefs(), []);
   const [isDesktop, setIsDesktop] = React.useState(false);
 
@@ -530,7 +531,8 @@ export default function LeadsPage() {
     sourceFilter.length > 0 ||
     agentFilter.length > 0 ||
     websiteFilter.length > 0 ||
-    createdRange != null;
+    createdRange != null ||
+    hasColumnFilters;
 
   const exportInitialFilters = React.useMemo(
     () => ({
@@ -708,6 +710,8 @@ export default function LeadsPage() {
                     setAgentFilter([]);
                     setWebsiteFilter([]);
                     setCreatedRange(null);
+                    gridApiRef.current?.setFilterModel(null);
+                    setHasColumnFilters(false);
                   }}
                 >
                   <X className="size-3.5" /> Clear filters
@@ -741,6 +745,7 @@ export default function LeadsPage() {
               onGridApi={(api) => {
                 gridApiRef.current = api;
               }}
+              onColumnFiltersChange={setHasColumnFilters}
               onError={(error) => {
                 toast({
                   variant: "error",
