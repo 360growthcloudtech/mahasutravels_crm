@@ -1,24 +1,18 @@
 import { NextResponse } from "next/server";
 import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { parseDriversListFilters, parseLeadsPagination } from "@/lib/api/list-filters";
 import {
   createDriver,
   driverToDto,
   isUniqueViolation,
   listDrivers,
+  listDriversPage,
   type CreateDriverInput,
 } from "@/lib/db/drivers";
 import { isDriverStatus, isFuelType, normalizeDateInput } from "@/lib/driver-utils";
 
 export const runtime = "nodejs";
 
-function csvParam(value: string | null): string[] | undefined {
-  if (!value?.trim()) return undefined;
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-}
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -64,13 +58,27 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const url = new URL(request.url);
-  const drivers = await listDrivers({
-    search: url.searchParams.get("search") ?? undefined,
-    status: csvParam(url.searchParams.get("status")),
-  });
+  const filters = parseDriversListFilters(url.searchParams);
+  const { page, pageSize, paginated } = parseLeadsPagination(url.searchParams);
+
+  if (!paginated) {
+    const drivers = await listDrivers(filters);
+    return NextResponse.json({ drivers: drivers.map(driverToDto) });
+  }
+
+  const offset = (page - 1) * pageSize;
+  const result = await listDriversPage(filters, { limit: pageSize, offset });
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize) || 1);
 
   return NextResponse.json({
-    drivers: drivers.map(driverToDto),
+    drivers: result.rows.map(driverToDto),
+    pagination: {
+      page,
+      pageSize,
+      total: result.total,
+      totalPages,
+      hasMore: page * pageSize < result.total,
+    },
   });
 }
 

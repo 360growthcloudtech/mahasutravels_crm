@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import {
-  Car,
-  ChevronDown,
-  Filter,
   Phone,
   Search,
   UserRound,
   X,
+  Filter,
+  ChevronDown,
 } from "lucide-react";
+import type { GridApi } from "ag-grid-community";
 import { Topbar } from "@/components/crm/topbar";
 import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,14 +17,6 @@ import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,16 +36,23 @@ import {
   makeLeadHistoryEvent,
 } from "@/lib/data";
 import { assignedVehicleLabel, bookingDrivers, findDriverByAssignment } from "@/lib/booking-utils";
-import { formatSeatCount, formatDriverStatusLabel } from "@/lib/driver-utils";
 import { DriverStatusBadge } from "@/components/crm/driver-status-badge";
-import { useDriverAvailability } from "@/lib/use-driver-availability";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
-  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
+import { PagePagination } from "@/components/crm/list-pagination";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
+import {
+  AssignDriverMenu,
+  buildAssignmentsColumnDefs,
+  type AssignmentsGridActions,
+} from "@/components/crm/grid/assignments-grid-columns";
+import { bookingFromApi, fetchBookingsPage } from "@/lib/bookings-api";
+
+const ASSIGNMENTS_PAGE_SIZE = 25;
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -116,72 +115,6 @@ function findDriver(drivers: Driver[], name: string, vehicle?: string) {
   return findDriverByAssignment(drivers, name, vehicle);
 }
 
-function AssignDriverMenu({
-  booking,
-  assignableDrivers,
-  onAssign,
-}: {
-  booking: Booking;
-  assignableDrivers: Driver[];
-  onAssign: (driver: Driver) => void;
-}) {
-  const assigned = bookingDrivers(booking);
-  const hasDriver = assigned.length > 0;
-  const { occupiedSet: occupiedDriverNames } = useDriverAvailability({
-    enabled: true,
-    travel_date: booking.travelDate,
-    return_date: booking.returnDate,
-    exclude_booking_id: booking.id,
-  });
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 w-full">
-          {hasDriver ? "Reassign" : "Assign"}
-          <ChevronDown className="size-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[15rem]">
-        <DropdownMenuLabel>Active drivers</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {assignableDrivers.length === 0 ? (
-          <DropdownMenuItem disabled>No approved drivers</DropdownMenuItem>
-        ) : (
-          assignableDrivers.map((d) => {
-            const alreadyAssigned =
-              d.name === assigned[0]?.driver &&
-              (d.vehicleType === assigned[0]?.vehicle || d.vehicle === assigned[0]?.vehicle);
-            const unavailable = occupiedDriverNames.has(d.name);
-            return (
-              <DropdownMenuItem
-                key={d.id}
-                disabled={alreadyAssigned || unavailable}
-                onSelect={() => {
-                  if (unavailable) return;
-                  onAssign(d);
-                }}
-              >
-                <Car className="size-3.5" />
-                <span className="min-w-0">
-                  <span className="block text-sm">
-                    {d.name}
-                    {unavailable ? " · Not available" : ""}
-                  </span>
-                  <span className="block text-[10px] text-slate-soft">
-                    {[d.vehicleType, formatSeatCount(d.vehicleCapacity)].filter(Boolean).join(" · ") ||
-                      "No vehicle"}
-                  </span>
-                </span>
-              </DropdownMenuItem>
-            );
-          })
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 export default function AssignmentsPage() {
   const {
     state,
@@ -195,13 +128,106 @@ export default function AssignmentsPage() {
   const canAssignDriver = useHasPermission("booking.and.drivers.assign");
   const pageLoading = bookingsLoading || driversLoading;
 
+  const [query, setQuery] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
+  const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
+  const [view, setView] = React.useState<"table" | "by-driver">("table");
+  const [page, setPage] = React.useState(1);
+  const [pageBookings, setPageBookings] = React.useState<Booking[]>([]);
+  const [listLoading, setListLoading] = React.useState(true);
+  const [listPagination, setListPagination] = React.useState({
+    page: 1,
+    pageSize: ASSIGNMENTS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
+  const gridApiRef = React.useRef<GridApi<Booking> | null>(null);
+  const columnDefs = React.useMemo(() => buildAssignmentsColumnDefs(), []);
+  const [isDesktop, setIsDesktop] = React.useState(false);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const filterKey = `${debouncedQuery}|${driverFilter.join(",")}`;
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [filterKey]);
+
+  const toolbarFilters = React.useMemo(
+    () => ({
+      search: debouncedQuery || undefined,
+      driver: driverFilter.length ? driverFilter : undefined,
+    }),
+    [debouncedQuery, driverFilter]
+  );
+
   const refreshAssignments = React.useCallback(async () => {
+    gridApiRef.current?.refreshInfiniteCache();
     await Promise.all([refreshBookings(), refreshDrivers()]);
   }, [refreshBookings, refreshDrivers]);
 
-  const [query, setQuery] = React.useState("");
-  const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
-  const [view, setView] = React.useState<"table" | "by-driver">("table");
+  const loadBookingsPage = React.useCallback(async () => {
+    setListLoading(true);
+    try {
+      const data = await fetchBookingsPage({
+        ...toolbarFilters,
+        page,
+        pageSize: ASSIGNMENTS_PAGE_SIZE,
+      });
+      setPageBookings(data.bookings.map(bookingFromApi));
+      setListPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load assignments",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setListLoading(false);
+    }
+  }, [toolbarFilters, page, toast]);
+
+  React.useEffect(() => {
+    if (isDesktop && view === "table") return;
+    if (view === "by-driver") return;
+    void loadBookingsPage();
+  }, [loadBookingsPage, isDesktop, view]);
+
+  React.useEffect(() => {
+    if (listPagination.totalPages > 0 && page > listPagination.totalPages) {
+      setPage(listPagination.totalPages);
+    }
+  }, [listPagination.totalPages, page]);
+
+  const fetchGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchBookingsPage({
+        ...toolbarFilters,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.bookings.map(bookingFromApi),
+        total: data.pagination.total,
+      };
+    },
+    [toolbarFilters]
+  );
 
   const activeBookings = state.bookings.filter(
     (b) => b.status !== "Cancelled" && b.status !== "Refunded"
@@ -221,9 +247,9 @@ export default function AssignmentsPage() {
 
   const assignableDrivers = state.drivers.filter((d) => d.status === "Approved");
 
-  const visible = state.bookings.filter((b) => {
+  const visibleForByDriver = state.bookings.filter((b) => {
     const drivers = bookingDrivers(b);
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.toLowerCase();
     if (q) {
       const hay = [
         b.customer,
@@ -247,7 +273,7 @@ export default function AssignmentsPage() {
 
   const byDriver = React.useMemo(() => {
     const map = new Map<string, { driver?: Driver; bookings: Booking[] }>();
-    for (const b of visible) {
+    for (const b of visibleForByDriver) {
       const drivers = bookingDrivers(b);
       if (drivers.length === 0) {
         const entry = map.get("Unassigned") ?? { driver: undefined, bookings: [] };
@@ -275,7 +301,7 @@ export default function AssignmentsPage() {
       if (b === "Unassigned") return -1;
       return a.localeCompare(b);
     });
-  }, [visible, state.drivers]);
+  }, [visibleForByDriver, state.drivers]);
 
   const driversWithWorkSet = new Set(
     assigned.flatMap((b) => bookingDrivers(b).map((d) => d.driver)).filter(Boolean)
@@ -304,6 +330,9 @@ export default function AssignmentsPage() {
         title: "Driver assigned",
         description: `${driver.name} → ${booking.customer}`,
       });
+      gridApiRef.current?.refreshInfiniteCache();
+      if (!isDesktop || view !== "table") await loadBookingsPage();
+      await refreshBookings();
     } catch (error) {
       toast({
         variant: "error",
@@ -313,14 +342,34 @@ export default function AssignmentsPage() {
     }
   }
 
+  const gridActions = React.useMemo<AssignmentsGridActions>(
+    () => ({
+      drivers: state.drivers,
+      assignableDrivers,
+      canAssignDriver,
+      onAssign: (booking, driver) => void assignDriver(booking, driver),
+    }),
+    [state.drivers, assignableDrivers, canAssignDriver]
+  );
+
   const hasFilters = query.trim().length > 0 || driverFilter.length > 0;
+
+  const rangeStart =
+    listPagination.total === 0 ? 0 : (listPagination.page - 1) * listPagination.pageSize + 1;
+  const rangeEnd = Math.min(
+    listPagination.page * listPagination.pageSize,
+    listPagination.total
+  );
 
   return (
     <>
       <Topbar
         title="Booking & Drivers"
         action={
-          <TableRefreshButton onRefresh={refreshAssignments} loading={pageLoading} />
+          <TableRefreshButton
+            onRefresh={() => void refreshAssignments()}
+            loading={pageLoading || listLoading}
+          />
         }
       />
 
@@ -328,38 +377,38 @@ export default function AssignmentsPage() {
         {pageLoading ? (
           <StatCardsSkeleton />
         ) : (
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Active with driver</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">
-                {assigned.length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Unassigned</p>
-              <p className="mt-1 font-display text-xl font-semibold text-signal">
-                {unassigned.length}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Drivers on trips</p>
-              <p className="mt-1 font-display text-xl font-semibold">{driversWithWork}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Active & free</p>
-              <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
-                {freeApproved}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Active with driver</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">
+                  {assigned.length}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Unassigned</p>
+                <p className="mt-1 font-display text-xl font-semibold text-signal">
+                  {unassigned.length}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Drivers on trips</p>
+                <p className="mt-1 font-display text-xl font-semibold">{driversWithWork}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Active & free</p>
+                <p className="mt-1 font-display text-xl font-semibold text-marigold-ink">
+                  {freeApproved}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         <Card className="mb-4 border-dashed">
@@ -428,134 +477,59 @@ export default function AssignmentsPage() {
             </Button>
           )}
           <p className="ml-auto text-xs text-slate-soft">
-            {visible.length} of {state.bookings.length}
+            {view === "table" ? listPagination.total : visibleForByDriver.length} of{" "}
+            {state.bookings.length}
           </p>
         </div>
 
         {view === "table" ? (
-          <Card className="min-h-0 flex-1 overflow-hidden">
-            <div className="hidden h-full overflow-auto md:block">
-              <Table containerClassName="min-w-[56rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Booking</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Travel</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Package / Route</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Driver</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Vehicle</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary w-[10rem]">Assign</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pageLoading ? (
-                    <TableRowsSkeleton columns={6} rows={5} />
-                  ) : visible.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-10 text-center text-sm text-slate-soft">
-                        No booking–driver rows match your filters.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    visible.map((b) => {
-                      const assignments = bookingDrivers(b);
-                      return (
-                        <TableRow key={b.id} className="group">
-                          <TableCell>
-                            <p className="text-sm font-medium text-ink-text">{b.customer}</p>
-                            <p className="font-mono-data text-[11px] text-slate-soft">
-                              {b.bookingNo ?? b.id}
-                            </p>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-sm">
-                            {formatDisplayDate(b.travelDate)}
-                            {b.returnDate ? ` → ${formatDisplayDate(b.returnDate)}` : ""}
-                            <p className="text-[11px] text-slate-soft">{b.days}d</p>
-                          </TableCell>
-                          <TableCell className="min-w-0">
-                            <p className="truncate text-sm text-ink-text">{b.tourPackage}</p>
-                            <p className="truncate text-[11px] text-slate-soft">
-                              {bookingRoute(b)}
-                            </p>
-                          </TableCell>
-                          <TableCell>
-                            {assignments.length > 0 ? (
-                              <div className="space-y-1">
-                                {assignments.map((a, i) => {
-                                  const d = findDriver(state.drivers, a.driver, a.vehicle);
-                                  return (
-                                    <div key={`${a.driver}-${a.vehicle}-${i}`}>
-                                      <p className="text-sm font-medium text-ink-text">
-                                        {a.driver}
-                                        {i === 0 && assignments.length > 1 ? (
-                                          <span className="ml-1 text-[10px] font-normal text-slate-soft">
-                                            primary
-                                          </span>
-                                        ) : null}
-                                      </p>
-                                      {d ? (
-                                        <p className="font-mono-data text-[11px] text-slate-soft">
-                                          {d.driverNo ?? d.id} · {formatDriverStatusLabel(d.status)}
-                                        </p>
-                                      ) : (
-                                        <p className="text-[11px] text-signal">Not in driver master</p>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <Badge variant="outline">Unassigned</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-mono-data text-sm">
-                            {assignments.length > 0 ? (
-                              <div className="space-y-1">
-                                {assignments.map((a, i) => (
-                                  <p key={`${a.vehicle}-${i}`}>
-                                    {assignedVehicleLabel(a, state.drivers)}
-                                  </p>
-                                ))}
-                              </div>
-                            ) : (
-                              "—"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {canAssignDriver ? (
-                            <AssignDriverMenu
-                              booking={b}
-                              assignableDrivers={assignableDrivers}
-                              onAssign={(d) => void assignDriver(b, d)}
-                            />
-                            ) : (
-                              <Badge variant="outline">
-                                {assignments.length > 0 ? "Assigned" : "Unassigned"}
-                              </Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="relative hidden min-h-0 flex-1 md:block">
+              <CrmGrid<Booking>
+                className="h-full min-h-[28rem]"
+                columnDefs={columnDefs}
+                fetchPage={fetchGridPage}
+                toolbarKey={filterKey}
+                storageKey="crm.ag.assignments.v1"
+                context={gridActions}
+                onGridApi={(api) => {
+                  gridApiRef.current = api;
+                }}
+                onError={(error) => {
+                  toast({
+                    variant: "error",
+                    title: "Could not load assignments",
+                    description: error instanceof Error ? error.message : "Please try again.",
+                  });
+                }}
+                onStats={({ total }) => {
+                  setListPagination((prev) => ({
+                    ...prev,
+                    total,
+                    totalPages: Math.max(1, Math.ceil(total / prev.pageSize) || 1),
+                  }));
+                  setListLoading(false);
+                }}
+              />
             </div>
 
             <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
-              {pageLoading ? (
+              {listLoading && pageBookings.length === 0 ? (
                 <RecordCardsSkeleton count={4} />
-              ) : visible.length === 0 ? (
+              ) : pageBookings.length === 0 ? (
                 <p className="py-10 text-center text-sm text-slate-soft">
                   No booking–driver rows match your filters.
                 </p>
               ) : (
-                visible.map((b) => {
+                pageBookings.map((b) => {
                   const assignments = bookingDrivers(b);
                   return (
                     <RecordCard key={b.id}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-base font-semibold break-words text-ink-text">{b.customer}</p>
+                          <p className="text-base font-semibold break-words text-ink-text">
+                            {b.customer}
+                          </p>
                           <p className="font-mono-data text-[11px] text-slate-soft">
                             {b.bookingNo ?? b.id}
                           </p>
@@ -587,17 +561,26 @@ export default function AssignmentsPage() {
                         </InfoItem>
                       </InfoGrid>
                       {canAssignDriver ? (
-                      <AssignDriverMenu
-                        booking={b}
-                        assignableDrivers={assignableDrivers}
-                        onAssign={(d) => void assignDriver(b, d)}
-                      />
+                        <AssignDriverMenu
+                          booking={b}
+                          assignableDrivers={assignableDrivers}
+                          onAssign={(d) => void assignDriver(b, d)}
+                        />
                       ) : null}
                     </RecordCard>
                   );
                 })
               )}
             </div>
+            <PagePagination
+              page={listPagination.page}
+              totalPages={listPagination.totalPages}
+              total={listPagination.total}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              onPageChange={setPage}
+              className="shrink-0 md:hidden"
+            />
           </Card>
         ) : pageLoading ? (
           <RecordCardsSkeleton count={4} />

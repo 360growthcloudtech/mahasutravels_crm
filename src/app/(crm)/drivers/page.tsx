@@ -15,8 +15,8 @@ import {
   Filter,
   ChevronDown,
   MoreHorizontal,
-  Archive,
 } from "lucide-react";
+import type { GridApi } from "ag-grid-community";
 import { Topbar } from "@/components/crm/topbar";
 import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { useHasPermission } from "@/lib/use-has-permission";
@@ -25,14 +25,6 @@ import { DriverStatusBadge } from "@/components/crm/driver-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,20 +36,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DriverFormDialog, DriverFormState } from "@/components/crm/driver-form-dialog";
 import { VehicleTypesManager } from "@/components/crm/vehicle-types-manager";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
+import {
+  buildDriversColumnDefs,
+  type DriversGridActions,
+} from "@/components/crm/grid/drivers-grid-columns";
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
-  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
-import {
-  InfiniteScrollSentinel,
-  PagePagination,
-} from "@/components/crm/list-pagination";
+import { PagePagination } from "@/components/crm/list-pagination";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { useListPagination } from "@/lib/use-list-pagination";
 import { Driver } from "@/lib/data";
+import { driverFromApi, fetchDriversPage } from "@/lib/drivers-api";
 import {
   DRIVER_STATUS_FILTER_GROUPS,
   formatDriverStatusLabel,
@@ -66,10 +59,7 @@ import {
 
 type DriverStatusFilter = (typeof DRIVER_STATUS_FILTER_GROUPS)[number]["label"];
 
-const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[9rem] whitespace-nowrap border-l border-border-soft bg-secondary";
-const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[9rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+const DRIVERS_PAGE_SIZE = 25;
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -81,6 +71,15 @@ function driverInitials(name: string) {
     .map((n) => n[0])
     .join("")
     .slice(0, 2);
+}
+
+function expandStatusFilter(labels: DriverStatusFilter[]): string[] | undefined {
+  if (!labels.length) return undefined;
+  const statuses = labels.flatMap(
+    (label) =>
+      DRIVER_STATUS_FILTER_GROUPS.find((g) => g.label === label)?.statuses ?? []
+  );
+  return statuses.length ? [...statuses] : undefined;
 }
 
 function DriverCard({
@@ -118,32 +117,32 @@ function DriverCard({
           <div className="flex shrink-0 items-center gap-1">
             <DriverStatusBadge status={d.status} />
             {canEdit || canDelete ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="size-7" disabled={statusBusy}>
-                  <MoreHorizontal className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {canEdit ? (
-                <DropdownMenuItem onSelect={() => onEdit()}>
-                  <Pencil className="size-3.5" /> Edit profile
-                </DropdownMenuItem>
-                ) : null}
-                {canEdit && canDelete ? <DropdownMenuSeparator /> : null}
-                {canDelete ? (
-                <DropdownMenuItem
-                  className="text-signal focus:bg-signal-soft"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    onDelete();
-                  }}
-                >
-                  <Trash2 className="size-3.5" /> Remove driver
-                </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" className="size-7" disabled={statusBusy}>
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {canEdit ? (
+                    <DropdownMenuItem onSelect={() => onEdit()}>
+                      <Pencil className="size-3.5" /> Edit profile
+                    </DropdownMenuItem>
+                  ) : null}
+                  {canEdit && canDelete ? <DropdownMenuSeparator /> : null}
+                  {canDelete ? (
+                    <DropdownMenuItem
+                      className="text-signal focus:bg-signal-soft"
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        onDelete();
+                      }}
+                    >
+                      <Trash2 className="size-3.5" /> Remove driver
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null}
           </div>
         </div>
@@ -196,35 +195,35 @@ function DriverCard({
           </p>
         ) : null}
 
-        {(canEdit || canDelete) ? (
-        <div className="grid grid-cols-2 gap-2 border-t border-border-soft pt-3">
-          {canEdit ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            disabled={statusBusy}
-            onClick={onEdit}
-          >
-            <Pencil className="size-3.5" /> Edit
-          </Button>
-          ) : null}
-          {canEdit ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={statusBusy}
-            onClick={() => void onToggleStatus()}
-          >
-            {statusBusy
-              ? "Updating…"
-              : isDriverActiveStatus(d.status)
-                ? "Deactivate"
-                : "Activate"}
-          </Button>
-          ) : null}
-        </div>
+        {canEdit || canDelete ? (
+          <div className="grid grid-cols-2 gap-2 border-t border-border-soft pt-3">
+            {canEdit ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={statusBusy}
+                onClick={onEdit}
+              >
+                <Pencil className="size-3.5" /> Edit
+              </Button>
+            ) : null}
+            {canEdit ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full"
+                disabled={statusBusy}
+                onClick={() => void onToggleStatus()}
+              >
+                {statusBusy
+                  ? "Updating…"
+                  : isDriverActiveStatus(d.status)
+                    ? "Deactivate"
+                    : "Activate"}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </CardContent>
     </Card>
@@ -244,37 +243,109 @@ export default function DriversPage() {
   const [deleting, setDeleting] = React.useState(false);
   const [statusBusyId, setStatusBusyId] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<DriverStatusFilter[]>([]);
+  const [page, setPage] = React.useState(1);
+  const [pageDrivers, setPageDrivers] = React.useState<Driver[]>([]);
+  const [listLoading, setListLoading] = React.useState(true);
+  const [listPagination, setListPagination] = React.useState({
+    page: 1,
+    pageSize: DRIVERS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
+  const gridApiRef = React.useRef<GridApi<Driver> | null>(null);
+  const columnDefs = React.useMemo(() => buildDriversColumnDefs(), []);
+  const [isDesktop, setIsDesktop] = React.useState(false);
 
   const { drivers } = state;
-  const editingDriver = editingDriverId
-    ? drivers.find((d) => d.id === editingDriverId) ?? null
-    : null;
+  const editingDriver =
+    (editingDriverId ? pageDrivers.find((d) => d.id === editingDriverId) : null) ??
+    (editingDriverId ? drivers.find((d) => d.id === editingDriverId) ?? null : null);
 
-  const filtered = drivers.filter((d) => {
-    const q = search.trim().toLowerCase();
-    const matchesSearch =
-      !q ||
-      d.name.toLowerCase().includes(q) ||
-      d.phone.toLowerCase().includes(q) ||
-      d.driverNo.toLowerCase().includes(q) ||
-      d.vehicle.toLowerCase().includes(q) ||
-      d.vehicleType.toLowerCase().includes(q) ||
-      (d.address ?? "").toLowerCase().includes(q);
-    const matchesStatus =
-      statusFilter.length === 0 ||
-      DRIVER_STATUS_FILTER_GROUPS.some(
-        (group) =>
-          statusFilter.includes(group.label) &&
-          (group.statuses as readonly Driver["status"][]).includes(d.status)
-      );
-    return matchesSearch && matchesStatus;
-  });
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
-  const pagination = useListPagination(filtered, {
-    pageSize: 10,
-    resetKey: `${search}|${statusFilter.join(",")}`,
-  });
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const filterKey = `${debouncedSearch}|${statusFilter.join(",")}`;
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [filterKey]);
+
+  const toolbarFilters = React.useMemo(
+    () => ({
+      search: debouncedSearch || undefined,
+      status: expandStatusFilter(statusFilter),
+    }),
+    [debouncedSearch, statusFilter]
+  );
+
+  const loadDriversPage = React.useCallback(async () => {
+    setListLoading(true);
+    try {
+      const data = await fetchDriversPage({
+        ...toolbarFilters,
+        page,
+        pageSize: DRIVERS_PAGE_SIZE,
+      });
+      setPageDrivers(data.drivers.map(driverFromApi));
+      setListPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load drivers",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setListLoading(false);
+    }
+  }, [toolbarFilters, page, toast]);
+
+  React.useEffect(() => {
+    if (isDesktop) return;
+    void loadDriversPage();
+  }, [loadDriversPage, isDesktop]);
+
+  React.useEffect(() => {
+    if (listPagination.totalPages > 0 && page > listPagination.totalPages) {
+      setPage(listPagination.totalPages);
+    }
+  }, [listPagination.totalPages, page]);
+
+  async function reloadDrivers() {
+    gridApiRef.current?.refreshInfiniteCache();
+    if (!isDesktop) await loadDriversPage();
+    await refreshDrivers();
+  }
+
+  const fetchGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchDriversPage({
+        ...toolbarFilters,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.drivers.map(driverFromApi),
+        total: data.pagination.total,
+      };
+    },
+    [toolbarFilters]
+  );
 
   async function handleCreate(data: DriverFormState) {
     try {
@@ -284,6 +355,7 @@ export default function DriversPage() {
         title: "Driver added",
         description: `${data.name} joined the fleet.`,
       });
+      void reloadDrivers();
     } catch (error) {
       toast({
         variant: "error",
@@ -302,6 +374,7 @@ export default function DriversPage() {
         title: "Driver updated",
         description: `${data.name}'s profile was saved.`,
       });
+      void reloadDrivers();
     } catch (error) {
       toast({
         variant: "error",
@@ -322,6 +395,7 @@ export default function DriversPage() {
         title: "Status updated",
         description: `${d.name} marked as ${formatDriverStatusLabel(next)}.`,
       });
+      void reloadDrivers();
     } catch (error) {
       toast({
         variant: "error",
@@ -344,6 +418,7 @@ export default function DriversPage() {
         description: `${deleteTarget.name} was removed from the fleet.`,
       });
       setDeleteTarget(null);
+      void reloadDrivers();
     } catch (error) {
       toast({
         variant: "error",
@@ -355,13 +430,32 @@ export default function DriversPage() {
     }
   }
 
+  const gridActions = React.useMemo<DriversGridActions>(
+    () => ({
+      canEditDriver,
+      canDeleteDriver,
+      statusBusyId,
+      onEdit: (d) => setEditingDriverId(d.id),
+      onToggleStatus: (d) => void handleToggleStatus(d),
+      onDelete: (d) => setDeleteTarget(d),
+    }),
+    [canEditDriver, canDeleteDriver, statusBusyId]
+  );
+
+  const rangeStart =
+    listPagination.total === 0 ? 0 : (listPagination.page - 1) * listPagination.pageSize + 1;
+  const rangeEnd = Math.min(
+    listPagination.page * listPagination.pageSize,
+    listPagination.total
+  );
+
   return (
     <>
       <Topbar
         title="Drivers & Vehicles"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <TableRefreshButton onRefresh={refreshDrivers} loading={driversLoading} />
+            <TableRefreshButton onRefresh={() => void reloadDrivers()} loading={driversLoading || listLoading} />
             {canCreateDriver || canEditDriver || canDeleteDriver ? (
               <Button variant="outline" onClick={() => setVehicleTypesOpen(true)}>
                 <Car className="size-4" /> Vehicle types
@@ -462,224 +556,72 @@ export default function DriversPage() {
               </DropdownMenuContent>
             </DropdownMenu>
             <p className="ml-auto text-xs text-slate-soft">
-              {filtered.length} of {drivers.length}
+              {listPagination.total} of {drivers.length}
             </p>
           </div>
         </div>
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="hidden min-h-0 flex-1 flex-col md:flex">
-            <div className="min-h-0 flex-1 overflow-auto">
-              <Table containerClassName="min-w-[64rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Driver</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Vehicle</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Contact</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Location</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Documents</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Rating</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Status</TableHead>
-                    <TableHead className={stickyActionHead}>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {driversLoading ? (
-                    <TableRowsSkeleton columns={8} rows={5} avatar />
-                  ) : pagination.desktopItems.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="py-10 text-center text-sm text-slate-soft">
-                        No drivers match your filters. Add a driver to get started.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    pagination.desktopItems.map((d) => {
-                      const statusBusy = statusBusyId === d.id;
-                      return (
-                        <TableRow key={d.id} className="group">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
-                                {driverInitials(d.name)}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-ink-text">{d.name}</p>
-                                <p className="font-mono-data text-[11px] text-slate-soft">
-                                  {d.driverNo}
-                                </p>
-                                {d.vendor ? (
-                                  <Badge variant="violet" className="mt-1">
-                                    Vendor
-                                  </Badge>
-                                ) : null}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <p className="text-sm text-ink-text">{d.vehicleType}</p>
-                            <p className="font-mono-data text-[11px] text-slate-soft">{d.vehicle}</p>
-                            {d.vehicleCapacity ? (
-                              <p className="text-[11px] text-slate-soft">{d.vehicleCapacity} seater</p>
-                            ) : null}
-                          </TableCell>
-                          <TableCell className="font-mono-data whitespace-nowrap text-sm">
-                            {d.phone}
-                          </TableCell>
-                          <TableCell className="max-w-[12rem] text-sm text-slate">
-                            {d.address || "—"}
-                            {d.notes ? (
-                              <p className="mt-1 text-[11px] text-slate-soft">{d.notes}</p>
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-start gap-1.5 text-xs">
-                              {d.documentsVerified ? (
-                                <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-teal" />
-                              ) : (
-                                <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-signal" />
-                              )}
-                              <div>
-                                <p className="text-ink-text">
-                                  {d.documentsVerified ? "Verified" : "Pending"}
-                                </p>
-                                {d.insuranceExpiry ? (
-                                  <p className="text-slate-soft">Ins. {d.insuranceExpiry}</p>
-                                ) : null}
-                                {d.pollutionExpiry ? (
-                                  <p className="text-slate-soft">PUC {d.pollutionExpiry}</p>
-                                ) : null}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-sm">
-                            <div className="flex items-center gap-1">
-                              <Star className="size-3.5 fill-marigold text-marigold" />
-                              {d.rating}
-                            </div>
-                            <p className="text-[11px] text-slate-soft">{d.trips} trips</p>
-                          </TableCell>
-                          <TableCell>
-                            <DriverStatusBadge status={d.status} />
-                          </TableCell>
-                          <TableCell className={stickyActionCell}>
-                            {canEditDriver || canDeleteDriver ? (
-                            <div className="flex items-center gap-1">
-                              {canEditDriver ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-8"
-                                disabled={statusBusy}
-                                aria-label={`Edit ${d.name}`}
-                                onClick={() => setEditingDriverId(d.id)}
-                              >
-                                <Pencil className="size-3.5" />
-                              </Button>
-                              ) : null}
-                              {canEditDriver ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 px-2 text-xs"
-                                disabled={statusBusy}
-                                onClick={() => void handleToggleStatus(d)}
-                              >
-                                <Archive className="size-3.5" />
-                                {statusBusy
-                                  ? "…"
-                                  : isDriverActiveStatus(d.status)
-                                    ? "Deactivate"
-                                    : "Activate"}
-                              </Button>
-                              ) : null}
-                              {canEditDriver || canDeleteDriver ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-8"
-                                    disabled={statusBusy}
-                                  >
-                                    <MoreHorizontal className="size-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {canEditDriver ? (
-                                  <>
-                                  <DropdownMenuItem onSelect={() => setEditingDriverId(d.id)}>
-                                    <Pencil className="size-3.5" /> Edit profile
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onSelect={() => void handleToggleStatus(d)}
-                                  >
-                                    <Archive className="size-3.5" />
-                                    {isDriverActiveStatus(d.status) ? "Deactivate" : "Activate"}
-                                  </DropdownMenuItem>
-                                  </>
-                                  ) : null}
-                                  {canEditDriver && canDeleteDriver ? <DropdownMenuSeparator /> : null}
-                                  {canDeleteDriver ? (
-                                  <DropdownMenuItem
-                                    className="text-signal focus:text-signal"
-                                    onSelect={() => setDeleteTarget(d)}
-                                  >
-                                    <Trash2 className="size-3.5" /> Remove
-                                  </DropdownMenuItem>
-                                  ) : null}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              ) : null}
-                            </div>
-                            ) : null}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            <PagePagination
-              page={pagination.page}
-              totalPages={pagination.totalPages}
-              total={pagination.total}
-              rangeStart={pagination.rangeStart}
-              rangeEnd={pagination.rangeEnd}
-              onPageChange={pagination.setPage}
+          <div className="relative hidden min-h-0 flex-1 md:block">
+            <CrmGrid<Driver>
+              className="h-full min-h-[28rem]"
+              columnDefs={columnDefs}
+              fetchPage={fetchGridPage}
+              toolbarKey={filterKey}
+              storageKey="crm.ag.drivers.v1"
+              context={gridActions}
+              onGridApi={(api) => {
+                gridApiRef.current = api;
+              }}
+              onError={(error) => {
+                toast({
+                  variant: "error",
+                  title: "Could not load drivers",
+                  description: error instanceof Error ? error.message : "Please try again.",
+                });
+              }}
+              onStats={({ total }) => {
+                setListPagination((prev) => ({
+                  ...prev,
+                  total,
+                  totalPages: Math.max(1, Math.ceil(total / prev.pageSize) || 1),
+                }));
+                setListLoading(false);
+              }}
             />
           </div>
 
-          <div className="space-y-3 p-3 md:hidden">
-            {driversLoading ? (
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
+            {listLoading && pageDrivers.length === 0 ? (
               <RecordCardsSkeleton count={4} />
-            ) : pagination.mobileItems.length === 0 ? (
+            ) : pageDrivers.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-soft">
                 No drivers match your filters. Add a driver to get started.
               </p>
             ) : (
-              <>
-                {pagination.mobileItems.map((d) => (
-                  <DriverCard
-                    key={d.id}
-                    d={d}
-                    statusBusy={statusBusyId === d.id}
-                    canEdit={canEditDriver}
-                    canDelete={canDeleteDriver}
-                    onEdit={() => setEditingDriverId(d.id)}
-                    onToggleStatus={() => handleToggleStatus(d)}
-                    onDelete={() => setDeleteTarget(d)}
-                  />
-                ))}
-                <InfiniteScrollSentinel
-                  hasMore={pagination.hasMoreMobile}
-                  onLoadMore={pagination.loadMoreMobile}
-                  loadedCount={pagination.mobileItems.length}
-                  total={pagination.total}
+              pageDrivers.map((d) => (
+                <DriverCard
+                  key={d.id}
+                  d={d}
+                  statusBusy={statusBusyId === d.id}
+                  canEdit={canEditDriver}
+                  canDelete={canDeleteDriver}
+                  onEdit={() => setEditingDriverId(d.id)}
+                  onToggleStatus={() => handleToggleStatus(d)}
+                  onDelete={() => setDeleteTarget(d)}
                 />
-              </>
+              ))
             )}
           </div>
+          <PagePagination
+            page={listPagination.page}
+            totalPages={listPagination.totalPages}
+            total={listPagination.total}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onPageChange={setPage}
+            className="shrink-0 md:hidden"
+          />
         </Card>
       </main>
 

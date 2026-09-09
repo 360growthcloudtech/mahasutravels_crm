@@ -68,10 +68,64 @@ export function hotelToWritePayload(
 }
 
 export async function fetchHotels(): Promise<HotelApi[]> {
-  const res = await fetch("/api/hotels", { credentials: "include" });
+  const res = await fetch("/api/hotels?all=1", { credentials: "include", cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load hotels");
   const data = (await res.json()) as { hotels?: HotelApi[] };
   return data.hotels ?? [];
+}
+
+export type HotelsListQuery = {
+  search?: string;
+  status?: string[];
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
+};
+
+export type HotelsListPaginationApi = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+};
+
+export type HotelsListResponse = {
+  hotels: HotelApi[];
+  pagination: HotelsListPaginationApi;
+};
+
+export async function fetchHotelsPage(query: HotelsListQuery = {}): Promise<HotelsListResponse> {
+  const params = new URLSearchParams();
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.status?.length) params.set("status", query.status.join(","));
+  if (query.sortBy) params.set("sortBy", query.sortBy);
+  if (query.sortDir) params.set("sortDir", query.sortDir);
+  if (query.colFilters?.length) params.set("colFilters", JSON.stringify(query.colFilters));
+  params.set("page", String(query.page ?? 1));
+  params.set("pageSize", String(query.pageSize ?? 25));
+  const qs = params.toString();
+  const res = await fetch(`/api/hotels?${qs}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to load hotels");
+  }
+  const data = (await res.json()) as HotelsListResponse;
+  return {
+    hotels: data.hotels ?? [],
+    pagination: data.pagination ?? {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 25,
+      total: data.hotels?.length ?? 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+  };
 }
 
 export async function createHotelApi(payload: HotelWritePayload): Promise<HotelApi> {

@@ -30,16 +30,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { TableColumnsMenu } from "@/components/crm/table-columns-menu";
-import { ResizableTableHead } from "@/components/crm/resizable-table-head";
-import { useTableColumnLayout, type TableColumnDef } from "@/lib/use-table-column-layout";
+  buildLeadsColumnDefs,
+  type LeadsGridActions,
+} from "@/components/crm/grid/leads-grid-columns";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -76,10 +71,10 @@ import {
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
-  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { CreatedAtDisplay } from "@/components/crm/created-at-display";
+import type { GridApi } from "ag-grid-community";
 
 const LEADS_PAGE_SIZE = 25;
 
@@ -89,26 +84,6 @@ function formatNextFollowUp(date?: string, time?: string) {
   const timePart = formatDisplayTime(time);
   return timePart ? `${datePart} · ${timePart}` : datePart;
 }
-
-const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-secondary";
-const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[10.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
-
-const LEAD_TABLE_COLUMNS: TableColumnDef[] = [
-  { id: "lead", label: "Lead", locked: true, defaultWidth: 220 },
-  { id: "tour", label: "Tour package / Route", defaultWidth: 200 },
-  { id: "status", label: "Status", defaultWidth: 120 },
-  { id: "travel", label: "Travel dates", defaultWidth: 150 },
-  { id: "car", label: "Car / pax / days", defaultWidth: 150 },
-  { id: "source", label: "Source", defaultWidth: 140 },
-  { id: "assigned", label: "Assigned", defaultWidth: 130 },
-  { id: "created", label: "Created", defaultWidth: 120 },
-  { id: "followup", label: "Next follow-up", defaultWidth: 150 },
-  { id: "price", label: "Price", align: "right", defaultWidth: 110 },
-  { id: "utm", label: "UTM URL", defaultWidth: 180 },
-  { id: "actions", label: "Actions", locked: true, align: "right", defaultWidth: 176 },
-];
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -242,7 +217,17 @@ export default function LeadsPage() {
   const canCommentLead = useHasPermission("leads.comment");
   const canQuoteLead = useHasPermission("leads.quote");
   const canCreateBookingFromLead = useHasPermission("leads.create_booking");
-  const columnLayout = useTableColumnLayout("crm.table.leads.v2", LEAD_TABLE_COLUMNS);
+  const gridApiRef = React.useRef<GridApi<Lead> | null>(null);
+  const columnDefs = React.useMemo(() => buildLeadsColumnDefs(), []);
+  const [isDesktop, setIsDesktop] = React.useState(false);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -263,17 +248,33 @@ export default function LeadsPage() {
     setPage(1);
   }, [filterKey]);
 
+  const toolbarFilters = React.useMemo(
+    () => ({
+      search: debouncedQuery || undefined,
+      status: statusFilter.length ? statusFilter : undefined,
+      source: sourceFilter.length ? sourceFilter : undefined,
+      website: websiteFilter.length ? websiteFilter : undefined,
+      assigned_to: !isEmployee && agentFilter.length ? agentFilter : undefined,
+      created_from: createdBounds?.from,
+      created_to: createdBounds?.to,
+    }),
+    [
+      debouncedQuery,
+      statusFilter,
+      sourceFilter,
+      websiteFilter,
+      agentFilter,
+      isEmployee,
+      createdBounds?.from,
+      createdBounds?.to,
+    ]
+  );
+
   const loadLeadsPage = React.useCallback(async () => {
     setListLoading(true);
     try {
       const data = await fetchLeadsPage({
-        search: debouncedQuery || undefined,
-        status: statusFilter.length ? statusFilter : undefined,
-        source: sourceFilter.length ? sourceFilter : undefined,
-        website: websiteFilter.length ? websiteFilter : undefined,
-        assigned_to: !isEmployee && agentFilter.length ? agentFilter : undefined,
-        created_from: createdBounds?.from,
-        created_to: createdBounds?.to,
+        ...toolbarFilters,
         page,
         pageSize: LEADS_PAGE_SIZE,
       });
@@ -291,23 +292,12 @@ export default function LeadsPage() {
     } finally {
       setListLoading(false);
     }
-  }, [
-    debouncedQuery,
-    statusFilter,
-    sourceFilter,
-    websiteFilter,
-    agentFilter,
-    isEmployee,
-    createdBounds?.from,
-    createdBounds?.to,
-    page,
-    state.leadItineraries,
-    toast,
-  ]);
+  }, [toolbarFilters, page, state.leadItineraries, toast]);
 
   React.useEffect(() => {
+    if (isDesktop) return;
     void loadLeadsPage();
-  }, [loadLeadsPage]);
+  }, [loadLeadsPage, isDesktop]);
 
   React.useEffect(() => {
     if (listPagination.totalPages > 0 && page > listPagination.totalPages) {
@@ -316,8 +306,29 @@ export default function LeadsPage() {
   }, [listPagination.totalPages, page]);
 
   async function reloadLeads() {
-    await Promise.all([loadLeadsPage(), refreshLeads()]);
+    gridApiRef.current?.refreshInfiniteCache();
+    if (!isDesktop) await loadLeadsPage();
+    await refreshLeads();
   }
+
+  const fetchGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchLeadsPage({
+        ...toolbarFilters,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.leads.map((row) => leadFromApi(row, state.leadItineraries[row.id])),
+        total: data.pagination.total,
+        stats: data.stats,
+      };
+    },
+    [toolbarFilters, state.leadItineraries]
+  );
 
   const editingLead =
     (editingLeadId ? pageLeads.find((l) => l.id === editingLeadId) : null) ??
@@ -330,6 +341,36 @@ export default function LeadsPage() {
     }
     return ids;
   }, [state.bookings]);
+
+  const gridActions = React.useMemo<LeadsGridActions>(
+    () => ({
+      leadStatuses,
+      leadSources,
+      canCommentLead,
+      canQuoteLead,
+      canEditLead,
+      canDeleteLead,
+      canConvertToBooking: (lead) =>
+        canCreateBookingFromLead && !bookedLeadIds.has(lead.id),
+      onStatusChange: (lead, code, label) => handleLeadStatusChange(lead, code, label),
+      onHistory: (lead) => setHistoryLeadId(lead.id),
+      onComments: (lead) => setCommentLeadId(lead.id),
+      onQuote: (lead) => setQuoteLeadId(lead.id),
+      onCreateBooking: (lead) => setBookingLead(lead),
+      onEdit: (lead) => setEditingLeadId(lead.id),
+      onDelete: (lead) => setDeleteTarget(lead),
+    }),
+    [
+      leadStatuses,
+      leadSources,
+      canCommentLead,
+      canQuoteLead,
+      canEditLead,
+      canDeleteLead,
+      canCreateBookingFromLead,
+      bookedLeadIds,
+    ]
+  );
 
   function leadCanConvertToBooking(lead: Lead) {
     return canCreateBookingFromLead && !bookedLeadIds.has(lead.id);
@@ -686,324 +727,43 @@ export default function LeadsPage() {
                   Export CSV
                 </Button>
               ) : null}
-              <TableColumnsMenu
-                columns={columnLayout.columns}
-                isHidden={columnLayout.isHidden}
-                onToggle={columnLayout.toggle}
-                onReset={columnLayout.reset}
-                isDirty={columnLayout.isDirty}
-              />
             </div>
           </div>
 
-          <div className="hidden min-h-0 flex-1 md:block">
-          <Table containerClassName="min-h-0 flex-1 overflow-auto" className="table-fixed min-w-max">
-            <TableHeader>
-              <TableRow className="group hover:bg-transparent">
-                {columnLayout.visibleIds.map((id) => {
-                  const def = LEAD_TABLE_COLUMNS.find((column) => column.id === id);
-                  if (!def) return null;
-                  return (
-                    <ResizableTableHead
-                      key={id}
-                      id={id}
-                      label={def.label}
-                      width={columnLayout.widthFor(id)}
-                      locked={def.locked}
-                      align={def.align}
-                      className={id === "actions" ? stickyActionHead : undefined}
-                      onMove={columnLayout.move}
-                      onResize={columnLayout.setWidth}
-                    />
-                  );
-                })}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {listLoading && visible.length === 0 ? (
-                <TableRowsSkeleton columns={columnLayout.visibleIds.length} rows={6} avatar />
-              ) : visible.map((l) => {
-                const attribution = leadAttribution(l);
-                return (
-                <TableRow key={l.id} className="group">
-                  {columnLayout.visibleIds.map((columnId) => {
-                    const width = columnLayout.widthFor(columnId);
-                    const cellStyle = { width, minWidth: width, maxWidth: width };
-                    if (columnId === "lead") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-ink-text">
-                        {l.name.split(" ").map((n) => n[0]).join("")}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="truncate text-sm font-medium text-ink-text">{l.name}</p>
-                          {l.inquiryCount > 1 && (
-                            <span title={`Repeat inquiry · ${l.inquiryCount} times`}>
-                              <Copy className="size-3 text-signal" />
-                            </span>
-                          )}
-                        </div>
-                        <p className="font-mono-data text-[11px] text-slate-soft">
-                          {l.leadNo} · {l.phone}
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "tour") {
-                      return (
-                  <TableCell key={columnId} className="min-w-0" style={cellStyle}>
-                    <p className="truncate text-sm text-ink-text">{l.tourPackage || "—"}</p>
-                    <p className="truncate text-[11px] text-slate-soft">
-                      {l.pickup}{l.drop ? ` → ${l.drop}` : ""}
-                    </p>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "status") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
-                          aria-label={`Change status for ${l.name}`}
-                        >
-                          <StatusBadge status={l.status} />
-                          <ChevronDown className="size-3.5 text-slate-soft" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {leadStatuses.map((s) => (
-                          <DropdownMenuItem
-                            key={s.code}
-                            disabled={s.code === l.status}
-                            onSelect={() => {
-                              handleLeadStatusChange(l, s.code, s.label);
-                            }}
-                          >
-                            <StatusBadge status={s.code} />
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "travel") {
-                      return (
-                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
-                    <p>{formatDisplayDate(l.pickupDate)}</p>
-                    {l.dropDate ? (
-                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(l.dropDate)}</p>
-                    ) : null}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "car") {
-                      return (
-                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
-                    {l.car || "—"}{" "}
-                    <span className="text-slate-soft">
-                      · {l.adults}A{l.kids > 0 ? `+${l.kids}K` : ""} · {l.days}d
-                    </span>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "source") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    <div className="space-y-0.5">
-                      <Badge variant="outline" className="font-normal">
-                        {sourceLabel(attribution.source, leadSources)}
-                      </Badge>
-                      {attribution.website && (
-                        <p className="truncate text-[10px] text-muted-foreground">
-                          {attribution.website}
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "utm") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    {l.pageUrl ? (
-                      <a
-                        href={l.pageUrl.startsWith("http") ? l.pageUrl : `https://${l.pageUrl}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={l.pageUrl}
-                        className="block truncate text-sm text-marigold hover:underline"
-                      >
-                        {l.pageUrl}
-                      </a>
-                    ) : (
-                      <span className="text-sm text-slate-soft">—</span>
-                    )}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "assigned") {
-                      return (
-                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
-                    {l.assignedTo?.name || "Unassigned"}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "created") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
-                    <CreatedAtDisplay iso={l.createdAt} stacked />
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "followup") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
-                    {formatNextFollowUp(l.nextFollowUpDate, l.nextFollowUpTime)}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "price") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text" style={cellStyle}>
-                    ₹{l.price.toLocaleString("en-IN")}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "actions") {
-                      return (
-                  <TableCell key={columnId} className={stickyActionCell} style={cellStyle}>
-                    <TooltipProvider delayDuration={200}>
-                      <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8"
-                              aria-label={`Tracking history for ${l.name}`}
-                              onClick={() => setHistoryLeadId(l.id)}
-                            >
-                              <History className="size-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">History</TooltipContent>
-                        </Tooltip>
-                        {canCommentLead ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8"
-                              aria-label={`Comments for ${l.name}`}
-                              onClick={() => setCommentLeadId(l.id)}
-                            >
-                              <MessageCircle className="size-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">Comments</TooltipContent>
-                        </Tooltip>
-                        ) : null}
-                        {canQuoteLead ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8"
-                              aria-label={`Send quote for ${l.name}`}
-                              onClick={() => setQuoteLeadId(l.id)}
-                            >
-                              <FileText className="size-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">Send quote</TooltipContent>
-                        </Tooltip>
-                        ) : null}
-                        {leadCanConvertToBooking(l) ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="size-8"
-                                aria-label={`Create booking for ${l.name}`}
-                                onClick={() => setBookingLead(l)}
-                              >
-                                <CalendarPlus className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top">Create booking</TooltipContent>
-                          </Tooltip>
-                        ) : null}
-                        {canEditLead || canDeleteLead ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="inline-flex">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="size-8">
-                                    <MoreHorizontal className="size-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {canEditLead ? (
-                                  <DropdownMenuItem
-                                    onSelect={() => {
-                                      setEditingLeadId(l.id);
-                                    }}
-                                  >
-                                    <Pencil className="size-3.5" /> Edit lead
-                                  </DropdownMenuItem>
-                                  ) : null}
-                                  {canEditLead && canDeleteLead ? <DropdownMenuSeparator /> : null}
-                                  {canDeleteLead ? (
-                                  <DropdownMenuItem
-                                    className="text-signal focus:bg-signal-soft"
-                                    onSelect={(e) => {
-                                      e.preventDefault();
-                                      setDeleteTarget(l);
-                                    }}
-                                  >
-                                    <Trash2 className="size-3.5" /> Delete lead
-                                  </DropdownMenuItem>
-                                  ) : null}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">More actions</TooltipContent>
-                        </Tooltip>
-                        ) : null}
-                      </div>
-                    </TooltipProvider>
-                  </TableCell>
-                      );
-                    }
-                    return null;
-                  })}
-                </TableRow>
-                );
-              })}
-              {!listLoading && visible.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={columnLayout.visibleIds.length} className="py-10 text-center text-sm text-muted-foreground">
-                    No leads match these filters.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <div className="relative hidden min-h-0 flex-1 md:block">
+            <CrmGrid<Lead>
+              className="h-full min-h-[28rem]"
+              columnDefs={columnDefs}
+              fetchPage={fetchGridPage}
+              toolbarKey={filterKey}
+              storageKey="crm.ag.leads.v1"
+              context={gridActions}
+              onGridApi={(api) => {
+                gridApiRef.current = api;
+              }}
+              onError={(error) => {
+                toast({
+                  variant: "error",
+                  title: "Could not load leads",
+                  description: error instanceof Error ? error.message : "Please try again.",
+                });
+              }}
+              onStats={({ total, extra }) => {
+                const stats = (extra as { total?: number; booked?: number; open?: number; repeat?: number } | undefined);
+                if (stats && typeof stats.total === "number") {
+                  setListStats({
+                    total: stats.total,
+                    booked: stats.booked ?? 0,
+                    open: stats.open ?? 0,
+                    repeat: stats.repeat ?? 0,
+                  });
+                } else {
+                  setListStats((prev) => ({ ...prev, total }));
+                }
+                setListLoading(false);
+              }}
+              extractExtra={(result) => (result as { stats?: unknown }).stats}
+            />
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
@@ -1138,7 +898,7 @@ export default function LeadsPage() {
             rangeStart={rangeStart}
             rangeEnd={rangeEnd}
             onPageChange={setPage}
-            className="shrink-0"
+            className="shrink-0 md:hidden"
           />
         </Card>
       </main>

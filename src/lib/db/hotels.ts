@@ -1,6 +1,38 @@
 import { query } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import { formatHotelNo, type HotelTemplateStatusValue } from "@/lib/hotel-utils";
 import { toIso } from "@/lib/lead-utils";
+
+/** Allowlisted column ids for AG Grid sort / column filters on hotels. */
+export const HOTEL_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  name: { expr: "name", kind: "text" },
+  city: { expr: "city", kind: "text" },
+  address: { expr: "address", kind: "text" },
+  contact_number: { expr: "contact_number", kind: "text" },
+  default_room_type: { expr: "default_room_type", kind: "text" },
+  typical_rate: { expr: "typical_rate", kind: "number" },
+  status: { expr: "status", kind: "text" },
+  hotel_no: { expr: "hotel_no", kind: "number" },
+  updated: { expr: "updated_at", kind: "timestamptz" },
+};
+
+export const HOTEL_GRID_SORT_COLUMNS = Object.keys(HOTEL_GRID_SQL_COLUMNS);
+
+export const HOTEL_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(HOTEL_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "timestamptz" || col.kind === "date"
+      ? ("date" as const)
+      : col.kind === "number"
+        ? ("number" as const)
+        : ("text" as const),
+  ])
+);
 
 export type HotelRow = {
   id: string;
@@ -57,6 +89,16 @@ export type PatchHotelInput = {
 export type ListHotelsFilters = {
   search?: string;
   status?: string[];
+  /** AG Grid column sort (allowlisted). */
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  /** AG Grid Community column filters (allowlisted). */
+  colFilters?: GridColumnFilter[];
+};
+
+export type ListHotelsPageResult = {
+  rows: HotelRow[];
+  total: number;
 };
 
 const HOTEL_SELECT = `
@@ -98,7 +140,10 @@ export async function findHotelTemplateById(id: string): Promise<HotelRow | null
   return rows[0] ?? null;
 }
 
-export async function listHotelTemplates(filters: ListHotelsFilters = {}): Promise<HotelRow[]> {
+function buildHotelsFilterClauses(filters: ListHotelsFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -115,13 +160,58 @@ export async function listHotelTemplates(filters: ListHotelsFilters = {}): Promi
     params.push(filters.status);
     clauses.push(`status = ANY($${params.length}::text[])`);
   }
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, HOTEL_GRID_SQL_COLUMNS, clauses, params);
+  }
 
+  return { clauses, params };
+}
+
+function hotelsOrderBy(filters: ListHotelsFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    HOTEL_GRID_SQL_COLUMNS,
+    "updated_at DESC, hotel_no DESC"
+  );
+}
+
+export async function listHotelTemplates(filters: ListHotelsFilters = {}): Promise<HotelRow[]> {
+  const { clauses, params } = buildHotelsFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<HotelRow>(
-    `${HOTEL_SELECT} ${where} ORDER BY updated_at DESC, hotel_no DESC`,
+    `${HOTEL_SELECT} ${where} ORDER BY ${hotelsOrderBy(filters)}`,
     params
   );
   return rows;
+}
+
+export async function listHotelTemplatesPage(
+  filters: ListHotelsFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListHotelsPageResult> {
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildHotelsFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const { rows: countRows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM hotel_templates ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total) || 0;
+  if (total === 0 || offset >= total) {
+    return { rows: [], total };
+  }
+
+  const { rows } = await query<HotelRow>(
+    `${HOTEL_SELECT} ${where}
+     ORDER BY ${hotelsOrderBy(filters)}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+  return { rows, total };
 }
 
 export async function createHotelTemplate(input: CreateHotelInput): Promise<HotelRow> {

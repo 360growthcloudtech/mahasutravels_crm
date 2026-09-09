@@ -14,6 +14,7 @@ import {
   User,
   Users,
 } from "lucide-react";
+import type { GridApi } from "ag-grid-community";
 import { Topbar } from "@/components/crm/topbar";
 import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { useHasPermission } from "@/lib/use-has-permission";
@@ -24,14 +25,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import {
   Sheet,
   SheetContent,
@@ -54,6 +47,18 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Field } from "@/components/crm/field";
 import { StatusBadge } from "@/components/crm/status-badge";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import { PagePagination } from "@/components/crm/list-pagination";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
+import {
+  buildMembersColumnDefs,
+  buildPermissionsColumnDefs,
+  memberFromRow,
+  memberRowFromUser,
+  type MembersGridActions,
+  type PermissionGridRow,
+  type PermissionsGridActions,
+  type SettingsMemberRow,
+} from "@/components/crm/grid/settings-grid-columns";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import {
@@ -65,7 +70,15 @@ import {
   defaultPermissionsForRole,
   allPermissionKeys,
 } from "@/lib/data";
-import { fetchUsers, fetchPermissionsCatalog, updateUserAutoAssignWebsites, updateUserPermissionKeys, type UserApi } from "@/lib/users-api";
+import {
+  fetchUsers,
+  fetchUsersPage,
+  fetchPermissionsCatalog,
+  fetchPermissionsPage,
+  updateUserAutoAssignWebsites,
+  updateUserPermissionKeys,
+  type UserApi,
+} from "@/lib/users-api";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { cn } from "@/lib/utils";
 import type { PermissionAction as CatalogAction } from "@/lib/permissions-catalog";
@@ -94,6 +107,8 @@ const moduleDot = [
   "bg-ink",
   "bg-slate-soft",
 ];
+
+const SETTINGS_PAGE_SIZE = 25;
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -143,6 +158,31 @@ export default function SettingsPage() {
   const [dbUsers, setDbUsers] = React.useState<UserApi[]>([]);
   const [savingMember, setSavingMember] = React.useState(false);
   const [settingsLoading, setSettingsLoading] = React.useState(true);
+  const [isDesktop, setIsDesktop] = React.useState(false);
+  const [memberPage, setMemberPage] = React.useState(1);
+  const [pageMembers, setPageMembers] = React.useState<SettingsMemberRow[]>([]);
+  const [membersLoading, setMembersLoading] = React.useState(true);
+  const [membersPagination, setMembersPagination] = React.useState({
+    page: 1,
+    pageSize: SETTINGS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
+  const [permPage, setPermPage] = React.useState(1);
+  const [pagePerms, setPagePerms] = React.useState<PermissionGridRow[]>([]);
+  const [permsLoading, setPermsLoading] = React.useState(true);
+  const [permsPagination, setPermsPagination] = React.useState({
+    page: 1,
+    pageSize: SETTINGS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
+  const membersGridApiRef = React.useRef<GridApi<SettingsMemberRow> | null>(null);
+  const permsGridApiRef = React.useRef<GridApi<PermissionGridRow> | null>(null);
+  const membersColumnDefs = React.useMemo(() => buildMembersColumnDefs(), []);
+  const permsColumnDefs = React.useMemo(() => buildPermissionsColumnDefs(), []);
 
   const reloadSettings = React.useCallback(async () => {
     setSettingsLoading(true);
@@ -163,6 +203,8 @@ export default function SettingsPage() {
           }))
         );
       }
+      membersGridApiRef.current?.refreshInfiniteCache();
+      permsGridApiRef.current?.refreshInfiniteCache();
     } finally {
       setSettingsLoading(false);
     }
@@ -175,6 +217,14 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   const websitesByEmail = React.useMemo(() => {
     const map = new Map<string, string[]>();
     for (const u of dbUsers) {
@@ -185,8 +235,10 @@ export default function SettingsPage() {
 
   const [section, setSection] = React.useState<"members" | "permissions">("members");
   const [memberQuery, setMemberQuery] = React.useState("");
+  const [debouncedMemberQuery, setDebouncedMemberQuery] = React.useState("");
   const [permQuery, setPermQuery] = React.useState("");
-  const [expandedModules, setExpandedModules] = React.useState<string[]>(["Leads"]);
+  const [debouncedPermQuery, setDebouncedPermQuery] = React.useState("");
+  const [expandedModules, setExpandedModules] = React.useState<string[]>(["member-Leads"]);
   const [memberOpen, setMemberOpen] = React.useState(false);
   const [memberTab, setMemberTab] = React.useState<"profile" | "permissions">("profile");
   const [editingMember, setEditingMember] = React.useState<Member | null>(null);
@@ -204,42 +256,139 @@ export default function SettingsPage() {
   });
   const [deletePermTarget, setDeletePermTarget] = React.useState<SystemPermission | null>(null);
 
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedMemberQuery(memberQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [memberQuery]);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedPermQuery(permQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [permQuery]);
+
+  const memberFilterKey = debouncedMemberQuery;
+  const permFilterKey = debouncedPermQuery;
+
+  React.useEffect(() => {
+    setMemberPage(1);
+  }, [memberFilterKey]);
+
+  React.useEffect(() => {
+    setPermPage(1);
+  }, [permFilterKey]);
+
   const modules = React.useMemo(
     () => [...new Set(state.systemPermissions.map((p) => p.module))],
     [state.systemPermissions]
   );
 
-  const filteredMembers = state.members.filter((m) => {
-    const q = memberQuery.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      m.name.toLowerCase().includes(q) ||
-      m.email.toLowerCase().includes(q) ||
-      m.role.toLowerCase().includes(q) ||
-      m.id.toLowerCase().includes(q)
-    );
-  });
-
-  const filteredPerms = state.systemPermissions.filter((p) => {
-    const q = permQuery.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      p.key.toLowerCase().includes(q) ||
-      p.module.toLowerCase().includes(q) ||
-      p.label.toLowerCase().includes(q) ||
-      p.action.toLowerCase().includes(q)
-    );
-  });
-
-  const permsByModule = React.useMemo(() => {
-    const map = new Map<string, SystemPermission[]>();
-    for (const p of filteredPerms) {
-      const list = map.get(p.module) ?? [];
-      list.push(p);
-      map.set(p.module, list);
+  const loadMembersPage = React.useCallback(async () => {
+    setMembersLoading(true);
+    try {
+      const data = await fetchUsersPage({
+        search: debouncedMemberQuery || undefined,
+        includeInactive: true,
+        page: memberPage,
+        pageSize: SETTINGS_PAGE_SIZE,
+      });
+      setPageMembers(data.users.map((u) => memberRowFromUser(u, state.members)));
+      setMembersPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load members",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setMembersLoading(false);
     }
-    return [...map.entries()];
-  }, [filteredPerms]);
+  }, [debouncedMemberQuery, memberPage, state.members, toast]);
+
+  const loadPermsPage = React.useCallback(async () => {
+    setPermsLoading(true);
+    try {
+      const data = await fetchPermissionsPage({
+        search: debouncedPermQuery || undefined,
+        page: permPage,
+        pageSize: SETTINGS_PAGE_SIZE,
+      });
+      setPagePerms(
+        data.permissions.map((p) => ({
+          id: p.key,
+          key: p.key,
+          module: p.module,
+          action: p.action,
+          label: p.label,
+          description: p.description,
+          sort_order: p.sort_order,
+        }))
+      );
+      setPermsPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load permissions",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setPermsLoading(false);
+    }
+  }, [debouncedPermQuery, permPage, toast]);
+
+  React.useEffect(() => {
+    if (isDesktop || section !== "members") return;
+    void loadMembersPage();
+  }, [loadMembersPage, isDesktop, section]);
+
+  React.useEffect(() => {
+    if (isDesktop || section !== "permissions") return;
+    void loadPermsPage();
+  }, [loadPermsPage, isDesktop, section]);
+
+  const fetchMembersGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchUsersPage({
+        search: debouncedMemberQuery || undefined,
+        includeInactive: true,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.users.map((u) => memberRowFromUser(u, state.members)),
+        total: data.pagination.total,
+      };
+    },
+    [debouncedMemberQuery, state.members]
+  );
+
+  const fetchPermsGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchPermissionsPage({
+        search: debouncedPermQuery || undefined,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.permissions.map((p) => ({
+          id: p.key,
+          key: p.key,
+          module: p.module,
+          action: p.action,
+          label: p.label,
+          description: p.description,
+          sort_order: p.sort_order,
+        })),
+        total: data.pagination.total,
+      };
+    },
+    [debouncedPermQuery]
+  );
 
   function openCreateMember() {
     setEditingMember(null);
@@ -266,6 +415,20 @@ export default function SettingsPage() {
     setShowPassword(false);
     setMemberTab("profile");
     setMemberOpen(true);
+  }
+
+  function openEditMemberRow(row: SettingsMemberRow) {
+    const member = memberFromRow(row);
+    openEditMember({
+      ...member,
+      permissionKeys:
+        row.permission_keys?.length
+          ? [...row.permission_keys]
+          : row.permissionKeys?.length
+            ? [...row.permissionKeys]
+            : defaultPermissionsForRole(member.role),
+      autoAssignWebsites: row.auto_assign_websites ?? [],
+    });
   }
 
   function setRole(role: MemberRole) {
@@ -344,6 +507,9 @@ export default function SettingsPage() {
         toast({ variant: "success", title: "Member invited", description: form.name });
       }
       setMemberOpen(false);
+      membersGridApiRef.current?.refreshInfiniteCache();
+      if (!isDesktop) void loadMembersPage();
+      void reloadSettings();
     } catch (error) {
       toast({
         variant: "error",
@@ -367,11 +533,18 @@ export default function SettingsPage() {
     setPermFormOpen(true);
   }
 
-  function openEditPerm(p: SystemPermission) {
-    setEditingPerm(p);
+  function openEditPerm(p: SystemPermission | PermissionGridRow) {
+    setEditingPerm({
+      id: "id" in p && typeof p.id === "string" ? p.id : p.key,
+      key: p.key,
+      module: p.module,
+      action: p.action as PermissionAction,
+      label: p.label,
+      description: p.description,
+    });
     setPermForm({
       module: p.module,
-      action: p.action,
+      action: p.action as PermissionAction,
       label: p.label,
       key: p.key,
       description: p.description || "",
@@ -399,16 +572,56 @@ export default function SettingsPage() {
       toast({ variant: "success", title: "Permission added", description: payload.key });
     }
     setPermFormOpen(false);
-  }
-
-  function toggleExpand(module: string) {
-    setExpandedModules((prev) =>
-      prev.includes(module) ? prev.filter((m) => m !== module) : [...prev, module]
-    );
+    permsGridApiRef.current?.refreshInfiniteCache();
+    if (!isDesktop) void loadPermsPage();
   }
 
   const grantedCount = form.permissionKeys.length;
   const totalPermCount = state.systemPermissions.length;
+
+  const membersGridActions = React.useMemo<MembersGridActions>(
+    () => ({
+      websites,
+      canEditMember,
+      canDeleteMember,
+      onEdit: openEditMemberRow,
+      onDelete: (row) => setDeleteMemberTarget(memberFromRow(row)),
+    }),
+    [websites, canEditMember, canDeleteMember]
+  );
+
+  const permsGridActions = React.useMemo<PermissionsGridActions>(
+    () => ({
+      canEdit: canEditMember,
+      canDelete: canDeleteMember,
+      onEdit: openEditPerm,
+      onDelete: (row) =>
+        setDeletePermTarget({
+          id: row.id,
+          key: row.key,
+          module: row.module,
+          action: row.action as PermissionAction,
+          label: row.label,
+          description: row.description,
+        }),
+    }),
+    [canEditMember, canDeleteMember]
+  );
+
+  const membersRangeStart =
+    membersPagination.total === 0
+      ? 0
+      : (membersPagination.page - 1) * membersPagination.pageSize + 1;
+  const membersRangeEnd = Math.min(
+    membersPagination.page * membersPagination.pageSize,
+    membersPagination.total
+  );
+  const permsRangeStart =
+    permsPagination.total === 0 ? 0 : (permsPagination.page - 1) * permsPagination.pageSize + 1;
+  const permsRangeEnd = Math.min(
+    permsPagination.page * permsPagination.pageSize,
+    permsPagination.total
+  );
 
   return (
     <>
@@ -450,7 +663,8 @@ export default function SettingsPage() {
           <TabsContent value="members" className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {roles.map((role) => {
-                const count = state.members.filter((m) => m.role === role).length;
+                const count = dbUsers.filter((m) => m.role === role).length ||
+                  state.members.filter((m) => m.role === role).length;
                 return (
                   <Card key={role}>
                     <CardContent className="p-4">
@@ -477,124 +691,94 @@ export default function SettingsPage() {
               />
             </div>
 
-            <Card className="overflow-hidden">
-              <div className="hidden md:block">
-              <Table containerClassName="min-w-[48rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Member</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Website</TableHead>
-                    <TableHead>Permissions</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[6rem]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMembers.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell>
-                        <p className="text-sm font-medium text-ink-text">{m.name}</p>
-                        <p className="text-xs text-slate-soft">{m.email}</p>
-                        <p className="font-mono-data text-[11px] text-slate-soft">{m.id}</p>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{m.role}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate">
-                        {m.department || "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate">
-                        {formatWebsiteDomains(
-                          websitesByEmail.get(m.email.toLowerCase()) ?? m.autoAssignWebsites ?? [],
-                          websites
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono-data text-xs text-slate">
-                        {m.permissionKeys.length}/{allPermissionKeys.length}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={m.status} />
-                      </TableCell>
-                      <TableCell>
-                        {(canEditMember || canDeleteMember) ? (
-                        <div className="flex gap-1">
-                          {canEditMember ? (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8"
-                            onClick={() => openEditMember(m)}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          ) : null}
-                          {canDeleteMember ? (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8 text-signal"
-                            onClick={() => setDeleteMemberTarget(m)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                          ) : null}
-                        </div>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <Card className="flex min-h-0 flex-col overflow-hidden">
+              <div className="relative hidden min-h-[24rem] md:block">
+                <CrmGrid<SettingsMemberRow>
+                  className="h-full min-h-[24rem]"
+                  columnDefs={membersColumnDefs}
+                  fetchPage={fetchMembersGridPage}
+                  toolbarKey={memberFilterKey}
+                  storageKey="crm.ag.settings-members.v1"
+                  context={membersGridActions}
+                  onGridApi={(api) => {
+                    membersGridApiRef.current = api;
+                  }}
+                  onError={(error) => {
+                    toast({
+                      variant: "error",
+                      title: "Could not load members",
+                      description: error instanceof Error ? error.message : "Please try again.",
+                    });
+                  }}
+                  onStats={({ total }) => {
+                    setMembersPagination((prev) => ({
+                      ...prev,
+                      total,
+                      totalPages: Math.max(1, Math.ceil(total / prev.pageSize) || 1),
+                    }));
+                    setMembersLoading(false);
+                  }}
+                />
               </div>
 
               <div className="space-y-3 p-3 md:hidden">
-                {filteredMembers.map((m) => (
-                  <RecordCard key={m.id}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-base font-semibold break-words text-ink-text">{m.name}</p>
-                        <p className="break-all text-xs text-slate-soft">{m.email}</p>
-                        <p className="font-mono-data text-[11px] text-slate-soft">{m.id}</p>
+                {membersLoading && pageMembers.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-soft">Loading members…</p>
+                ) : pageMembers.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-soft">No members found.</p>
+                ) : (
+                  pageMembers.map((m) => (
+                    <RecordCard key={m.id}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-base font-semibold break-words text-ink-text">{m.name}</p>
+                          <p className="break-all text-xs text-slate-soft">{m.email}</p>
+                        </div>
+                        <StatusBadge status={m.status} />
                       </div>
-                      <StatusBadge status={m.status} />
-                    </div>
-                    <InfoGrid>
-                      <InfoItem label="Role">{m.role}</InfoItem>
-                      <InfoItem label="Department">{m.department || "—"}</InfoItem>
-                      <InfoItem label="Websites">
-                        {formatWebsiteDomains(
-                          websitesByEmail.get(m.email.toLowerCase()) ?? m.autoAssignWebsites ?? [],
-                          websites
-                        )}
-                      </InfoItem>
-                      <InfoItem label="Permissions">
-                        {m.permissionKeys.length}/{allPermissionKeys.length}
-                      </InfoItem>
-                    </InfoGrid>
-                    {(canEditMember || canDeleteMember) ? (
-                    <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
-                      {canEditMember ? (
-                      <Button size="sm" variant="outline" onClick={() => openEditMember(m)}>
-                        <Pencil className="size-3.5" /> Edit
-                      </Button>
+                      <InfoGrid>
+                        <InfoItem label="Role">{m.role}</InfoItem>
+                        <InfoItem label="Department">{m.department || "—"}</InfoItem>
+                        <InfoItem label="Websites">
+                          {formatWebsiteDomains(m.auto_assign_websites ?? [], websites)}
+                        </InfoItem>
+                        <InfoItem label="Permissions">
+                          {m.permission_count ?? m.permissionKeys?.length ?? 0}/
+                          {allPermissionKeys.length}
+                        </InfoItem>
+                      </InfoGrid>
+                      {canEditMember || canDeleteMember ? (
+                        <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                          {canEditMember ? (
+                            <Button size="sm" variant="outline" onClick={() => openEditMemberRow(m)}>
+                              <Pencil className="size-3.5" /> Edit
+                            </Button>
+                          ) : null}
+                          {canDeleteMember ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-signal"
+                              onClick={() => setDeleteMemberTarget(memberFromRow(m))}
+                            >
+                              <Trash2 className="size-3.5" /> Remove
+                            </Button>
+                          ) : null}
+                        </div>
                       ) : null}
-                      {canDeleteMember ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-signal"
-                        onClick={() => setDeleteMemberTarget(m)}
-                      >
-                        <Trash2 className="size-3.5" /> Remove
-                      </Button>
-                      ) : null}
-                    </div>
-                    ) : null}
-                  </RecordCard>
-                ))}
+                    </RecordCard>
+                  ))
+                )}
               </div>
+              <PagePagination
+                page={membersPagination.page}
+                totalPages={membersPagination.totalPages}
+                total={membersPagination.total}
+                rangeStart={membersRangeStart}
+                rangeEnd={membersRangeEnd}
+                onPageChange={setMemberPage}
+                className="shrink-0 md:hidden"
+              />
             </Card>
           </TabsContent>
 
@@ -618,7 +802,7 @@ export default function SettingsPage() {
                 <CardContent className="p-4">
                   <p className="text-xs text-muted-foreground">Total permissions</p>
                   <p className="mt-1 font-display text-xl font-semibold">
-                    {state.systemPermissions.length}
+                    {permsPagination.total || state.systemPermissions.length}
                   </p>
                 </CardContent>
               </Card>
@@ -642,103 +826,106 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              {permsByModule.map(([module, perms], idx) => {
-                const open = expandedModules.includes(module);
-                return (
-                  <Card key={module} className="overflow-hidden">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-secondary/40"
-                      onClick={() => toggleExpand(module)}
-                    >
-                      <span
-                        className={cn(
-                          "size-2.5 rounded-full",
-                          moduleDot[idx % moduleDot.length]
-                        )}
-                      />
-                      <span className="flex-1 text-sm font-medium text-ink-text">{module}</span>
-                      <Badge variant="secondary" className="font-normal">
-                        {perms.length} permission{perms.length === 1 ? "" : "s"}
-                      </Badge>
-                      <ChevronDown
-                        className={cn(
-                          "size-4 text-slate-soft transition-transform",
-                          open && "rotate-180"
-                        )}
-                      />
-                    </button>
-                    {open ? (
-                      <div className="border-t border-border-soft">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Permission key</TableHead>
-                              <TableHead>Action</TableHead>
-                              <TableHead>Label</TableHead>
-                              <TableHead>Description</TableHead>
-                              <TableHead className="w-[5.5rem]">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {perms.map((p) => (
-                              <TableRow key={p.id}>
-                                <TableCell>
-                                  <code className="rounded bg-signal-soft/60 px-1.5 py-0.5 font-mono-data text-[11px] text-signal">
-                                    {p.key}
-                                  </code>
-                                </TableCell>
-                                <TableCell>
-                                  <span
-                                    className={cn(
-                                      "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize",
-                                      actionBadge[p.action]
-                                    )}
-                                  >
-                                    {p.action}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="text-sm">{p.label}</TableCell>
-                                <TableCell className="text-xs text-slate-soft">
-                                  {p.description || "—"}
-                                </TableCell>
-                                <TableCell>
-                                  {(canEditMember || canDeleteMember) ? (
-                                  <div className="flex gap-1">
-                                    {canEditMember ? (
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="size-7"
-                                      onClick={() => openEditPerm(p)}
-                                    >
-                                      <Pencil className="size-3.5" />
-                                    </Button>
-                                    ) : null}
-                                    {canDeleteMember ? (
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="size-7 text-signal"
-                                      onClick={() => setDeletePermTarget(p)}
-                                    >
-                                      <Trash2 className="size-3.5" />
-                                    </Button>
-                                    ) : null}
-                                  </div>
-                                  ) : null}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+            <Card className="flex min-h-0 flex-col overflow-hidden">
+              <div className="relative hidden min-h-[24rem] md:block">
+                <CrmGrid<PermissionGridRow>
+                  className="h-full min-h-[24rem]"
+                  columnDefs={permsColumnDefs}
+                  fetchPage={fetchPermsGridPage}
+                  toolbarKey={permFilterKey}
+                  storageKey="crm.ag.settings-permissions.v1"
+                  context={permsGridActions}
+                  onGridApi={(api) => {
+                    permsGridApiRef.current = api;
+                  }}
+                  onError={(error) => {
+                    toast({
+                      variant: "error",
+                      title: "Could not load permissions",
+                      description: error instanceof Error ? error.message : "Please try again.",
+                    });
+                  }}
+                  onStats={({ total }) => {
+                    setPermsPagination((prev) => ({
+                      ...prev,
+                      total,
+                      totalPages: Math.max(1, Math.ceil(total / prev.pageSize) || 1),
+                    }));
+                    setPermsLoading(false);
+                  }}
+                />
+              </div>
+
+              <div className="space-y-3 p-3 md:hidden">
+                {permsLoading && pagePerms.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-soft">Loading permissions…</p>
+                ) : pagePerms.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-soft">No permissions found.</p>
+                ) : (
+                  pagePerms.map((p) => (
+                    <RecordCard key={p.id}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-ink-text">{p.label}</p>
+                          <code className="mt-1 inline-block rounded bg-signal-soft/60 px-1.5 py-0.5 font-mono-data text-[11px] text-signal">
+                            {p.key}
+                          </code>
+                        </div>
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize",
+                            actionBadge[p.action as PermissionAction] ?? "bg-secondary text-slate"
+                          )}
+                        >
+                          {p.action}
+                        </span>
                       </div>
-                    ) : null}
-                  </Card>
-                );
-              })}
-            </div>
+                      <InfoGrid>
+                        <InfoItem label="Module">{p.module}</InfoItem>
+                        <InfoItem label="Description">{p.description || "—"}</InfoItem>
+                      </InfoGrid>
+                      {canEditMember || canDeleteMember ? (
+                        <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
+                          {canEditMember ? (
+                            <Button size="sm" variant="outline" onClick={() => openEditPerm(p)}>
+                              <Pencil className="size-3.5" /> Edit
+                            </Button>
+                          ) : null}
+                          {canDeleteMember ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-signal"
+                              onClick={() =>
+                                setDeletePermTarget({
+                                  id: p.id,
+                                  key: p.key,
+                                  module: p.module,
+                                  action: p.action as PermissionAction,
+                                  label: p.label,
+                                  description: p.description,
+                                })
+                              }
+                            >
+                              <Trash2 className="size-3.5" /> Delete
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </RecordCard>
+                  ))
+                )}
+              </div>
+              <PagePagination
+                page={permsPagination.page}
+                totalPages={permsPagination.totalPages}
+                total={permsPagination.total}
+                rangeStart={permsRangeStart}
+                rangeEnd={permsRangeEnd}
+                onPageChange={setPermPage}
+                className="shrink-0 md:hidden"
+              />
+            </Card>
           </TabsContent>
         </Tabs>
       </main>
@@ -1143,6 +1330,8 @@ export default function SettingsPage() {
             description: deleteMemberTarget.name,
           });
           setDeleteMemberTarget(null);
+          membersGridApiRef.current?.refreshInfiniteCache();
+          if (!isDesktop) void loadMembersPage();
         }}
       />
 
@@ -1164,6 +1353,8 @@ export default function SettingsPage() {
             description: deletePermTarget.key,
           });
           setDeletePermTarget(null);
+          permsGridApiRef.current?.refreshInfiniteCache();
+          if (!isDesktop) void loadPermsPage();
         }}
       />
     </>

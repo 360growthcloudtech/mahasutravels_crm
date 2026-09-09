@@ -111,10 +111,69 @@ export function itineraryToWritePayload(
 }
 
 export async function fetchItineraries(): Promise<ItineraryApi[]> {
-  const res = await fetch("/api/itineraries", { credentials: "include" });
+  const res = await fetch("/api/itineraries?all=1", {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error("Failed to load itineraries");
   const data = (await res.json()) as { itineraries?: ItineraryApi[] };
   return data.itineraries ?? [];
+}
+
+export type ItinerariesListQuery = {
+  search?: string;
+  status?: string[];
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
+};
+
+export type ItinerariesListPaginationApi = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+};
+
+export type ItinerariesListResponse = {
+  itineraries: ItineraryApi[];
+  pagination: ItinerariesListPaginationApi;
+};
+
+export async function fetchItinerariesPage(
+  query: ItinerariesListQuery = {}
+): Promise<ItinerariesListResponse> {
+  const params = new URLSearchParams();
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.status?.length) params.set("status", query.status.join(","));
+  if (query.sortBy) params.set("sortBy", query.sortBy);
+  if (query.sortDir) params.set("sortDir", query.sortDir);
+  if (query.colFilters?.length) params.set("colFilters", JSON.stringify(query.colFilters));
+  params.set("page", String(query.page ?? 1));
+  params.set("pageSize", String(query.pageSize ?? 25));
+  const qs = params.toString();
+  const res = await fetch(`/api/itineraries?${qs}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to load itineraries");
+  }
+  const data = (await res.json()) as ItinerariesListResponse;
+  return {
+    itineraries: data.itineraries ?? [],
+    pagination: data.pagination ?? {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 25,
+      total: data.itineraries?.length ?? 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+  };
 }
 
 export async function createItineraryApi(payload: ItineraryWritePayload): Promise<ItineraryApi> {

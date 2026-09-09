@@ -222,6 +222,9 @@ export type LeadsListQuery = {
   created_to?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
 };
 
 export type LeadsListStatsApi = {
@@ -254,7 +257,12 @@ export async function fetchLeadsPage(query: LeadsListQuery = {}): Promise<LeadsL
     assigned_to: query.assigned_to,
     created_from: query.created_from,
     created_to: query.created_to,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
   });
+  if (query.colFilters?.length) {
+    params.set("colFilters", JSON.stringify(query.colFilters));
+  }
   params.set("page", String(query.page ?? 1));
   params.set("pageSize", String(query.pageSize ?? 25));
   const qs = params.toString();
@@ -293,6 +301,9 @@ export type LeadsExportQuery = {
   assigned_to?: string[];
   created_from?: string;
   created_to?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
 };
 
 export async function downloadLeadsCsv(query: LeadsExportQuery = {}): Promise<number> {
@@ -304,7 +315,12 @@ export async function downloadLeadsCsv(query: LeadsExportQuery = {}): Promise<nu
     assigned_to: query.assigned_to,
     created_from: query.created_from,
     created_to: query.created_to,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
   });
+  if (query.colFilters?.length) {
+    params.set("colFilters", JSON.stringify(query.colFilters));
+  }
   const qs = params.toString();
   const res = await fetch(`/api/leads/export${qs ? `?${qs}` : ""}`, {
     credentials: "include",

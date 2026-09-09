@@ -7,7 +7,6 @@ import {
   Download,
   Filter,
   History,
-  MoreHorizontal,
   MessageCircle,
   Plus,
   Pencil,
@@ -24,16 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { TableColumnsMenu } from "@/components/crm/table-columns-menu";
-import { ResizableTableHead } from "@/components/crm/resizable-table-head";
-import { useTableColumnLayout, type TableColumnDef } from "@/lib/use-table-column-layout";
-import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -48,26 +37,41 @@ import { BookingHistoryDrawer } from "@/components/crm/booking-history-drawer";
 import { BookingInvoiceDrawer } from "@/components/crm/booking-invoice-drawer";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
-  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
+import {
+  buildBookingsColumnDefs,
+  type BookingsGridActions,
+} from "@/components/crm/grid/bookings-grid-columns";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { downloadBookingsCsv } from "@/lib/bookings-api";
+import {
+  bookingFromApi,
+  downloadBookingsCsv,
+  fetchBookingsPage,
+} from "@/lib/bookings-api";
 import { BookingsExportDialog } from "@/components/crm/bookings-export-dialog";
 import { useHasPermission } from "@/lib/use-has-permission";
-import { Booking, BookingStatus, Driver, bookingRoute, makeLeadHistoryEvent } from "@/lib/data";
+import { Booking, BookingStatus, bookingRoute, makeLeadHistoryEvent } from "@/lib/data";
 import { assignedVehicleLabel, bookingDrivers, bookingHotels } from "@/lib/booking-utils";
-import { DatePicker, formatDisplayDate, parseStoredDate } from "@/components/crm/date-picker";
+import { DatePicker, formatDisplayDate } from "@/components/crm/date-picker";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import { CreatedAtDisplay } from "@/components/crm/created-at-display";
+import { PagePagination } from "@/components/crm/list-pagination";
+import type { GridApi } from "ag-grid-community";
+
+const BOOKINGS_PAGE_SIZE = 25;
+
+const statuses: BookingStatus[] = [
+  "Advance Pending",
+  "Advance Received",
+  "Balance Pending",
+  "Fully Paid",
+  "Cancelled",
+  "Refunded",
+];
 
 function formatDriversLabel(b: Booking) {
   const list = bookingDrivers(b);
@@ -76,7 +80,7 @@ function formatDriversLabel(b: Booking) {
   return `${list[0].driver} +${list.length - 1}`;
 }
 
-function formatVehiclesLabel(b: Booking, drivers: Driver[]) {
+function formatVehiclesLabel(b: Booking, drivers: Parameters<typeof assignedVehicleLabel>[1]) {
   const list = bookingDrivers(b);
   if (!list.length) return "—";
   if (list.length === 1) return assignedVehicleLabel(list[0], drivers);
@@ -89,34 +93,6 @@ function formatHotelsLabel(b: Booking) {
   if (list.length === 1) return list[0].hotelName;
   return `${list[0].hotelName} +${list.length - 1}`;
 }
-
-const statuses: BookingStatus[] = [
-  "Advance Pending",
-  "Advance Received",
-  "Balance Pending",
-  "Fully Paid",
-  "Cancelled",
-  "Refunded",
-];
-
-const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[10.5rem] whitespace-nowrap border-l border-border-soft bg-secondary";
-const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[10.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
-
-const BOOKING_TABLE_COLUMNS: TableColumnDef[] = [
-  { id: "booking", label: "Booking", locked: true, defaultWidth: 200 },
-  { id: "tour", label: "Tour package / Route", defaultWidth: 200 },
-  { id: "travel", label: "Travel dates", defaultWidth: 150 },
-  { id: "cab", label: "Cab / pax / days", defaultWidth: 150 },
-  { id: "driver", label: "Driver / Vehicle", defaultWidth: 170 },
-  { id: "total", label: "Total", align: "right", defaultWidth: 110 },
-  { id: "advance", label: "Advance", align: "right", defaultWidth: 110 },
-  { id: "balance", label: "Balance", align: "right", defaultWidth: 110 },
-  { id: "payment", label: "Payment status", defaultWidth: 150 },
-  { id: "created", label: "Created", defaultWidth: 120 },
-  { id: "actions", label: "Actions", locked: true, align: "right", defaultWidth: 168 },
-];
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -176,10 +152,11 @@ function MultiFilter<T extends string>({
 }
 
 export default function BookingsPage() {
-  const { state, websites, bookingsLoading, refreshBookings, addBooking, updateBooking, deleteBooking } =
+  const { state, websites, refreshBookings, addBooking, updateBooking, deleteBooking } =
     useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [searchUnlocked, setSearchUnlocked] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<BookingStatus[]>([]);
   const [driverFilter, setDriverFilter] = React.useState<string[]>([]);
@@ -187,6 +164,22 @@ export default function BookingsPage() {
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [travelFrom, setTravelFrom] = React.useState("");
   const [travelTo, setTravelTo] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const [pageBookings, setPageBookings] = React.useState<Booking[]>([]);
+  const [listLoading, setListLoading] = React.useState(true);
+  const [listStats, setListStats] = React.useState({
+    total: 0,
+    revenue: 0,
+    pending_balance: 0,
+    with_hotel: 0,
+  });
+  const [listPagination, setListPagination] = React.useState({
+    page: 1,
+    pageSize: BOOKINGS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
   const [deleteTarget, setDeleteTarget] = React.useState<Booking | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [commentBookingId, setCommentBookingId] = React.useState<string | null>(null);
@@ -200,7 +193,22 @@ export default function BookingsPage() {
   const canEditBooking = useHasPermission("bookings.edit");
   const canDeleteBooking = useHasPermission("bookings.delete");
   const canCommentBooking = useHasPermission("bookings.comment");
-  const columnLayout = useTableColumnLayout("crm.table.bookings", BOOKING_TABLE_COLUMNS);
+  const gridApiRef = React.useRef<GridApi<Booking> | null>(null);
+  const columnDefs = React.useMemo(() => buildBookingsColumnDefs(), []);
+  const [isDesktop, setIsDesktop] = React.useState(false);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   const websiteDomains = React.useMemo(() => websites.map((w) => w.domain), [websites]);
 
@@ -218,18 +226,125 @@ export default function BookingsPage() {
     [state.bookings]
   );
 
-  const commentBooking = commentBookingId
-    ? state.bookings.find((b) => b.id === commentBookingId) ?? null
-    : null;
-  const historyBooking = historyBookingId
-    ? state.bookings.find((b) => b.id === historyBookingId) ?? null
-    : null;
-  const invoiceBooking = invoiceBookingId
-    ? state.bookings.find((b) => b.id === invoiceBookingId) ?? null
-    : null;
-  const editingBooking = editingBookingId
-    ? state.bookings.find((b) => b.id === editingBookingId) ?? null
-    : null;
+  const filterKey = [
+    debouncedQuery,
+    statusFilter.join(","),
+    driverFilter.join(","),
+    hotelFilter.join(","),
+    websiteFilter.join(","),
+    travelFrom,
+    travelTo,
+  ].join("|");
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [filterKey]);
+
+  const toolbarFilters = React.useMemo(
+    () => ({
+      search: debouncedQuery || undefined,
+      status: statusFilter.length ? statusFilter : undefined,
+      website: websiteFilter.length ? websiteFilter : undefined,
+      driver: driverFilter.length ? driverFilter : undefined,
+      travel_from: travelFrom || undefined,
+      travel_to: travelTo || undefined,
+      hotel: hotelFilter.length
+        ? hotelFilter.map((h) => (h === "With hotel" ? ("with_hotel" as const) : ("no_hotel" as const)))
+        : undefined,
+    }),
+    [debouncedQuery, statusFilter, websiteFilter, driverFilter, travelFrom, travelTo, hotelFilter]
+  );
+
+  const loadBookingsPage = React.useCallback(async () => {
+    setListLoading(true);
+    try {
+      const data = await fetchBookingsPage({
+        ...toolbarFilters,
+        page,
+        pageSize: BOOKINGS_PAGE_SIZE,
+      });
+      setPageBookings(data.bookings.map(bookingFromApi));
+      setListStats(data.stats);
+      setListPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load bookings",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setListLoading(false);
+    }
+  }, [toolbarFilters, page, toast]);
+
+  React.useEffect(() => {
+    if (isDesktop) return;
+    void loadBookingsPage();
+  }, [loadBookingsPage, isDesktop]);
+
+  React.useEffect(() => {
+    if (listPagination.totalPages > 0 && page > listPagination.totalPages) {
+      setPage(listPagination.totalPages);
+    }
+  }, [listPagination.totalPages, page]);
+
+  async function reloadBookings() {
+    gridApiRef.current?.refreshInfiniteCache();
+    if (!isDesktop) await loadBookingsPage();
+    await refreshBookings();
+  }
+
+  const fetchGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchBookingsPage({
+        ...toolbarFilters,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.bookings.map(bookingFromApi),
+        total: data.pagination.total,
+        stats: data.stats,
+      };
+    },
+    [toolbarFilters]
+  );
+
+  function findBooking(id: string | null): Booking | null {
+    if (!id) return null;
+    return (
+      pageBookings.find((b) => b.id === id) ??
+      state.bookings.find((b) => b.id === id) ??
+      null
+    );
+  }
+
+  const commentBooking = findBooking(commentBookingId);
+  const historyBooking = findBooking(historyBookingId);
+  const invoiceBooking = findBooking(invoiceBookingId);
+  const editingBooking = findBooking(editingBookingId);
+
+  const gridActions = React.useMemo<BookingsGridActions>(
+    () => ({
+      statuses,
+      drivers: state.drivers,
+      canCommentBooking,
+      canEditBooking,
+      canDeleteBooking,
+      onStatusChange: (booking, status) => {
+        void handleStatusChange(booking, status);
+      },
+      onHistory: (booking) => setHistoryBookingId(booking.id),
+      onComments: (booking) => setCommentBookingId(booking.id),
+      onInvoice: (booking) => setInvoiceBookingId(booking.id),
+      onEdit: (booking) => setEditingBookingId(booking.id),
+      onDelete: (booking) => setDeleteTarget(booking),
+    }),
+    [state.drivers, canCommentBooking, canEditBooking, canDeleteBooking]
+  );
 
   function track(
     booking: Booking,
@@ -264,6 +379,7 @@ export default function BookingsPage() {
         title: "Booking created",
         description: `${data.customer}'s trip is on the books.`,
       });
+      void reloadBookings();
     } catch (error) {
       toast({
         variant: "error",
@@ -295,6 +411,7 @@ export default function BookingsPage() {
         title: "Booking updated",
         description: `${existing.bookingNo ?? existing.id} saved successfully.`,
       });
+      void reloadBookings();
     } catch (error) {
       toast({
         variant: "error",
@@ -316,6 +433,7 @@ export default function BookingsPage() {
         title: "Payment status updated",
         description: `${b.bookingNo ?? b.id} moved to ${s}.`,
       });
+      void reloadBookings();
     } catch (error) {
       toast({
         variant: "error",
@@ -336,6 +454,7 @@ export default function BookingsPage() {
         description: `${deleteTarget.bookingNo ?? deleteTarget.id} was removed.`,
       });
       setDeleteTarget(null);
+      void reloadBookings();
     } catch (error) {
       toast({
         variant: "error",
@@ -348,7 +467,7 @@ export default function BookingsPage() {
   }
 
   const hasFilters =
-    query.trim().length > 0 ||
+    debouncedQuery.length > 0 ||
     statusFilter.length > 0 ||
     driverFilter.length > 0 ||
     hotelFilter.length > 0 ||
@@ -369,49 +488,13 @@ export default function BookingsPage() {
     [query, statusFilter, websiteFilter, driverFilter, travelFrom, travelTo, hotelFilter]
   );
 
-  const visible = state.bookings.filter((b) => {
-    const q = query.trim().toLowerCase();
-    if (q) {
-      const matchesCustomer = b.customer.toLowerCase().includes(q);
-      const matchesEmail = b.email.toLowerCase().includes(q);
-      const matchesPhone = (b.phone ?? "").toLowerCase().includes(q);
-      const matchesId =
-        b.id.toLowerCase().includes(q) || (b.bookingNo ?? "").toLowerCase().includes(q);
-      if (!matchesCustomer && !matchesEmail && !matchesPhone && !matchesId) return false;
-    }
-    if (statusFilter.length > 0 && !statusFilter.includes(b.status)) return false;
-    if (driverFilter.length > 0) {
-      const names = bookingDrivers(b).map((d) => d.driver);
-      if (!names.some((name) => driverFilter.includes(name))) return false;
-    }
-    if (websiteFilter.length > 0 && (!b.website || !websiteFilter.includes(b.website))) return false;
-    if (hotelFilter.length > 0) {
-      const withHotel = bookingHotels(b).length > 0;
-      const ok =
-        (hotelFilter.includes("With hotel") && withHotel) ||
-        (hotelFilter.includes("No hotel") && !withHotel);
-      if (!ok) return false;
-    }
-    if (travelFrom || travelTo) {
-      const travel = parseStoredDate(b.travelDate);
-      if (!travel) return false;
-      if (travelFrom) {
-        const from = parseStoredDate(travelFrom);
-        if (from && travel < from) return false;
-      }
-      if (travelTo) {
-        const to = parseStoredDate(travelTo);
-        if (to && travel > to) return false;
-      }
-    }
-    return true;
-  });
-
-  const totalRevenue = state.bookings
-    .filter((b) => b.status !== "Cancelled" && b.status !== "Refunded")
-    .reduce((s, b) => s + b.total, 0);
-  const pendingBalance = state.bookings.reduce((s, b) => s + b.balance, 0);
-  const withHotel = state.bookings.filter((b) => bookingHotels(b).length > 0).length;
+  const visible = pageBookings;
+  const rangeStart =
+    listPagination.total === 0 ? 0 : (listPagination.page - 1) * listPagination.pageSize + 1;
+  const rangeEnd = Math.min(
+    listPagination.page * listPagination.pageSize,
+    listPagination.total
+  );
 
   return (
     <>
@@ -419,7 +502,7 @@ export default function BookingsPage() {
         title="Bookings"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <TableRefreshButton onRefresh={refreshBookings} loading={bookingsLoading} />
+            <TableRefreshButton onRefresh={reloadBookings} loading={listLoading} />
             {canCreateBooking ? (
               <BookingFormDialog
                 trigger={
@@ -436,39 +519,41 @@ export default function BookingsPage() {
       />
 
       <main className="page-pad flex min-h-0 flex-1 flex-col overflow-hidden">
-        {bookingsLoading ? (
-          <StatCardsSkeleton />
+        {listLoading && listStats.total === 0 ? (
+          <StatCardsSkeleton className="shrink-0 gap-4" />
         ) : (
-        <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Active bookings</p>
-              <p className="mt-1 font-display text-xl font-semibold">{state.bookings.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Confirmed revenue</p>
-              <p className="mt-1 font-display text-xl font-semibold text-teal">
-                ₹{totalRevenue.toLocaleString("en-IN")}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Balance pending</p>
-              <p className="mt-1 font-display text-xl font-semibold text-signal">
-                ₹{pendingBalance.toLocaleString("en-IN")}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">With hotel add-on</p>
-              <p className="mt-1 font-display text-xl font-semibold text-violet">{withHotel}</p>
-            </CardContent>
-          </Card>
-        </div>
+          <div className="mb-4 grid shrink-0 grid-cols-2 gap-4 sm:grid-cols-4">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Active bookings</p>
+                <p className="mt-1 font-display text-xl font-semibold">{listStats.total}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Confirmed revenue</p>
+                <p className="mt-1 font-display text-xl font-semibold text-teal">
+                  ₹{listStats.revenue.toLocaleString("en-IN")}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Balance pending</p>
+                <p className="mt-1 font-display text-xl font-semibold text-signal">
+                  ₹{listStats.pending_balance.toLocaleString("en-IN")}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">With hotel add-on</p>
+                <p className="mt-1 font-display text-xl font-semibold text-violet">
+                  {listStats.with_hotel}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -556,268 +641,63 @@ export default function BookingsPage() {
                   variant="outline"
                   size="sm"
                   className="h-8 gap-1.5"
-                  disabled={exporting || bookingsLoading}
+                  disabled={exporting || listLoading}
                   onClick={() => setExportOpen(true)}
                 >
                   <Download className="size-3.5" />
                   Export CSV
                 </Button>
               ) : null}
-              <TableColumnsMenu
-                columns={columnLayout.columns}
-                isHidden={columnLayout.isHidden}
-                onToggle={columnLayout.toggle}
-                onReset={columnLayout.reset}
-                isDirty={columnLayout.isDirty}
-              />
             </div>
           </div>
 
-          <div className="hidden min-h-0 flex-1 md:block">
-          <Table containerClassName="min-h-0 flex-1 overflow-auto" className="table-fixed min-w-max">
-            <TableHeader>
-              <TableRow className="group hover:bg-transparent">
-                {columnLayout.visibleIds.map((id) => {
-                  const def = BOOKING_TABLE_COLUMNS.find((column) => column.id === id);
-                  if (!def) return null;
-                  return (
-                    <ResizableTableHead
-                      key={id}
-                      id={id}
-                      label={def.label}
-                      width={columnLayout.widthFor(id)}
-                      locked={def.locked}
-                      align={def.align}
-                      className={id === "actions" ? stickyActionHead : undefined}
-                      onMove={columnLayout.move}
-                      onResize={columnLayout.setWidth}
-                    />
-                  );
-                })}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {bookingsLoading ? (
-                <TableRowsSkeleton columns={columnLayout.visibleIds.length} rows={6} />
-              ) : visible.map((b) => (
-                <TableRow key={b.id} className="group">
-                  {columnLayout.visibleIds.map((columnId) => {
-                    const width = columnLayout.widthFor(columnId);
-                    const cellStyle = { width, minWidth: width, maxWidth: width };
-                    if (columnId === "booking") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-1.5 text-sm font-medium text-ink-text">
-                        <span className="truncate">{b.customer}</span>
-                        {bookingHotels(b).length > 0 && (
-                          <BedDouble className="size-3.5 shrink-0 text-marigold-ink" />
-                        )}
-                      </p>
-                      <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
-                    </div>
-                  </TableCell>
-                      );
+          <div className="relative hidden min-h-0 flex-1 md:block">
+            <CrmGrid<Booking>
+              className="h-full min-h-[28rem]"
+              columnDefs={columnDefs}
+              fetchPage={fetchGridPage}
+              toolbarKey={filterKey}
+              storageKey="crm.ag.bookings.v1"
+              context={gridActions}
+              onGridApi={(api) => {
+                gridApiRef.current = api;
+              }}
+              onError={(error) => {
+                toast({
+                  variant: "error",
+                  title: "Could not load bookings",
+                  description: error instanceof Error ? error.message : "Please try again.",
+                });
+              }}
+              onStats={({ total, extra }) => {
+                const stats = extra as
+                  | {
+                      total?: number;
+                      revenue?: number;
+                      pending_balance?: number;
+                      with_hotel?: number;
                     }
-                    if (columnId === "tour") {
-                      return (
-                  <TableCell key={columnId} className="min-w-0" style={cellStyle}>
-                    <p className="truncate text-sm text-ink-text">{b.tourPackage}</p>
-                    <p className="truncate text-[11px] text-slate-soft">{bookingRoute(b)}</p>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "travel") {
-                      return (
-                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
-                    <p>{formatDisplayDate(b.travelDate)}</p>
-                    {b.returnDate ? (
-                      <p className="text-[11px] text-slate-soft">to {formatDisplayDate(b.returnDate)}</p>
-                    ) : null}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "cab") {
-                      return (
-                  <TableCell key={columnId} className="text-sm text-slate" style={cellStyle}>
-                    {b.cabType}{" "}
-                    <span className="text-slate-soft">
-                      · {b.adults}A{b.kids > 0 ? `+${b.kids}K` : ""} · {b.days}d
-                    </span>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "driver") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    <p className="text-sm text-ink-text">{formatDriversLabel(b)}</p>
-                    <p className="font-mono-data text-[11px] text-slate-soft">{formatVehiclesLabel(b, state.drivers)}</p>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "total") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-ink-text" style={cellStyle}>
-                    ₹{b.total.toLocaleString("en-IN")}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "advance") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-teal" style={cellStyle}>
-                    ₹{b.advance.toLocaleString("en-IN")}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "balance") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-right font-mono-data text-sm text-signal" style={cellStyle}>
-                    {b.balance > 0 ? `₹${b.balance.toLocaleString("en-IN")}` : "—"}
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "payment") {
-                      return (
-                  <TableCell key={columnId} style={cellStyle}>
-                    <div className="space-y-0.5">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-marigold focus-visible:ring-offset-1"
-                            aria-label={`Change payment status for ${b.customer}`}
-                          >
-                            <StatusBadge status={b.status} />
-                            <ChevronDown className="size-3.5 text-slate-soft" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuLabel>Set payment status</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          {statuses.map((s) => (
-                            <DropdownMenuItem
-                              key={s}
-                              disabled={s === b.status}
-                              onSelect={() => {
-                                void handleStatusChange(b, s);
-                              }}
-                            >
-                              <StatusBadge status={s} />
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      {b.paymentMode ? (
-                        <p className="truncate text-[10px] text-muted-foreground">
-                          {b.paymentMode}
-                        </p>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "created") {
-                      return (
-                  <TableCell key={columnId} className="whitespace-nowrap text-sm text-slate" style={cellStyle}>
-                    <CreatedAtDisplay iso={b.createdAt} stacked />
-                  </TableCell>
-                      );
-                    }
-                    if (columnId === "actions") {
-                      return (
-                  <TableCell key={columnId} className={stickyActionCell} style={cellStyle}>
-                    <div className="relative z-10 flex items-center justify-end gap-1 bg-inherit">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        aria-label={`Tracking history for ${b.customer}`}
-                        onClick={() => setHistoryBookingId(b.id)}
-                      >
-                        <History className="size-3.5" />
-                      </Button>
-                      {canCommentBooking ? (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        aria-label={`Comments for ${b.customer}`}
-                        onClick={() => setCommentBookingId(b.id)}
-                      >
-                        <MessageCircle className="size-3.5" />
-                      </Button>
-                      ) : null}
-                      {canEditBooking ? (
-                      <TooltipProvider delayDuration={200}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8"
-                              aria-label={`Invoice for ${b.customer}`}
-                              onClick={() => setInvoiceBookingId(b.id)}
-                            >
-                              <Receipt className="size-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">Invoice</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      ) : null}
-                      {canEditBooking || canDeleteBooking ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost" className="size-8">
-                            <MoreHorizontal className="size-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {canEditBooking ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setEditingBookingId(b.id);
-                            }}
-                          >
-                            <Pencil className="size-3.5" /> Edit booking
-                          </DropdownMenuItem>
-                          ) : null}
-                          {canEditBooking && canDeleteBooking ? <DropdownMenuSeparator /> : null}
-                          {canDeleteBooking ? (
-                          <DropdownMenuItem
-                            className="text-signal focus:bg-signal-soft"
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setDeleteTarget(b);
-                            }}
-                          >
-                            <Trash2 className="size-3.5" /> Delete booking
-                          </DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                      );
-                    }
-                    return null;
-                  })}
-                </TableRow>
-              ))}
-              {!bookingsLoading && visible.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={columnLayout.visibleIds.length} className="py-10 text-center text-sm text-muted-foreground">
-                    No bookings match these filters.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                  | undefined;
+                if (stats && typeof stats.total === "number") {
+                  setListStats({
+                    total: stats.total,
+                    revenue: stats.revenue ?? 0,
+                    pending_balance: stats.pending_balance ?? 0,
+                    with_hotel: stats.with_hotel ?? 0,
+                  });
+                } else {
+                  setListStats((prev) => ({ ...prev, total }));
+                }
+                setListLoading(false);
+              }}
+              extractExtra={(result) => (result as { stats?: unknown }).stats}
+            />
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
-            {visible.length === 0 ? (
+            {listLoading && visible.length === 0 ? (
+              <RecordCardsSkeleton count={4} />
+            ) : visible.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 No bookings match these filters.
               </p>
@@ -832,7 +712,9 @@ export default function BookingsPage() {
                           <BedDouble className="size-3.5 shrink-0 text-marigold-ink" />
                         ) : null}
                       </p>
-                      <p className="font-mono-data text-[11px] text-slate-soft">{b.id}</p>
+                      <p className="font-mono-data text-[11px] text-slate-soft">
+                        {b.bookingNo ?? b.id}
+                      </p>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -894,35 +776,44 @@ export default function BookingsPage() {
                       <History className="size-3.5" /> History
                     </Button>
                     {canCommentBooking ? (
-                    <Button size="sm" variant="outline" onClick={() => setCommentBookingId(b.id)}>
-                      <MessageCircle className="size-3.5" /> Comments
-                    </Button>
+                      <Button size="sm" variant="outline" onClick={() => setCommentBookingId(b.id)}>
+                        <MessageCircle className="size-3.5" /> Comments
+                      </Button>
                     ) : null}
                     {canEditBooking ? (
-                    <Button size="sm" variant="outline" onClick={() => setInvoiceBookingId(b.id)}>
-                      <Receipt className="size-3.5" /> Invoice
-                    </Button>
+                      <Button size="sm" variant="outline" onClick={() => setInvoiceBookingId(b.id)}>
+                        <Receipt className="size-3.5" /> Invoice
+                      </Button>
                     ) : null}
                     {canEditBooking ? (
-                    <Button size="sm" variant="outline" onClick={() => setEditingBookingId(b.id)}>
-                      <Pencil className="size-3.5" /> Edit
-                    </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingBookingId(b.id)}>
+                        <Pencil className="size-3.5" /> Edit
+                      </Button>
                     ) : null}
                     {canDeleteBooking ? (
-                    <Button size="sm" variant="outline" className="text-signal" onClick={() => setDeleteTarget(b)}>
-                      <Trash2 className="size-3.5" /> Delete
-                    </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-signal"
+                        onClick={() => setDeleteTarget(b)}
+                      >
+                        <Trash2 className="size-3.5" /> Delete
+                      </Button>
                     ) : null}
                   </div>
                 </RecordCard>
               ))
             )}
           </div>
-          <div className="flex shrink-0 items-center justify-between border-t border-border-soft bg-card px-4 py-3 text-xs text-muted-foreground sm:px-5">
-            <span>
-              Showing {visible.length} of {state.bookings.length} bookings
-            </span>
-          </div>
+          <PagePagination
+            page={listPagination.page}
+            totalPages={listPagination.totalPages}
+            total={listPagination.total}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onPageChange={setPage}
+            className="shrink-0 md:hidden"
+          />
         </Card>
       </main>
 
@@ -945,7 +836,7 @@ export default function BookingsPage() {
         open={!!commentBookingId}
         onOpenChange={(v) => !v && setCommentBookingId(null)}
         onAddComment={async (bookingId, comment) => {
-          const current = state.bookings.find((b) => b.id === bookingId);
+          const current = findBooking(bookingId);
           if (!current) return;
           try {
             await updateBooking(bookingId, {
@@ -957,6 +848,7 @@ export default function BookingsPage() {
               title: "Comment added",
               description: `Note saved on ${current.customer}.`,
             });
+            void reloadBookings();
           } catch (error) {
             toast({
               variant: "error",
@@ -987,10 +879,10 @@ export default function BookingsPage() {
         websiteOptions={websiteDomains}
         driverOptions={driverNames}
         exporting={exporting}
-        onExport={async (query) => {
+        onExport={async (exportQuery) => {
           setExporting(true);
           try {
-            return await downloadBookingsCsv(query);
+            return await downloadBookingsCsv(exportQuery);
           } finally {
             setExporting(false);
           }

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
+import type { GridApi } from "ag-grid-community";
 import { Topbar } from "@/components/crm/topbar";
 import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { useHasPermission } from "@/lib/use-has-permission";
@@ -9,14 +10,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,14 +21,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AdSpendDialog } from "@/components/crm/ad-spend-dialog";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
+import { PagePagination } from "@/components/crm/list-pagination";
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
-  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
+import {
+  buildAdSpendsColumnDefs,
+  type AdSpendsGridActions,
+} from "@/components/crm/grid/ad-spends-grid-columns";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
 import { AdPlatform, AdSpendEntry } from "@/lib/data";
+import { adSpendFromApi, fetchAdSpendsPage } from "@/lib/ad-spends-api";
 import { formatDisplayTime } from "@/lib/lead-utils";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 
@@ -47,10 +46,7 @@ const platformsList: AdPlatform[] = [
   "Other",
 ];
 
-const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[8.5rem] whitespace-nowrap border-l border-border-soft bg-secondary";
-const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[8.5rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+const AD_SPENDS_PAGE_SIZE = 25;
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -152,6 +148,7 @@ export default function MarketingPage() {
     useData();
   const { toast } = useToast();
   const [query, setQuery] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [platformFilter, setPlatformFilter] = React.useState<AdPlatform[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<AdSpendEntry | null>(null);
@@ -159,6 +156,19 @@ export default function MarketingPage() {
   const canEditAdSpend = useHasPermission("ad.spend.and.marketing.edit");
   const canDeleteAdSpend = useHasPermission("ad.spend.and.marketing.delete");
   const [deleting, setDeleting] = React.useState(false);
+  const [page, setPage] = React.useState(1);
+  const [pageSpends, setPageSpends] = React.useState<AdSpendEntry[]>([]);
+  const [listLoading, setListLoading] = React.useState(true);
+  const [listPagination, setListPagination] = React.useState({
+    page: 1,
+    pageSize: AD_SPENDS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
+  const gridApiRef = React.useRef<GridApi<AdSpendEntry> | null>(null);
+  const columnDefs = React.useMemo(() => buildAdSpendsColumnDefs(), []);
+  const [isDesktop, setIsDesktop] = React.useState(false);
 
   const websiteDomains = React.useMemo(() => websites.map((w) => w.domain), [websites]);
 
@@ -166,13 +176,40 @@ export default function MarketingPage() {
     setWebsiteFilter((prev) => prev.filter((d) => websiteDomains.includes(d)));
   }, [websiteDomains.join("|")]);
 
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
   const adSpends = state.adSpends || [];
+  const filterKey = `${debouncedQuery}|${platformFilter.join(",")}|${websiteFilter.join(",")}`;
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [filterKey]);
+
+  const toolbarFilters = React.useMemo(
+    () => ({
+      search: debouncedQuery || undefined,
+      platform: platformFilter.length ? platformFilter : undefined,
+      website: websiteFilter.length ? websiteFilter : undefined,
+    }),
+    [debouncedQuery, platformFilter, websiteFilter]
+  );
 
   const hasFilters =
     query.trim().length > 0 || platformFilter.length > 0 || websiteFilter.length > 0;
 
   const visibleSpends = adSpends.filter((s) => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.toLowerCase();
     if (q) {
       const matchCampaign = (s.campaignName ?? "").toLowerCase().includes(q);
       const matchNotes = (s.notes ?? "").toLowerCase().includes(q);
@@ -201,6 +238,62 @@ export default function MarketingPage() {
   const costPerLead = state.leads.length > 0 ? Math.round(totalSpendSum / state.leads.length) : 0;
   const roasRatio = totalSpendSum > 0 ? (confirmedRevenue / totalSpendSum).toFixed(1) : "0.0";
 
+  const loadSpendsPage = React.useCallback(async () => {
+    setListLoading(true);
+    try {
+      const data = await fetchAdSpendsPage({
+        ...toolbarFilters,
+        page,
+        pageSize: AD_SPENDS_PAGE_SIZE,
+      });
+      setPageSpends(data.adSpends.map(adSpendFromApi));
+      setListPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load ad spends",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setListLoading(false);
+    }
+  }, [toolbarFilters, page, toast]);
+
+  React.useEffect(() => {
+    if (isDesktop) return;
+    void loadSpendsPage();
+  }, [loadSpendsPage, isDesktop]);
+
+  React.useEffect(() => {
+    if (listPagination.totalPages > 0 && page > listPagination.totalPages) {
+      setPage(listPagination.totalPages);
+    }
+  }, [listPagination.totalPages, page]);
+
+  async function reloadSpends() {
+    gridApiRef.current?.refreshInfiniteCache();
+    if (!isDesktop) await loadSpendsPage();
+    await refreshAdSpends();
+  }
+
+  const fetchGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchAdSpendsPage({
+        ...toolbarFilters,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.adSpends.map(adSpendFromApi),
+        total: data.pagination.total,
+      };
+    },
+    [toolbarFilters]
+  );
+
   async function handleCreate(data: Omit<AdSpendEntry, "id" | "createdAt">) {
     try {
       await addAdSpend(data);
@@ -209,6 +302,7 @@ export default function MarketingPage() {
         title: "Ad Spend Logged",
         description: `Recorded ₹${data.amount.toLocaleString("en-IN")} for ${data.platform}.`,
       });
+      void reloadSpends();
     } catch (error) {
       toast({
         variant: "error",
@@ -227,6 +321,7 @@ export default function MarketingPage() {
         title: "Ad Spend Updated",
         description: `Updated entry for ${data.platform}.`,
       });
+      void reloadSpends();
     } catch (error) {
       toast({
         variant: "error",
@@ -248,6 +343,7 @@ export default function MarketingPage() {
         description: "The spend entry was removed.",
       });
       setDeleteTarget(null);
+      void reloadSpends();
     } catch (error) {
       toast({
         variant: "error",
@@ -259,13 +355,33 @@ export default function MarketingPage() {
     }
   }
 
+  const gridActions = React.useMemo<AdSpendsGridActions>(
+    () => ({
+      canEditAdSpend,
+      canDeleteAdSpend,
+      onUpdate: handleUpdate,
+      onDelete: (s) => setDeleteTarget(s),
+    }),
+    [canEditAdSpend, canDeleteAdSpend]
+  );
+
+  const rangeStart =
+    listPagination.total === 0 ? 0 : (listPagination.page - 1) * listPagination.pageSize + 1;
+  const rangeEnd = Math.min(
+    listPagination.page * listPagination.pageSize,
+    listPagination.total
+  );
+
   return (
     <>
       <Topbar
         title="Ad Spend & Marketing"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <TableRefreshButton onRefresh={refreshAdSpends} loading={adSpendsLoading} />
+            <TableRefreshButton
+              onRefresh={() => void reloadSpends()}
+              loading={adSpendsLoading || listLoading}
+            />
             {canCreateAdSpend ? (
               <AdSpendDialog
                 trigger={
@@ -368,116 +484,47 @@ export default function MarketingPage() {
                 </Button>
               )}
             </div>
+            <p className="text-xs text-slate-soft">{listPagination.total} of {adSpends.length}</p>
           </div>
 
-          <div className="hidden min-h-0 flex-1 md:block">
-            <Table containerClassName="min-h-0 flex-1 overflow-auto">
-              <TableHeader>
-                <TableRow className="group hover:bg-transparent">
-                  <TableHead className="sticky top-0 z-20 bg-secondary">Platform</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-secondary">Website Domain</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-secondary">Campaign Name & Details</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-secondary">Date</TableHead>
-                  <TableHead className="sticky top-0 z-20 bg-secondary text-right">Amount (₹)</TableHead>
-                  <TableHead className={`text-right ${stickyActionHead}`}>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {adSpendsLoading ? (
-                  <TableRowsSkeleton columns={6} rows={5} />
-                ) : visibleSpends.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                      No ad spend records match the current filters.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  visibleSpends.map((s) => (
-                    <TableRow key={s.id} className="group">
-                      <TableCell>
-                        <Badge
-                          variant={
-                            s.platform === "Google Ads"
-                              ? "marigold"
-                              : s.platform === "Meta Ads"
-                                ? "violet"
-                                : "teal"
-                          }
-                        >
-                          {s.platform}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="text-sm text-slate">
-                        {s.website ? (
-                          <span className="inline-flex items-center gap-1">🌐 {s.website}</span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="min-w-0 max-w-xs">
-                        <p className="truncate text-sm font-medium text-ink-text">
-                          {s.campaignName || "General Marketing Budget"}
-                        </p>
-                        {s.notes && (
-                          <p className="truncate text-[11px] text-slate-soft">{s.notes}</p>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="whitespace-nowrap text-sm text-slate">
-                        <SpendDateTime date={s.date} time={s.time} stacked />
-                      </TableCell>
-
-                      <TableCell className="whitespace-nowrap text-right font-mono-data text-sm font-semibold text-ink-text">
-                        ₹{s.amount.toLocaleString("en-IN")}
-                      </TableCell>
-
-                      <TableCell className={`text-right ${stickyActionCell}`}>
-                        {canEditAdSpend || canDeleteAdSpend ? (
-                        <div className="flex items-center justify-end gap-1">
-                          {canEditAdSpend ? (
-                          <AdSpendDialog
-                            spend={s}
-                            trigger={
-                              <Button variant="ghost" size="icon" className="size-8">
-                                <Pencil className="size-4 text-slate" />
-                              </Button>
-                            }
-                            onSubmit={(data) => handleUpdate(s.id, data)}
-                          />
-                          ) : null}
-
-                          {canDeleteAdSpend ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 hover:text-signal"
-                            onClick={() => setDeleteTarget(s)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                          ) : null}
-                        </div>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+          <div className="relative hidden min-h-0 flex-1 md:block">
+            <CrmGrid<AdSpendEntry>
+              className="h-full min-h-[28rem]"
+              columnDefs={columnDefs}
+              fetchPage={fetchGridPage}
+              toolbarKey={filterKey}
+              storageKey="crm.ag.ad-spends.v1"
+              context={gridActions}
+              onGridApi={(api) => {
+                gridApiRef.current = api;
+              }}
+              onError={(error) => {
+                toast({
+                  variant: "error",
+                  title: "Could not load ad spends",
+                  description: error instanceof Error ? error.message : "Please try again.",
+                });
+              }}
+              onStats={({ total }) => {
+                setListPagination((prev) => ({
+                  ...prev,
+                  total,
+                  totalPages: Math.max(1, Math.ceil(total / prev.pageSize) || 1),
+                }));
+                setListLoading(false);
+              }}
+            />
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
-            {adSpendsLoading ? (
+            {listLoading && pageSpends.length === 0 ? (
               <RecordCardsSkeleton count={4} />
-            ) : visibleSpends.length === 0 ? (
+            ) : pageSpends.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 No ad spend records match the current filters.
               </p>
             ) : (
-              visibleSpends.map((s) => (
+              pageSpends.map((s) => (
                 <RecordCard key={s.id}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-base font-semibold break-words text-ink-text">
@@ -509,31 +556,40 @@ export default function MarketingPage() {
                   </InfoGrid>
                   <div className="flex flex-wrap gap-1.5 border-t border-border-soft pt-3">
                     {canEditAdSpend ? (
-                    <AdSpendDialog
-                      spend={s}
-                      trigger={
-                        <Button size="sm" variant="outline">
-                          <Pencil className="size-3.5" /> Edit
-                        </Button>
-                      }
-                      onSubmit={(data) => handleUpdate(s.id, data)}
-                    />
+                      <AdSpendDialog
+                        spend={s}
+                        trigger={
+                          <Button size="sm" variant="outline">
+                            <Pencil className="size-3.5" /> Edit
+                          </Button>
+                        }
+                        onSubmit={(data) => handleUpdate(s.id, data)}
+                      />
                     ) : null}
                     {canDeleteAdSpend ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-signal"
-                      onClick={() => setDeleteTarget(s)}
-                    >
-                      <Trash2 className="size-3.5" /> Delete
-                    </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-signal"
+                        onClick={() => setDeleteTarget(s)}
+                      >
+                        <Trash2 className="size-3.5" /> Delete
+                      </Button>
                     ) : null}
                   </div>
                 </RecordCard>
               ))
             )}
           </div>
+          <PagePagination
+            page={listPagination.page}
+            totalPages={listPagination.totalPages}
+            total={listPagination.total}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onPageChange={setPage}
+            className="shrink-0 md:hidden"
+          />
         </Card>
       </main>
 

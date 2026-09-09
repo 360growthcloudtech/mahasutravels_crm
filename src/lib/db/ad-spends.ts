@@ -1,6 +1,37 @@
 import { query } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
 import type { AdPlatform } from "@/lib/data";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import { toDateOnly, toIso, toTimeOnly } from "@/lib/lead-utils";
+
+/** Allowlisted column ids for AG Grid sort / column filters on ad spends. */
+export const AD_SPEND_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  platform: { expr: "platform", kind: "text" },
+  website: { expr: "website", kind: "text" },
+  campaign_name: { expr: "campaign_name", kind: "text" },
+  notes: { expr: "notes", kind: "text" },
+  amount: { expr: "amount", kind: "number" },
+  leads_generated: { expr: "leads_generated", kind: "number" },
+  spend_date: { expr: "spend_date", kind: "date" },
+  created: { expr: "created_at", kind: "timestamptz" },
+};
+
+export const AD_SPEND_GRID_SORT_COLUMNS = Object.keys(AD_SPEND_GRID_SQL_COLUMNS);
+
+export const AD_SPEND_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(AD_SPEND_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "timestamptz" || col.kind === "date"
+      ? ("date" as const)
+      : col.kind === "number"
+        ? ("number" as const)
+        : ("text" as const),
+  ])
+);
 
 export const AD_PLATFORMS: AdPlatform[] = [
   "Google Ads",
@@ -68,6 +99,16 @@ export type ListAdSpendsFilters = {
   search?: string;
   platform?: string[];
   website?: string[];
+  /** AG Grid column sort (allowlisted). */
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  /** AG Grid Community column filters (allowlisted). */
+  colFilters?: GridColumnFilter[];
+};
+
+export type ListAdSpendsPageResult = {
+  rows: AdSpendRow[];
+  total: number;
 };
 
 const AD_SPEND_SELECT = `
@@ -107,7 +148,10 @@ export async function findAdSpendById(id: string): Promise<AdSpendRow | null> {
   return rows[0] ?? null;
 }
 
-export async function listAdSpends(filters: ListAdSpendsFilters = {}): Promise<AdSpendRow[]> {
+function buildAdSpendsFilterClauses(filters: ListAdSpendsFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -128,13 +172,58 @@ export async function listAdSpends(filters: ListAdSpendsFilters = {}): Promise<A
     params.push(filters.website);
     clauses.push(`website = ANY($${params.length}::text[])`);
   }
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, AD_SPEND_GRID_SQL_COLUMNS, clauses, params);
+  }
 
+  return { clauses, params };
+}
+
+function adSpendsOrderBy(filters: ListAdSpendsFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    AD_SPEND_GRID_SQL_COLUMNS,
+    "spend_date DESC, spend_time DESC NULLS LAST, created_at DESC"
+  );
+}
+
+export async function listAdSpends(filters: ListAdSpendsFilters = {}): Promise<AdSpendRow[]> {
+  const { clauses, params } = buildAdSpendsFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<AdSpendRow>(
-    `${AD_SPEND_SELECT} ${where} ORDER BY spend_date DESC, spend_time DESC NULLS LAST, created_at DESC`,
+    `${AD_SPEND_SELECT} ${where} ORDER BY ${adSpendsOrderBy(filters)}`,
     params
   );
   return rows;
+}
+
+export async function listAdSpendsPage(
+  filters: ListAdSpendsFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListAdSpendsPageResult> {
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildAdSpendsFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const { rows: countRows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM ad_spends ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total) || 0;
+  if (total === 0 || offset >= total) {
+    return { rows: [], total };
+  }
+
+  const { rows } = await query<AdSpendRow>(
+    `${AD_SPEND_SELECT} ${where}
+     ORDER BY ${adSpendsOrderBy(filters)}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+  return { rows, total };
 }
 
 export async function createAdSpend(input: CreateAdSpendInput): Promise<AdSpendRow> {

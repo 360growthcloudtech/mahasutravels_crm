@@ -131,13 +131,69 @@ export async function fetchDrivers(): Promise<{
   drivers: DriverApi[];
   summary?: DriverSummaryApi;
 }> {
-  const res = await fetch("/api/drivers", { credentials: "include" });
+  const res = await fetch("/api/drivers?all=1", { credentials: "include", cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load drivers");
   const data = (await res.json()) as {
     drivers?: DriverApi[];
     summary?: DriverSummaryApi;
   };
   return { drivers: data.drivers ?? [], summary: data.summary };
+}
+
+export type DriversListQuery = {
+  search?: string;
+  status?: string[];
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
+};
+
+export type DriversListPaginationApi = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+};
+
+export type DriversListResponse = {
+  drivers: DriverApi[];
+  pagination: DriversListPaginationApi;
+};
+
+export async function fetchDriversPage(
+  query: DriversListQuery = {}
+): Promise<DriversListResponse> {
+  const params = new URLSearchParams();
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.status?.length) params.set("status", query.status.join(","));
+  if (query.sortBy) params.set("sortBy", query.sortBy);
+  if (query.sortDir) params.set("sortDir", query.sortDir);
+  if (query.colFilters?.length) params.set("colFilters", JSON.stringify(query.colFilters));
+  params.set("page", String(query.page ?? 1));
+  params.set("pageSize", String(query.pageSize ?? 25));
+  const qs = params.toString();
+  const res = await fetch(`/api/drivers?${qs}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to load drivers");
+  }
+  const data = (await res.json()) as DriversListResponse;
+  return {
+    drivers: data.drivers ?? [],
+    pagination: data.pagination ?? {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 25,
+      total: data.drivers?.length ?? 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+  };
 }
 
 export type DriverAvailabilityQuery = {

@@ -178,10 +178,91 @@ export function bookingToWritePayload(
 }
 
 export async function fetchBookings(): Promise<BookingApi[]> {
-  const res = await fetch("/api/bookings", { credentials: "include" });
+  const res = await fetch("/api/bookings?all=1", { credentials: "include", cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load bookings");
   const data = (await res.json()) as { bookings?: BookingApi[] };
   return data.bookings ?? [];
+}
+
+export type BookingsListQuery = {
+  search?: string;
+  status?: string[];
+  website?: string[];
+  driver?: string[];
+  travel_from?: string;
+  travel_to?: string;
+  hotel?: Array<"with_hotel" | "no_hotel">;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
+};
+
+export type BookingsListStatsApi = {
+  total: number;
+  revenue: number;
+  pending_balance: number;
+  with_hotel: number;
+};
+
+export type BookingsListPaginationApi = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+};
+
+export type BookingsListResponse = {
+  bookings: BookingApi[];
+  pagination: BookingsListPaginationApi;
+  stats: BookingsListStatsApi;
+};
+
+export async function fetchBookingsPage(query: BookingsListQuery = {}): Promise<BookingsListResponse> {
+  const params = buildExportParams({
+    search: query.search,
+    status: query.status,
+    website: query.website,
+    driver: query.driver,
+    travel_from: query.travel_from,
+    travel_to: query.travel_to,
+    hotel: query.hotel,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  if (query.colFilters?.length) {
+    params.set("colFilters", JSON.stringify(query.colFilters));
+  }
+  params.set("page", String(query.page ?? 1));
+  params.set("pageSize", String(query.pageSize ?? 25));
+  const qs = params.toString();
+  const res = await fetch(`/api/bookings?${qs}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to load bookings");
+  }
+  const data = (await res.json()) as BookingsListResponse;
+  return {
+    bookings: data.bookings ?? [],
+    pagination: data.pagination ?? {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 25,
+      total: data.bookings?.length ?? 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+    stats: data.stats ?? {
+      total: data.bookings?.length ?? 0,
+      revenue: 0,
+      pending_balance: 0,
+      with_hotel: 0,
+    },
+  };
 }
 
 export type BookingsExportQuery = {
@@ -192,6 +273,9 @@ export type BookingsExportQuery = {
   travel_from?: string;
   travel_to?: string;
   hotel?: Array<"with_hotel" | "no_hotel">;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  colFilters?: Array<Record<string, unknown>>;
 };
 
 export async function downloadBookingsCsv(query: BookingsExportQuery = {}): Promise<number> {
@@ -203,7 +287,12 @@ export async function downloadBookingsCsv(query: BookingsExportQuery = {}): Prom
     travel_from: query.travel_from,
     travel_to: query.travel_to,
     hotel: query.hotel,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
   });
+  if (query.colFilters?.length) {
+    params.set("colFilters", JSON.stringify(query.colFilters));
+  }
   const qs = params.toString();
   const res = await fetch(`/api/bookings/export${qs ? `?${qs}` : ""}`, {
     credentials: "include",

@@ -1,23 +1,17 @@
 import { NextResponse } from "next/server";
 import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { parseHotelsListFilters, parseLeadsPagination } from "@/lib/api/list-filters";
 import {
   createHotelTemplate,
   hotelToDto,
   listHotelTemplates,
+  listHotelTemplatesPage,
   type CreateHotelInput,
 } from "@/lib/db/hotels";
 import { isHotelTemplateStatus } from "@/lib/hotel-utils";
 
 export const runtime = "nodejs";
 
-function csvParam(value: string | null): string[] | undefined {
-  if (!value?.trim()) return undefined;
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-}
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -40,12 +34,28 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const url = new URL(request.url);
-  const hotels = await listHotelTemplates({
-    search: url.searchParams.get("search") ?? undefined,
-    status: csvParam(url.searchParams.get("status")),
-  });
+  const filters = parseHotelsListFilters(url.searchParams);
+  const { page, pageSize, paginated } = parseLeadsPagination(url.searchParams);
 
-  return NextResponse.json({ hotels: hotels.map(hotelToDto) });
+  if (!paginated) {
+    const hotels = await listHotelTemplates(filters);
+    return NextResponse.json({ hotels: hotels.map(hotelToDto) });
+  }
+
+  const offset = (page - 1) * pageSize;
+  const result = await listHotelTemplatesPage(filters, { limit: pageSize, offset });
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize) || 1);
+
+  return NextResponse.json({
+    hotels: result.rows.map(hotelToDto),
+    pagination: {
+      page,
+      pageSize,
+      total: result.total,
+      totalPages,
+      hasMore: page * pageSize < result.total,
+    },
+  });
 }
 
 export async function POST(request: Request) {

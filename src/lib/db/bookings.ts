@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
 import type {
   BookingDriverAssignment,
   BookingStatus,
@@ -7,6 +8,11 @@ import type {
   LeadHistoryEvent,
   MarketingChannel,
 } from "@/lib/data";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import { parseLeadTime, toDateOnly, toIso, toTimeOnly } from "@/lib/lead-utils";
 import {
   formatBookingNo,
@@ -18,6 +24,47 @@ import {
   parseHistoryJson,
   parseHotelsJson,
 } from "@/lib/booking-utils";
+
+/** Allowlisted column ids for AG Grid sort / column filters on bookings. */
+export const BOOKING_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  customer: { expr: "customer", kind: "text" },
+  phone: { expr: "phone", kind: "text" },
+  email: { expr: "email", kind: "text" },
+  tour_package: { expr: "tour_package", kind: "text" },
+  pickup: { expr: "pickup", kind: "text" },
+  dropoff: { expr: "dropoff", kind: "text" },
+  cab_type: { expr: "cab_type", kind: "text" },
+  driver: { expr: "driver", kind: "text" },
+  vehicle: { expr: "vehicle", kind: "text" },
+  agent: { expr: "agent", kind: "text" },
+  website: { expr: "website", kind: "text" },
+  source: { expr: "source", kind: "text" },
+  status: { expr: "status", kind: "text" },
+  payment_mode: { expr: "payment_mode", kind: "text" },
+  total: { expr: "total", kind: "number" },
+  advance: { expr: "advance", kind: "number" },
+  balance: { expr: "balance", kind: "number" },
+  adults: { expr: "adults", kind: "number" },
+  kids: { expr: "kids", kind: "number" },
+  days: { expr: "days", kind: "number" },
+  booking_no: { expr: "booking_no", kind: "number" },
+  travel: { expr: "travel_date", kind: "date" },
+  return_date: { expr: "return_date", kind: "date" },
+  created: { expr: "created_at", kind: "timestamptz" },
+};
+
+export const BOOKING_GRID_SORT_COLUMNS = Object.keys(BOOKING_GRID_SQL_COLUMNS);
+
+export const BOOKING_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(BOOKING_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "timestamptz" || col.kind === "date"
+      ? ("date" as const)
+      : col.kind === "number"
+        ? ("number" as const)
+        : ("text" as const),
+  ])
+);
 
 export type BookingRow = {
   id: string;
@@ -151,7 +198,33 @@ export type ListBookingsFilters = {
   hotel?: Array<"with_hotel" | "no_hotel">;
   /** When set, only bookings owned by this user (lead assignee or agent name). */
   ownedBy?: { userId: string; agentName: string };
+  /** AG Grid column sort (allowlisted). */
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  /** AG Grid Community column filters (allowlisted). */
+  colFilters?: GridColumnFilter[];
 };
+
+export type BookingsListStats = {
+  total: number;
+  revenue: number;
+  pending_balance: number;
+  with_hotel: number;
+};
+
+export type ListBookingsPageResult = {
+  rows: BookingRow[];
+  total: number;
+  stats: BookingsListStats;
+};
+
+const HAS_HOTEL_SQL = `(
+  hotel IS NOT NULL
+  AND (
+    (jsonb_typeof(hotel::jsonb) = 'array' AND jsonb_array_length(hotel::jsonb) > 0)
+    OR (jsonb_typeof(hotel::jsonb) = 'object' AND COALESCE(hotel::jsonb->>'hotelName', '') <> '')
+  )
+)`;
 
 const BOOKING_SELECT = `
   SELECT
@@ -272,7 +345,10 @@ export async function isBookingOwnedBy(
   return rows[0]?.assigned_to === userId;
 }
 
-export async function listBookings(filters: ListBookingsFilters = {}): Promise<BookingRow[]> {
+function buildBookingsFilterClauses(filters: ListBookingsFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -317,17 +393,10 @@ export async function listBookings(filters: ListBookingsFilters = {}): Promise<B
   if (filters.hotel?.length) {
     const wantWith = filters.hotel.includes("with_hotel");
     const wantWithout = filters.hotel.includes("no_hotel");
-    const hasHotelSql = `(
-      hotel IS NOT NULL
-      AND (
-        (jsonb_typeof(hotel::jsonb) = 'array' AND jsonb_array_length(hotel::jsonb) > 0)
-        OR (jsonb_typeof(hotel::jsonb) = 'object' AND COALESCE(hotel::jsonb->>'hotelName', '') <> '')
-      )
-    )`;
     if (wantWith && !wantWithout) {
-      clauses.push(hasHotelSql);
+      clauses.push(HAS_HOTEL_SQL);
     } else if (wantWithout && !wantWith) {
-      clauses.push(`NOT ${hasHotelSql}`);
+      clauses.push(`NOT ${HAS_HOTEL_SQL}`);
     }
     // both selected → no hotel filter (show all)
   }
@@ -347,12 +416,84 @@ export async function listBookings(filters: ListBookingsFilters = {}): Promise<B
     );
   }
 
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, BOOKING_GRID_SQL_COLUMNS, clauses, params);
+  }
+
+  return { clauses, params };
+}
+
+function bookingsOrderBy(filters: ListBookingsFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    BOOKING_GRID_SQL_COLUMNS,
+    "travel_date DESC NULLS LAST, created_at DESC"
+  );
+}
+
+export async function listBookings(filters: ListBookingsFilters = {}): Promise<BookingRow[]> {
+  const { clauses, params } = buildBookingsFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<BookingRow>(
-    `${BOOKING_SELECT} ${where} ORDER BY travel_date DESC NULLS LAST, created_at DESC`,
+    `${BOOKING_SELECT} ${where} ORDER BY ${bookingsOrderBy(filters)}`,
     params
   );
   return rows;
+}
+
+/**
+ * Paginated booking list for CRM tables. Same filters as listBookings, plus LIMIT/OFFSET
+ * and aggregate stats for the filtered set.
+ */
+export async function listBookingsPage(
+  filters: ListBookingsFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListBookingsPageResult> {
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildBookingsFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const { rows: statsRows } = await query<{
+    total: string;
+    revenue: string;
+    pending_balance: string;
+    with_hotel: string;
+  }>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COALESCE(SUM(total) FILTER (
+         WHERE status NOT IN ('Cancelled', 'Refunded')
+       ), 0)::text AS revenue,
+       COALESCE(SUM(balance), 0)::text AS pending_balance,
+       COUNT(*) FILTER (WHERE ${HAS_HOTEL_SQL})::text AS with_hotel
+     FROM bookings
+     ${where}`,
+    params
+  );
+
+  const total = Number(statsRows[0]?.total) || 0;
+  const stats: BookingsListStats = {
+    total,
+    revenue: Number(statsRows[0]?.revenue) || 0,
+    pending_balance: Number(statsRows[0]?.pending_balance) || 0,
+    with_hotel: Number(statsRows[0]?.with_hotel) || 0,
+  };
+
+  if (total === 0 || offset >= total) {
+    return { rows: [], total, stats };
+  }
+
+  const { rows } = await query<BookingRow>(
+    `${BOOKING_SELECT} ${where}
+     ORDER BY ${bookingsOrderBy(filters)}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+
+  return { rows, total, stats };
 }
 
 function emptyDate(value?: string | null): string | null {

@@ -1,6 +1,46 @@
 import type { SessionPayload } from "@/lib/auth-jwt";
 import type { ListLeadsFilters } from "@/lib/db/leads";
+import { LEAD_GRID_FILTER_ALLOWLIST, LEAD_GRID_SORT_COLUMNS } from "@/lib/db/leads";
+import type { ListDriversFilters } from "@/lib/db/drivers";
+import {
+  DRIVER_GRID_FILTER_ALLOWLIST,
+  DRIVER_GRID_SORT_COLUMNS,
+} from "@/lib/db/drivers";
+import type { ListHotelsFilters } from "@/lib/db/hotels";
+import {
+  HOTEL_GRID_FILTER_ALLOWLIST,
+  HOTEL_GRID_SORT_COLUMNS,
+} from "@/lib/db/hotels";
+import type { ListItinerariesFilters } from "@/lib/db/itineraries";
+import {
+  ITINERARY_GRID_FILTER_ALLOWLIST,
+  ITINERARY_GRID_SORT_COLUMNS,
+} from "@/lib/db/itineraries";
 import type { ListBookingsFilters } from "@/lib/db/bookings";
+import {
+  BOOKING_GRID_FILTER_ALLOWLIST,
+  BOOKING_GRID_SORT_COLUMNS,
+} from "@/lib/db/bookings";
+import type { ListAdSpendsFilters } from "@/lib/db/ad-spends";
+import {
+  AD_SPEND_GRID_FILTER_ALLOWLIST,
+  AD_SPEND_GRID_SORT_COLUMNS,
+} from "@/lib/db/ad-spends";
+import type { ListUsersFilters } from "@/lib/db/users";
+import {
+  USER_GRID_FILTER_ALLOWLIST,
+  USER_GRID_SORT_COLUMNS,
+} from "@/lib/db/users";
+import type { ListPermissionsFilters } from "@/lib/db/permissions";
+import {
+  PERMISSION_GRID_FILTER_ALLOWLIST,
+  PERMISSION_GRID_SORT_COLUMNS,
+} from "@/lib/db/permissions";
+import {
+  parseGridColumnFilters,
+  parseGridPagination,
+  parseGridSort,
+} from "@/lib/api/grid-query";
 
 function csvParam(value: string | null): string[] | undefined {
   if (!value?.trim()) return undefined;
@@ -26,6 +66,8 @@ export function parseLeadsListFilters(
 
   const createdFrom = searchParams.get("created_from")?.trim() || null;
   const createdTo = searchParams.get("created_to")?.trim() || null;
+  const sort = parseGridSort(searchParams, LEAD_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, LEAD_GRID_FILTER_ALLOWLIST);
 
   return {
     search: searchParams.get("search") ?? undefined,
@@ -35,6 +77,9 @@ export function parseLeadsListFilters(
     website: csvParam(searchParams.get("website")),
     created_from: createdFrom && isDateOnly(createdFrom) ? createdFrom : null,
     created_to: createdTo && isDateOnly(createdTo) ? createdTo : null,
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
   };
 }
 
@@ -44,15 +89,45 @@ export function parseLeadsPagination(searchParams: URLSearchParams): {
   /** When true (default), return paginated payload with total/stats. */
   paginated: boolean;
 } {
-  const pageRaw = Number(searchParams.get("page") || "1");
-  const sizeRaw = Number(searchParams.get("pageSize") || searchParams.get("limit") || "25");
-  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
-  const pageSize = Number.isFinite(sizeRaw)
-    ? Math.min(Math.max(Math.floor(sizeRaw), 1), 100)
-    : 25;
-  // Unbounded list only when explicitly requested (store bootstrap / legacy).
-  const paginated = searchParams.get("all") !== "1";
-  return { page, pageSize, paginated };
+  return parseGridPagination(searchParams);
+}
+
+export function parseDriversListFilters(searchParams: URLSearchParams): ListDriversFilters {
+  const sort = parseGridSort(searchParams, DRIVER_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, DRIVER_GRID_FILTER_ALLOWLIST);
+  return {
+    search: searchParams.get("search") ?? undefined,
+    status: csvParam(searchParams.get("status")),
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
+  };
+}
+
+export function parseHotelsListFilters(searchParams: URLSearchParams): ListHotelsFilters {
+  const sort = parseGridSort(searchParams, HOTEL_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, HOTEL_GRID_FILTER_ALLOWLIST);
+  return {
+    search: searchParams.get("search") ?? undefined,
+    status: csvParam(searchParams.get("status")),
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
+  };
+}
+
+export function parseItinerariesListFilters(
+  searchParams: URLSearchParams
+): ListItinerariesFilters {
+  const sort = parseGridSort(searchParams, ITINERARY_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, ITINERARY_GRID_FILTER_ALLOWLIST);
+  return {
+    search: searchParams.get("search") ?? undefined,
+    status: csvParam(searchParams.get("status")),
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
+  };
 }
 
 export function hasLeadsExportFilters(searchParams: URLSearchParams): boolean {
@@ -63,7 +138,9 @@ export function hasLeadsExportFilters(searchParams: URLSearchParams): boolean {
       searchParams.get("website")?.trim() ||
       searchParams.get("assigned_to")?.trim() ||
       searchParams.get("created_from")?.trim() ||
-      searchParams.get("created_to")?.trim()
+      searchParams.get("created_to")?.trim() ||
+      searchParams.get("colFilters")?.trim() ||
+      searchParams.get("sortBy")?.trim()
   );
 }
 
@@ -77,6 +154,8 @@ export function parseBookingsListFilters(
   const hotel = hotelRaw?.filter(
     (v): v is "with_hotel" | "no_hotel" => v === "with_hotel" || v === "no_hotel"
   );
+  const sort = parseGridSort(searchParams, BOOKING_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, BOOKING_GRID_FILTER_ALLOWLIST);
 
   return {
     search: searchParams.get("search") ?? undefined,
@@ -90,7 +169,19 @@ export function parseBookingsListFilters(
       session.role === "Employee"
         ? { userId: session.sub, agentName: session.name }
         : undefined,
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
   };
+}
+
+export function parseBookingsPagination(searchParams: URLSearchParams): {
+  page: number;
+  pageSize: number;
+  /** When true (default), return paginated payload with total/stats. */
+  paginated: boolean;
+} {
+  return parseGridPagination(searchParams);
 }
 
 export function hasBookingsExportFilters(searchParams: URLSearchParams): boolean {
@@ -101,6 +192,49 @@ export function hasBookingsExportFilters(searchParams: URLSearchParams): boolean
       searchParams.get("driver")?.trim() ||
       searchParams.get("travel_from")?.trim() ||
       searchParams.get("travel_to")?.trim() ||
-      searchParams.get("hotel")?.trim()
+      searchParams.get("hotel")?.trim() ||
+      searchParams.get("colFilters")?.trim() ||
+      searchParams.get("sortBy")?.trim()
   );
+}
+
+export function parseAdSpendsListFilters(searchParams: URLSearchParams): ListAdSpendsFilters {
+  const sort = parseGridSort(searchParams, AD_SPEND_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, AD_SPEND_GRID_FILTER_ALLOWLIST);
+  return {
+    search: searchParams.get("search") ?? undefined,
+    platform: csvParam(searchParams.get("platform")),
+    website: csvParam(searchParams.get("website")),
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
+  };
+}
+
+export function parseUsersListFilters(searchParams: URLSearchParams): ListUsersFilters {
+  const sort = parseGridSort(searchParams, USER_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, USER_GRID_FILTER_ALLOWLIST);
+  return {
+    search: searchParams.get("search") ?? undefined,
+    role: csvParam(searchParams.get("role")),
+    status: csvParam(searchParams.get("status")),
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
+  };
+}
+
+export function parsePermissionsListFilters(
+  searchParams: URLSearchParams
+): ListPermissionsFilters {
+  const sort = parseGridSort(searchParams, PERMISSION_GRID_SORT_COLUMNS);
+  const colFilters = parseGridColumnFilters(searchParams, PERMISSION_GRID_FILTER_ALLOWLIST);
+  return {
+    search: searchParams.get("search") ?? undefined,
+    module: csvParam(searchParams.get("module")),
+    action: csvParam(searchParams.get("action")),
+    sortBy: sort?.sortBy ?? null,
+    sortDir: sort?.sortDir ?? null,
+    colFilters: colFilters.length ? colFilters : undefined,
+  };
 }

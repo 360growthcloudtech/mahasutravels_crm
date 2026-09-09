@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { parseItinerariesListFilters, parseLeadsPagination } from "@/lib/api/list-filters";
 import {
   createItineraryTemplate,
   isUniqueViolation,
   itineraryToDto,
   listItineraryTemplates,
+  listItineraryTemplatesPage,
   type CreateItineraryInput,
 } from "@/lib/db/itineraries";
 import {
@@ -18,14 +20,6 @@ import type { ItineraryDay } from "@/lib/data";
 
 export const runtime = "nodejs";
 
-function csvParam(value: string | null): string[] | undefined {
-  if (!value?.trim()) return undefined;
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-}
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -88,13 +82,29 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const url = new URL(request.url);
-  const items = await listItineraryTemplates({
-    search: url.searchParams.get("search") ?? undefined,
-    status: csvParam(url.searchParams.get("status")),
-  });
+  const filters = parseItinerariesListFilters(url.searchParams);
+  const { page, pageSize, paginated } = parseLeadsPagination(url.searchParams);
+
+  if (!paginated) {
+    const items = await listItineraryTemplates(filters);
+    return NextResponse.json({
+      itineraries: items.map(({ row, days }) => itineraryToDto(row, days)),
+    });
+  }
+
+  const offset = (page - 1) * pageSize;
+  const result = await listItineraryTemplatesPage(filters, { limit: pageSize, offset });
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize) || 1);
 
   return NextResponse.json({
-    itineraries: items.map(({ row, days }) => itineraryToDto(row, days)),
+    itineraries: result.rows.map(({ row, days }) => itineraryToDto(row, days)),
+    pagination: {
+      page,
+      pageSize,
+      total: result.total,
+      totalPages,
+      hasMore: page * pageSize < result.total,
+    },
   });
 }
 

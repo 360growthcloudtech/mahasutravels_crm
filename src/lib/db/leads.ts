@@ -1,5 +1,11 @@
 import { query, getPool } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
 import { createdAtIstClause } from "@/lib/db/ist-calendar";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import { getDefaultStatusCode } from "@/lib/db/masters";
 import { pickAutoAssignUserForWebsiteWithClient } from "@/lib/db/lead-auto-assign";
 import { ensureLeadWebhookSchema } from "@/lib/db/ensure-lead-webhook-schema";
@@ -11,6 +17,43 @@ import {
   toIso,
   toTimeOnly,
 } from "@/lib/lead-utils";
+
+/** Allowlisted column ids for AG Grid sort / column filters on leads. */
+export const LEAD_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  name: { expr: "l.name", kind: "text" },
+  phone: { expr: "l.phone", kind: "text" },
+  email: { expr: "l.email", kind: "text" },
+  tour_package: { expr: "l.tour_package", kind: "text" },
+  pickup: { expr: "l.pickup", kind: "text" },
+  drop: { expr: "l.drop_location", kind: "text" },
+  car: { expr: "l.car", kind: "text" },
+  source: { expr: "l.source", kind: "text" },
+  website: { expr: "l.website", kind: "text" },
+  assigned: { expr: "u.name", kind: "text" },
+  status: { expr: "l.status", kind: "text" },
+  price: { expr: "l.price", kind: "number" },
+  days: { expr: "l.days", kind: "number" },
+  adults: { expr: "l.adults", kind: "number" },
+  created: { expr: "l.created_at", kind: "timestamptz" },
+  last_inquiry: { expr: "l.last_inquiry_at", kind: "timestamptz" },
+  travel: { expr: "l.pickup_date", kind: "date" },
+  followup: { expr: "l.next_follow_up_date", kind: "date" },
+  lead_no: { expr: "l.lead_no", kind: "number" },
+  page_url: { expr: "l.page_url", kind: "text" },
+};
+
+export const LEAD_GRID_SORT_COLUMNS = Object.keys(LEAD_GRID_SQL_COLUMNS);
+
+export const LEAD_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(LEAD_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "timestamptz" || col.kind === "date"
+      ? ("date" as const)
+      : col.kind === "number"
+        ? ("number" as const)
+        : ("text" as const),
+  ])
+);
 
 export type LeadRow = {
   id: string;
@@ -171,6 +214,11 @@ export type ListLeadsFilters = {
   /** Inclusive IST calendar day for Created on. */
   created_from?: string | null;
   created_to?: string | null;
+  /** AG Grid column sort (allowlisted). */
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  /** AG Grid Community column filters (allowlisted). */
+  colFilters?: GridColumnFilter[];
 };
 
 export type LeadsListStats = {
@@ -391,14 +439,28 @@ function buildLeadsFilterClauses(filters: ListLeadsFilters): {
   );
   if (created) clauses.push(created);
 
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, LEAD_GRID_SQL_COLUMNS, clauses, params);
+  }
+
   return { clauses, params };
+}
+
+function leadsOrderBy(filters: ListLeadsFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    LEAD_GRID_SQL_COLUMNS,
+    "l.last_inquiry_at DESC, l.created_at DESC"
+  );
 }
 
 export async function listLeads(filters: ListLeadsFilters = {}): Promise<LeadRow[]> {
   const { clauses, params } = buildLeadsFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<LeadRow>(
-    `${LEAD_SELECT} ${where} ORDER BY l.last_inquiry_at DESC, l.created_at DESC`,
+    `${LEAD_SELECT} ${where} ORDER BY ${leadsOrderBy(filters)}`,
     params
   );
   return rows;
@@ -416,6 +478,7 @@ export async function listLeadsPage(
   const offset = Math.max(Math.floor(options.offset) || 0, 0);
   const { clauses, params } = buildLeadsFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const fromLeads = `FROM leads l LEFT JOIN users u ON u.id = l.assigned_to`;
 
   const { rows: statsRows } = await query<{
     total: string;
@@ -430,7 +493,7 @@ export async function listLeadsPage(
        COUNT(*) FILTER (
          WHERE l.inquiry_count > 1 OR l.previous_lead_id IS NOT NULL
        )::text AS repeat
-     FROM leads l
+     ${fromLeads}
      ${where}`,
     params
   );
@@ -449,7 +512,7 @@ export async function listLeadsPage(
 
   const { rows } = await query<LeadRow>(
     `${LEAD_SELECT} ${where}
-     ORDER BY l.last_inquiry_at DESC, l.created_at DESC
+     ORDER BY ${leadsOrderBy(filters)}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, limit, offset]
   );

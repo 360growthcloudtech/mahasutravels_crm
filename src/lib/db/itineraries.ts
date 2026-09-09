@@ -1,6 +1,12 @@
 import type { PoolClient } from "pg";
 import { getPool, query } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
 import type { ItineraryDay } from "@/lib/data";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import {
   clampDiscountPercentage,
   clampVarchar,
@@ -12,6 +18,34 @@ import {
   type ItineraryStatusValue,
 } from "@/lib/itinerary-utils";
 import { toIso } from "@/lib/lead-utils";
+
+/** Allowlisted column ids for AG Grid sort / column filters on itineraries. */
+export const ITINERARY_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  name: { expr: "name", kind: "text" },
+  tour_package: { expr: "tour_package", kind: "text" },
+  slug: { expr: "slug", kind: "text" },
+  subtitle: { expr: "subtitle", kind: "text" },
+  nights: { expr: "nights", kind: "text" },
+  days: { expr: "days", kind: "text" },
+  starting_from: { expr: "starting_from", kind: "number" },
+  discount_percentage: { expr: "discount_percentage", kind: "number" },
+  status: { expr: "status", kind: "text" },
+  itinerary_no: { expr: "itinerary_no", kind: "number" },
+  updated: { expr: "updated_at", kind: "timestamptz" },
+};
+
+export const ITINERARY_GRID_SORT_COLUMNS = Object.keys(ITINERARY_GRID_SQL_COLUMNS);
+
+export const ITINERARY_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(ITINERARY_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "timestamptz" || col.kind === "date"
+      ? ("date" as const)
+      : col.kind === "number"
+        ? ("number" as const)
+        : ("text" as const),
+  ])
+);
 
 export type ItineraryRow = {
   id: string;
@@ -101,6 +135,16 @@ export type PatchItineraryInput = {
 export type ListItinerariesFilters = {
   search?: string;
   status?: string[];
+  /** AG Grid column sort (allowlisted). */
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  /** AG Grid Community column filters (allowlisted). */
+  colFilters?: GridColumnFilter[];
+};
+
+export type ListItinerariesPageResult = {
+  rows: { row: ItineraryRow; days: ItineraryDayRow[] }[];
+  total: number;
 };
 
 const TEMPLATE_SELECT = `
@@ -203,9 +247,10 @@ export async function findItineraryTemplateBySlug(slug: string): Promise<{
   return { row: rows[0], days };
 }
 
-export async function listItineraryTemplates(
-  filters: ListItinerariesFilters = {}
-): Promise<{ row: ItineraryRow; days: ItineraryDayRow[] }[]> {
+function buildItinerariesFilterClauses(filters: ListItinerariesFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -223,14 +268,65 @@ export async function listItineraryTemplates(
     params.push(filters.status);
     clauses.push(`status = ANY($${params.length}::text[])`);
   }
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, ITINERARY_GRID_SQL_COLUMNS, clauses, params);
+  }
 
+  return { clauses, params };
+}
+
+function itinerariesOrderBy(filters: ListItinerariesFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    ITINERARY_GRID_SQL_COLUMNS,
+    "updated_at DESC, itinerary_no DESC"
+  );
+}
+
+export async function listItineraryTemplates(
+  filters: ListItinerariesFilters = {}
+): Promise<{ row: ItineraryRow; days: ItineraryDayRow[] }[]> {
+  const { clauses, params } = buildItinerariesFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<ItineraryRow>(
-    `${TEMPLATE_SELECT} ${where} ORDER BY updated_at DESC, itinerary_no DESC`,
+    `${TEMPLATE_SELECT} ${where} ORDER BY ${itinerariesOrderBy(filters)}`,
     params
   );
   const daysMap = await listDaysForItineraries(rows.map((r) => r.id));
   return rows.map((row) => ({ row, days: daysMap.get(row.id) ?? [] }));
+}
+
+export async function listItineraryTemplatesPage(
+  filters: ListItinerariesFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListItinerariesPageResult> {
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildItinerariesFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const { rows: countRows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM itinerary_templates ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total) || 0;
+  if (total === 0 || offset >= total) {
+    return { rows: [], total };
+  }
+
+  const { rows } = await query<ItineraryRow>(
+    `${TEMPLATE_SELECT} ${where}
+     ORDER BY ${itinerariesOrderBy(filters)}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+  const daysMap = await listDaysForItineraries(rows.map((r) => r.id));
+  return {
+    rows: rows.map((row) => ({ row, days: daysMap.get(row.id) ?? [] })),
+    total,
+  };
 }
 
 export async function allocateUniqueSlug(base: string, excludeId?: string): Promise<string> {

@@ -243,22 +243,6 @@ export function DateRangeFilter({
                   selected:
                     "[&>button]:bg-ink [&>button]:text-white [&>button]:hover:bg-ink-soft [&>button]:hover:text-white",
                 }}
-                components={{
-                  DayButton: ({ day, ...buttonProps }) => (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          {...buttonProps}
-                          className={cn(buttonProps.className)}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        {format(day.date, "EEEE, d MMMM yyyy")}
-                      </TooltipContent>
-                    </Tooltip>
-                  ),
-                }}
               />
             </div>
           </div>

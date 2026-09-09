@@ -5,6 +5,7 @@ import {
   createBooking,
   findConflictingDriverNames,
   listBookings,
+  listBookingsPage,
   patchBooking,
   type CreateBookingInput,
 } from "@/lib/db/bookings";
@@ -23,7 +24,7 @@ import type { BookingDriverAssignment, Hotel, LeadComment, LeadHistoryEvent } fr
 import { makeLeadHistoryEvent } from "@/lib/data";
 import { query } from "@/lib/db";
 import { formatLeadNo, parseLeadTime } from "@/lib/lead-utils";
-import { parseBookingsListFilters } from "@/lib/api/list-filters";
+import { parseBookingsListFilters, parseBookingsPagination } from "@/lib/api/list-filters";
 
 export const runtime = "nodejs";
 
@@ -100,9 +101,29 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const url = new URL(request.url);
-  const bookings = await listBookings(parseBookingsListFilters(url.searchParams, session));
+  const filters = parseBookingsListFilters(url.searchParams, session);
+  const { page, pageSize, paginated } = parseBookingsPagination(url.searchParams);
 
-  return NextResponse.json({ bookings: bookings.map(bookingToDto) });
+  if (!paginated) {
+    const bookings = await listBookings(filters);
+    return NextResponse.json({ bookings: bookings.map(bookingToDto) });
+  }
+
+  const offset = (page - 1) * pageSize;
+  const result = await listBookingsPage(filters, { limit: pageSize, offset });
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize) || 1);
+
+  return NextResponse.json({
+    bookings: result.rows.map(bookingToDto),
+    pagination: {
+      page,
+      pageSize,
+      total: result.total,
+      totalPages,
+      hasMore: page * pageSize < result.total,
+    },
+    stats: result.stats,
+  });
 }
 
 export async function POST(request: Request) {

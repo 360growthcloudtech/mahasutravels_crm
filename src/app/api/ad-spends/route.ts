@@ -1,24 +1,17 @@
 import { NextResponse } from "next/server";
 import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
+import { parseAdSpendsListFilters, parseLeadsPagination } from "@/lib/api/list-filters";
 import {
   adSpendToDto,
   createAdSpend,
   isAdPlatform,
   listAdSpends,
+  listAdSpendsPage,
   type CreateAdSpendInput,
 } from "@/lib/db/ad-spends";
 import { parseLeadTime } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
-
-function csvParam(value: string | null): string[] | undefined {
-  if (!value?.trim()) return undefined;
-  const items = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-}
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -45,13 +38,28 @@ export async function GET(request: Request) {
   if (denied) return denied;
 
   const url = new URL(request.url);
-  const spends = await listAdSpends({
-    search: url.searchParams.get("search") ?? undefined,
-    platform: csvParam(url.searchParams.get("platform")),
-    website: csvParam(url.searchParams.get("website")),
-  });
+  const filters = parseAdSpendsListFilters(url.searchParams);
+  const { page, pageSize, paginated } = parseLeadsPagination(url.searchParams);
 
-  return NextResponse.json({ adSpends: spends.map(adSpendToDto) });
+  if (!paginated) {
+    const spends = await listAdSpends(filters);
+    return NextResponse.json({ adSpends: spends.map(adSpendToDto) });
+  }
+
+  const offset = (page - 1) * pageSize;
+  const result = await listAdSpendsPage(filters, { limit: pageSize, offset });
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize) || 1);
+
+  return NextResponse.json({
+    adSpends: result.rows.map(adSpendToDto),
+    pagination: {
+      page,
+      pageSize,
+      total: result.total,
+      totalPages,
+      hasMore: page * pageSize < result.total,
+    },
+  });
 }
 
 export async function POST(request: Request) {

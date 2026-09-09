@@ -5,13 +5,12 @@ import {
   ChevronDown,
   Copy,
   Filter,
-  MoreHorizontal,
   Pencil,
   Plus,
   Search,
   Trash2,
-  Archive,
 } from "lucide-react";
+import type { GridApi } from "ag-grid-community";
 import { Topbar } from "@/components/crm/topbar";
 import { TableRefreshButton } from "@/components/crm/table-refresh-button";
 import { useHasPermission } from "@/lib/use-has-permission";
@@ -20,14 +19,6 @@ import { StatusBadge } from "@/components/crm/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,27 +33,24 @@ import {
   ItineraryFormState,
 } from "@/components/crm/itinerary-form-dialog";
 import { ConfirmDialog } from "@/components/crm/confirm-dialog";
-import {
-  InfiniteScrollSentinel,
-  PagePagination,
-} from "@/components/crm/list-pagination";
+import { PagePagination } from "@/components/crm/list-pagination";
 import { useData } from "@/lib/store";
 import { useToast } from "@/lib/toast";
-import { useListPagination } from "@/lib/use-list-pagination";
 import { ItineraryStatus, ItineraryTemplate, itineraryPriceAfterDiscount } from "@/lib/data";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
 import {
   RecordCardsSkeleton,
   StatCardsSkeleton,
-  TableRowsSkeleton,
 } from "@/components/crm/skeletons";
+import { CrmGrid, type GridPageRequest } from "@/components/crm/grid/crm-grid";
+import {
+  buildItinerariesColumnDefs,
+  type ItinerariesGridActions,
+} from "@/components/crm/grid/itineraries-grid-columns";
+import { fetchItinerariesPage, itineraryFromApi } from "@/lib/itineraries-api";
 
 const statuses: ItineraryStatus[] = ["Active", "Draft", "Archived"];
-
-const stickyActionHead =
-  "sticky right-0 top-0 z-30 min-w-[8rem] whitespace-nowrap border-l border-border-soft bg-secondary";
-const stickyActionCell =
-  "relative sticky right-0 z-20 min-w-[8rem] border-l border-border-soft bg-card before:absolute before:inset-0 before:-z-10 before:bg-card before:content-[''] group-hover:bg-secondary group-hover:before:bg-secondary";
+const ITINERARIES_PAGE_SIZE = 25;
 
 function toggleValue<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -87,33 +75,114 @@ export default function ItinerariesPage() {
   const { toast } = useToast();
 
   const [search, setSearch] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<ItineraryStatus[]>([]);
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ItineraryTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ItineraryTemplate | null>(null);
+  const [page, setPage] = React.useState(1);
+  const [pageItineraries, setPageItineraries] = React.useState<ItineraryTemplate[]>([]);
+  const [listLoading, setListLoading] = React.useState(true);
+  const [listPagination, setListPagination] = React.useState({
+    page: 1,
+    pageSize: ITINERARIES_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasMore: false,
+  });
   const canCreateItinerary = useHasPermission("itineraries.create");
   const canEditItinerary = useHasPermission("itineraries.edit");
   const canDeleteItinerary = useHasPermission("itineraries.delete");
-
-  const filtered = state.itineraries.filter((t) => {
-    const q = search.trim().toLowerCase();
-    const matchesSearch =
-      !q ||
-      t.name.toLowerCase().includes(q) ||
-      t.tourPackage.toLowerCase().includes(q) ||
-      t.itineraryNo.toLowerCase().includes(q);
-    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(t.status);
-    return matchesSearch && matchesStatus;
-  });
-
-  const pagination = useListPagination(filtered, {
-    pageSize: 10,
-    resetKey: `${search}|${statusFilter.join(",")}`,
-  });
+  const gridApiRef = React.useRef<GridApi<ItineraryTemplate> | null>(null);
+  const columnDefs = React.useMemo(() => buildItinerariesColumnDefs(), []);
+  const [isDesktop, setIsDesktop] = React.useState(false);
 
   const activeCount = state.itineraries.filter((t) => t.status === "Active").length;
   const draftCount = state.itineraries.filter((t) => t.status === "Draft").length;
   const totalDays = state.itineraries.reduce((s, t) => s + t.daysPlan.length, 0);
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const filterKey = `${debouncedSearch}|${statusFilter.join(",")}`;
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [filterKey]);
+
+  const toolbarFilters = React.useMemo(
+    () => ({
+      search: debouncedSearch || undefined,
+      status: statusFilter.length ? statusFilter : undefined,
+    }),
+    [debouncedSearch, statusFilter]
+  );
+
+  const loadItinerariesPage = React.useCallback(async () => {
+    setListLoading(true);
+    try {
+      const data = await fetchItinerariesPage({
+        ...toolbarFilters,
+        page,
+        pageSize: ITINERARIES_PAGE_SIZE,
+      });
+      setPageItineraries(data.itineraries.map(itineraryFromApi));
+      setListPagination(data.pagination);
+    } catch (error) {
+      toast({
+        variant: "error",
+        title: "Could not load itineraries",
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setListLoading(false);
+    }
+  }, [toolbarFilters, page, toast]);
+
+  React.useEffect(() => {
+    if (isDesktop) return;
+    void loadItinerariesPage();
+  }, [loadItinerariesPage, isDesktop]);
+
+  React.useEffect(() => {
+    if (listPagination.totalPages > 0 && page > listPagination.totalPages) {
+      setPage(listPagination.totalPages);
+    }
+  }, [listPagination.totalPages, page]);
+
+  async function reloadItineraries() {
+    gridApiRef.current?.refreshInfiniteCache();
+    if (!isDesktop) await loadItinerariesPage();
+    await refreshItineraries();
+  }
+
+  const fetchGridPage = React.useCallback(
+    async (request: GridPageRequest) => {
+      const data = await fetchItinerariesPage({
+        ...toolbarFilters,
+        page: request.page,
+        pageSize: request.pageSize,
+        sortBy: request.sortBy,
+        sortDir: request.sortDir,
+        colFilters: request.colFilters,
+      });
+      return {
+        rows: data.itineraries.map(itineraryFromApi),
+        total: data.pagination.total,
+      };
+    },
+    [toolbarFilters]
+  );
 
   function openCreate() {
     setEditing(null);
@@ -134,6 +203,7 @@ export default function ItinerariesPage() {
         await addItinerary(data);
         toast({ variant: "success", title: "Template created", description: data.name });
       }
+      void reloadItineraries();
     } catch (error) {
       toast({
         variant: "error",
@@ -152,6 +222,7 @@ export default function ItinerariesPage() {
         title: "Template duplicated",
         description: `${t.name} (Copy) saved as Draft`,
       });
+      void reloadItineraries();
     } catch (error) {
       toast({
         variant: "error",
@@ -170,6 +241,7 @@ export default function ItinerariesPage() {
         title: nextStatus === "Archived" ? "Archived" : "Restored to Active",
         description: t.name,
       });
+      void reloadItineraries();
     } catch (error) {
       toast({
         variant: "error",
@@ -185,6 +257,7 @@ export default function ItinerariesPage() {
       await deleteItinerary(deleteTarget.id);
       toast({ variant: "info", title: "Template deleted", description: deleteTarget.name });
       setDeleteTarget(null);
+      void reloadItineraries();
     } catch (error) {
       toast({
         variant: "error",
@@ -194,13 +267,35 @@ export default function ItinerariesPage() {
     }
   }
 
+  const gridActions = React.useMemo<ItinerariesGridActions>(
+    () => ({
+      canEditItinerary,
+      canDeleteItinerary,
+      onEdit: openEdit,
+      onDuplicate: (t) => void handleDuplicate(t),
+      onArchiveToggle: (t) => void handleArchiveToggle(t),
+      onDelete: setDeleteTarget,
+    }),
+    [canEditItinerary, canDeleteItinerary]
+  );
+
+  const rangeStart =
+    listPagination.total === 0 ? 0 : (listPagination.page - 1) * listPagination.pageSize + 1;
+  const rangeEnd = Math.min(
+    listPagination.page * listPagination.pageSize,
+    listPagination.total
+  );
+
   return (
     <>
       <Topbar
         title="Itineraries"
         action={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <TableRefreshButton onRefresh={refreshItineraries} loading={itinerariesLoading} />
+            <TableRefreshButton
+              onRefresh={() => void reloadItineraries()}
+              loading={itinerariesLoading || listLoading}
+            />
             {canCreateItinerary ? (
               <Button variant="marigold" size="sm" onClick={openCreate}>
                 <Plus className="size-3.5" /> New template
@@ -291,203 +386,99 @@ export default function ItinerariesPage() {
               </DropdownMenuContent>
             </DropdownMenu>
             <p className="ml-auto text-xs text-slate-soft">
-              {filtered.length} of {state.itineraries.length}
+              {listPagination.total} of {state.itineraries.length}
             </p>
           </div>
         </div>
 
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="hidden min-h-0 flex-1 flex-col md:flex">
-            <div className="min-h-0 flex-1 overflow-auto">
-              <Table containerClassName="min-w-[52rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Template</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Package</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Duration</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">From</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Discount</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Status</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-secondary">Updated</TableHead>
-                    <TableHead className={stickyActionHead}>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {itinerariesLoading ? (
-                    <TableRowsSkeleton columns={8} rows={6} />
-                  ) : pagination.desktopItems.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="py-10 text-center text-sm text-slate-soft">
-                        No itinerary templates match your filters.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    pagination.desktopItems.map((t) => (
-                      <TableRow key={t.id} className="group">
-                        <TableCell>
-                          <p className="text-sm font-medium text-ink-text">{t.name}</p>
-                          <p className="font-mono-data text-[11px] text-slate-soft">{t.itineraryNo}</p>
-                          {t.subtitle ? (
-                            <p className="mt-0.5 text-xs text-slate">{t.subtitle}</p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="max-w-[14rem] text-sm text-slate">
-                          {t.tourPackage}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap font-mono-data text-sm">
-                          {durationLabel(t)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap font-mono-data text-sm">
-                          <p>₹{t.startingFrom.toLocaleString("en-IN")}</p>
-                          {(t.discountPercentage ?? 0) > 0 ? (
-                            <p className="text-[11px] text-teal">
-                              ₹
-                              {itineraryPriceAfterDiscount(
-                                t.startingFrom,
-                                t.discountPercentage
-                              ).toLocaleString("en-IN")}{" "}
-                              after discount
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm text-slate">
-                          {(t.discountPercentage ?? 0) > 0 ? `${t.discountPercentage}%` : "—"}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={t.status} />
-                        </TableCell>
-                        <TableCell className="text-sm text-slate">{t.updatedAt}</TableCell>
-                        <TableCell className={stickyActionCell}>
-                          {canEditItinerary || canDeleteItinerary ? (
-                          <div className="flex items-center gap-1">
-                            {canEditItinerary ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-8"
-                              aria-label={`Edit ${t.name}`}
-                              onClick={() => openEdit(t)}
-                            >
-                              <Pencil className="size-3.5" />
-                            </Button>
-                            ) : null}
-                            {canEditItinerary || canDeleteItinerary ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="size-8">
-                                  <MoreHorizontal className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {canEditItinerary ? (
-                                <>
-                                <DropdownMenuItem onSelect={() => openEdit(t)}>
-                                  <Pencil className="size-3.5" /> Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => void handleDuplicate(t)}>
-                                  <Copy className="size-3.5" /> Duplicate
-                                </DropdownMenuItem>
-                                {t.status !== "Archived" ? (
-                                  <DropdownMenuItem onSelect={() => void handleArchiveToggle(t)}>
-                                    <Archive className="size-3.5" /> Archive
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem onSelect={() => void handleArchiveToggle(t)}>
-                                    <Archive className="size-3.5" /> Restore
-                                  </DropdownMenuItem>
-                                )}
-                                </>
-                                ) : null}
-                                {canEditItinerary && canDeleteItinerary ? <DropdownMenuSeparator /> : null}
-                                {canDeleteItinerary ? (
-                                <DropdownMenuItem
-                                  className="text-signal focus:text-signal"
-                                  onSelect={() => setDeleteTarget(t)}
-                                >
-                                  <Trash2 className="size-3.5" /> Delete
-                                </DropdownMenuItem>
-                                ) : null}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            ) : null}
-                          </div>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            <PagePagination
-              page={pagination.page}
-              totalPages={pagination.totalPages}
-              total={pagination.total}
-              rangeStart={pagination.rangeStart}
-              rangeEnd={pagination.rangeEnd}
-              onPageChange={pagination.setPage}
+          <div className="relative hidden min-h-0 flex-1 md:block">
+            <CrmGrid<ItineraryTemplate>
+              className="h-full min-h-[28rem]"
+              columnDefs={columnDefs}
+              fetchPage={fetchGridPage}
+              toolbarKey={filterKey}
+              storageKey="crm.ag.itineraries.v1"
+              context={gridActions}
+              onGridApi={(api) => {
+                gridApiRef.current = api;
+              }}
+              onError={(error) => {
+                toast({
+                  variant: "error",
+                  title: "Could not load itineraries",
+                  description: error instanceof Error ? error.message : "Please try again.",
+                });
+              }}
+              onStats={({ total }) => {
+                setListPagination((prev) => ({
+                  ...prev,
+                  total,
+                  totalPages: Math.max(1, Math.ceil(total / prev.pageSize) || 1),
+                }));
+                setListLoading(false);
+              }}
             />
           </div>
 
-          <div className="space-y-3 p-3 md:hidden">
-            {itinerariesLoading ? (
+          <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 md:hidden">
+            {listLoading && pageItineraries.length === 0 ? (
               <RecordCardsSkeleton count={4} />
-            ) : pagination.mobileItems.length === 0 ? (
+            ) : pageItineraries.length === 0 ? (
               <p className="py-10 text-center text-sm text-slate-soft">
                 No itinerary templates match your filters.
               </p>
             ) : (
-              <>
-                {pagination.mobileItems.map((t) => (
-                  <RecordCard key={t.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[15px] leading-snug font-semibold break-words text-ink-text">
-                          {t.name}
-                        </p>
-                        <p className="mt-1 font-mono-data text-[11px] text-slate-soft">
-                          {t.itineraryNo}
-                        </p>
-                      </div>
-                      <StatusBadge status={t.status} />
+              pageItineraries.map((t) => (
+                <RecordCard key={t.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] leading-snug font-semibold break-words text-ink-text">
+                        {t.name}
+                      </p>
+                      <p className="mt-1 font-mono-data text-[11px] text-slate-soft">
+                        {t.itineraryNo}
+                      </p>
                     </div>
-                    {t.subtitle ? (
-                      <p className="text-xs leading-relaxed text-slate">{t.subtitle}</p>
-                    ) : null}
-                    <InfoGrid className="grid-cols-2 gap-y-3">
-                      <InfoItem label="Package" className="col-span-2">
-                        {t.tourPackage || "—"}
-                      </InfoItem>
-                      <InfoItem label="Duration">{durationLabel(t)}</InfoItem>
-                      <InfoItem label="Updated">{t.updatedAt}</InfoItem>
-                      <InfoItem label="From">
-                        ₹{t.startingFrom.toLocaleString("en-IN")}
-                      </InfoItem>
-                      <InfoItem label="Discount">
-                        {(t.discountPercentage ?? 0) > 0 ? (
-                          <span>
-                            {t.discountPercentage}%
-                            <span className="mt-0.5 block text-teal">
-                              ₹
-                              {itineraryPriceAfterDiscount(
-                                t.startingFrom,
-                                t.discountPercentage
-                              ).toLocaleString("en-IN")}{" "}
-                              after
-                            </span>
+                    <StatusBadge status={t.status} />
+                  </div>
+                  {t.subtitle ? (
+                    <p className="text-xs leading-relaxed text-slate">{t.subtitle}</p>
+                  ) : null}
+                  <InfoGrid className="grid-cols-2 gap-y-3">
+                    <InfoItem label="Package" className="col-span-2">
+                      {t.tourPackage || "—"}
+                    </InfoItem>
+                    <InfoItem label="Duration">{durationLabel(t)}</InfoItem>
+                    <InfoItem label="Updated">{t.updatedAt}</InfoItem>
+                    <InfoItem label="From">
+                      ₹{t.startingFrom.toLocaleString("en-IN")}
+                    </InfoItem>
+                    <InfoItem label="Discount">
+                      {(t.discountPercentage ?? 0) > 0 ? (
+                        <span>
+                          {t.discountPercentage}%
+                          <span className="mt-0.5 block text-teal">
+                            ₹
+                            {itineraryPriceAfterDiscount(
+                              t.startingFrom,
+                              t.discountPercentage
+                            ).toLocaleString("en-IN")}{" "}
+                            after
                           </span>
-                        ) : (
-                          "—"
-                        )}
-                      </InfoItem>
-                    </InfoGrid>
-                    <div className="grid grid-cols-3 gap-2 border-t border-border-soft pt-3">
-                      {canEditItinerary ? (
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </InfoItem>
+                  </InfoGrid>
+                  <div className="grid grid-cols-3 gap-2 border-t border-border-soft pt-3">
+                    {canEditItinerary ? (
                       <Button size="sm" variant="outline" className="w-full" onClick={() => openEdit(t)}>
                         <Pencil className="size-3.5" /> Edit
                       </Button>
-                      ) : null}
-                      {canEditItinerary ? (
+                    ) : null}
+                    {canEditItinerary ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -496,8 +487,8 @@ export default function ItinerariesPage() {
                       >
                         <Copy className="size-3.5" /> Copy
                       </Button>
-                      ) : null}
-                      {canDeleteItinerary ? (
+                    ) : null}
+                    {canDeleteItinerary ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -506,19 +497,21 @@ export default function ItinerariesPage() {
                       >
                         <Trash2 className="size-3.5" /> Delete
                       </Button>
-                      ) : null}
-                    </div>
-                  </RecordCard>
-                ))}
-                <InfiniteScrollSentinel
-                  hasMore={pagination.hasMoreMobile}
-                  onLoadMore={pagination.loadMoreMobile}
-                  loadedCount={pagination.mobileItems.length}
-                  total={pagination.total}
-                />
-              </>
+                    ) : null}
+                  </div>
+                </RecordCard>
+              ))
             )}
           </div>
+          <PagePagination
+            page={listPagination.page}
+            totalPages={listPagination.totalPages}
+            total={listPagination.total}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onPageChange={setPage}
+            className="shrink-0 md:hidden"
+          />
         </Card>
       </main>
 

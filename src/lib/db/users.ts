@@ -1,6 +1,29 @@
 import { query, getPool } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
 import { ensureLeadWebhookSchema } from "@/lib/db/ensure-lead-webhook-schema";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import { resolveWebsiteDomain } from "@/lib/db/masters";
+
+/** Allowlisted column ids for AG Grid sort / column filters on users. */
+export const USER_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  name: { expr: "u.name", kind: "text" },
+  email: { expr: "u.email", kind: "text" },
+  role: { expr: "u.role", kind: "text" },
+  status: { expr: "u.status", kind: "text" },
+};
+
+export const USER_GRID_SORT_COLUMNS = Object.keys(USER_GRID_SQL_COLUMNS);
+
+export const USER_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(USER_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "number" ? ("number" as const) : ("text" as const),
+  ])
+);
 
 export type UserRow = {
   id: string;
@@ -18,6 +41,24 @@ export type PublicUser = {
   role: string;
   status: string;
   auto_assign_websites: string[];
+  permission_count?: number;
+  permission_keys?: string[];
+};
+
+export type ListUsersFilters = {
+  search?: string;
+  role?: string[];
+  status?: string[];
+  /** When false, only Active users (default for non-settings lists). */
+  includeInactive?: boolean;
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  colFilters?: GridColumnFilter[];
+};
+
+export type ListUsersPageResult = {
+  rows: PublicUser[];
+  total: number;
 };
 
 function normalizeWebsiteList(domains: string[] | null | undefined): string[] {
@@ -119,6 +160,114 @@ export async function listUsers(): Promise<PublicUser[]> {
   );
   const withWebsites = await attachAutoAssignWebsites(rows);
   return withWebsites.map((u) => mapPublicUser(u));
+}
+
+function buildUsersFilterClauses(filters: ListUsersFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (!filters.includeInactive) {
+    clauses.push(`u.status = 'Active'`);
+  }
+  if (filters.search?.trim()) {
+    params.push(`%${filters.search.trim().toLowerCase()}%`);
+    clauses.push(
+      `(lower(u.name) LIKE $${params.length}
+        OR lower(u.email) LIKE $${params.length}
+        OR lower(u.role) LIKE $${params.length})`
+    );
+  }
+  if (filters.role?.length) {
+    params.push(filters.role);
+    clauses.push(`u.role = ANY($${params.length}::text[])`);
+  }
+  if (filters.status?.length) {
+    params.push(filters.status);
+    clauses.push(`u.status = ANY($${params.length}::text[])`);
+  }
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, USER_GRID_SQL_COLUMNS, clauses, params);
+  }
+
+  return { clauses, params };
+}
+
+function usersOrderBy(filters: ListUsersFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    USER_GRID_SQL_COLUMNS,
+    "u.name ASC"
+  );
+}
+
+export async function listUsersPage(
+  filters: ListUsersFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListUsersPageResult> {
+  await ensureLeadWebhookSchema();
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildUsersFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  const { rows: countRows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM users u ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total) || 0;
+  if (total === 0 || offset >= total) {
+    return { rows: [], total };
+  }
+
+  const { rows } = await query<UserRow & { permission_count: string | number }>(
+    `SELECT
+       u.id,
+       u.name,
+       u.email,
+       u.role,
+       u.status,
+       COALESCE(pc.cnt, 0)::int AS permission_count
+     FROM users u
+     LEFT JOIN (
+       SELECT user_id, COUNT(*)::int AS cnt
+       FROM user_permissions
+       GROUP BY user_id
+     ) pc ON pc.user_id = u.id
+     ${where}
+     ORDER BY ${usersOrderBy(filters)}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+
+  const withWebsites = await attachAutoAssignWebsites(rows);
+  const ids = withWebsites.map((u) => u.id);
+  const { rows: permRows } = await query<{ user_id: string; permission_key: string }>(
+    `SELECT user_id, permission_key
+     FROM user_permissions
+     WHERE user_id = ANY($1::uuid[])
+     ORDER BY permission_key ASC`,
+    [ids]
+  );
+  const keysByUser = new Map<string, string[]>();
+  for (const row of permRows) {
+    const list = keysByUser.get(row.user_id) ?? [];
+    list.push(row.permission_key);
+    keysByUser.set(row.user_id, list);
+  }
+
+  return {
+    rows: withWebsites.map((u) => ({
+      ...mapPublicUser(u),
+      permission_count: Number(u.permission_count) || keysByUser.get(u.id)?.length || 0,
+      permission_keys: keysByUser.get(u.id) ?? [],
+    })),
+    total,
+  };
 }
 
 export async function listUserAutoAssignWebsites(userId: string): Promise<string[]> {

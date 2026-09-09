@@ -1,4 +1,10 @@
 import { query } from "@/lib/db";
+import type { GridColumnFilter } from "@/lib/api/grid-query";
+import {
+  appendGridColumnFilterClauses,
+  buildGridOrderBy,
+  type GridSqlColumn,
+} from "@/lib/db/grid-sql";
 import {
   clampCapacity,
   clampRating,
@@ -10,6 +16,36 @@ import {
   type DriverStatusValue,
 } from "@/lib/driver-utils";
 import { toIso } from "@/lib/lead-utils";
+
+/** Allowlisted column ids for AG Grid sort / column filters on drivers. */
+export const DRIVER_GRID_SQL_COLUMNS: Record<string, GridSqlColumn> = {
+  name: { expr: "d.name", kind: "text" },
+  phone: { expr: "d.phone", kind: "text" },
+  address: { expr: "d.address", kind: "text" },
+  status: { expr: "d.status", kind: "text" },
+  rating: { expr: "d.rating", kind: "number" },
+  trips: { expr: "d.trips", kind: "number" },
+  vehicle: { expr: "v.registration_number", kind: "text" },
+  vehicle_type: { expr: "v.vehicle_type", kind: "text" },
+  license_expiry: { expr: "d.license_expiry", kind: "date" },
+  insurance_expiry: { expr: "v.insurance_expiry", kind: "date" },
+  pollution_expiry: { expr: "v.pollution_expiry", kind: "date" },
+  driver_no: { expr: "d.driver_no", kind: "number" },
+  updated: { expr: "d.updated_at", kind: "timestamptz" },
+};
+
+export const DRIVER_GRID_SORT_COLUMNS = Object.keys(DRIVER_GRID_SQL_COLUMNS);
+
+export const DRIVER_GRID_FILTER_ALLOWLIST = Object.fromEntries(
+  Object.entries(DRIVER_GRID_SQL_COLUMNS).map(([id, col]) => [
+    id,
+    col.kind === "timestamptz" || col.kind === "date"
+      ? ("date" as const)
+      : col.kind === "number"
+        ? ("number" as const)
+        : ("text" as const),
+  ])
+);
 
 export type DriverJoinedRow = {
   id: string;
@@ -107,6 +143,16 @@ export type PatchDriverInput = {
 export type ListDriversFilters = {
   search?: string;
   status?: string[];
+  /** AG Grid column sort (allowlisted). */
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  /** AG Grid Community column filters (allowlisted). */
+  colFilters?: GridColumnFilter[];
+};
+
+export type ListDriversPageResult = {
+  rows: DriverJoinedRow[];
+  total: number;
 };
 
 export type DriverSummary = {
@@ -207,7 +253,10 @@ export async function findDriverByName(name: string): Promise<DriverJoinedRow | 
   return rows[0] ?? null;
 }
 
-export async function listDrivers(filters: ListDriversFilters = {}): Promise<DriverJoinedRow[]> {
+function buildDriversFilterClauses(filters: ListDriversFilters): {
+  clauses: string[];
+  params: unknown[];
+} {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -226,13 +275,59 @@ export async function listDrivers(filters: ListDriversFilters = {}): Promise<Dri
     params.push(filters.status);
     clauses.push(`d.status = ANY($${params.length}::text[])`);
   }
+  if (filters.colFilters?.length) {
+    appendGridColumnFilterClauses(filters.colFilters, DRIVER_GRID_SQL_COLUMNS, clauses, params);
+  }
 
+  return { clauses, params };
+}
+
+function driversOrderBy(filters: ListDriversFilters): string {
+  return buildGridOrderBy(
+    filters.sortBy && filters.sortDir
+      ? { sortBy: filters.sortBy, sortDir: filters.sortDir }
+      : null,
+    DRIVER_GRID_SQL_COLUMNS,
+    "d.updated_at DESC, d.driver_no DESC"
+  );
+}
+
+export async function listDrivers(filters: ListDriversFilters = {}): Promise<DriverJoinedRow[]> {
+  const { clauses, params } = buildDriversFilterClauses(filters);
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query<DriverJoinedRow>(
-    `${DRIVER_SELECT} ${where} ORDER BY d.updated_at DESC, d.driver_no DESC`,
+    `${DRIVER_SELECT} ${where} ORDER BY ${driversOrderBy(filters)}`,
     params
   );
   return rows;
+}
+
+export async function listDriversPage(
+  filters: ListDriversFilters = {},
+  options: { limit: number; offset: number }
+): Promise<ListDriversPageResult> {
+  const limit = Math.min(Math.max(Math.floor(options.limit) || 25, 1), 100);
+  const offset = Math.max(Math.floor(options.offset) || 0, 0);
+  const { clauses, params } = buildDriversFilterClauses(filters);
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const fromSql = `FROM drivers d LEFT JOIN vehicles v ON v.driver_id = d.id`;
+
+  const { rows: countRows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total ${fromSql} ${where}`,
+    params
+  );
+  const total = Number(countRows[0]?.total) || 0;
+  if (total === 0 || offset >= total) {
+    return { rows: [], total };
+  }
+
+  const { rows } = await query<DriverJoinedRow>(
+    `${DRIVER_SELECT} ${where}
+     ORDER BY ${driversOrderBy(filters)}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
+  );
+  return { rows, total };
 }
 
 export async function getDriverSummary(): Promise<DriverSummary> {
