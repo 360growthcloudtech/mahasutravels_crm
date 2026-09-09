@@ -218,6 +218,8 @@ export type LeadsListQuery = {
   source?: string[];
   website?: string[];
   assigned_to?: string[];
+  created_from?: string;
+  created_to?: string;
   page?: number;
   pageSize?: number;
 };
@@ -250,6 +252,8 @@ export async function fetchLeadsPage(query: LeadsListQuery = {}): Promise<LeadsL
     source: query.source,
     website: query.website,
     assigned_to: query.assigned_to,
+    created_from: query.created_from,
+    created_to: query.created_to,
   });
   params.set("page", String(query.page ?? 1));
   params.set("pageSize", String(query.pageSize ?? 25));
@@ -287,6 +291,8 @@ export type LeadsExportQuery = {
   source?: string[];
   website?: string[];
   assigned_to?: string[];
+  created_from?: string;
+  created_to?: string;
 };
 
 export async function downloadLeadsCsv(query: LeadsExportQuery = {}): Promise<number> {
@@ -296,6 +302,8 @@ export async function downloadLeadsCsv(query: LeadsExportQuery = {}): Promise<nu
     source: query.source,
     website: query.website,
     assigned_to: query.assigned_to,
+    created_from: query.created_from,
+    created_to: query.created_to,
   });
   const qs = params.toString();
   const res = await fetch(`/api/leads/export${qs ? `?${qs}` : ""}`, {

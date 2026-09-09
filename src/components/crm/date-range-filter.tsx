@@ -89,8 +89,8 @@ function detectPreset(range: DashboardDateRange): DateRangePresetId {
   return "custom";
 }
 
-export function formatRangeLabel(range: DashboardDateRange) {
-  if (!range?.from) return "All Data";
+export function formatRangeLabel(range: DashboardDateRange, emptyLabel = "All Data") {
+  if (!range?.from) return emptyLabel;
   const to = range.to ?? range.from;
   if (isSameDay(range.from, to)) return format(range.from, "d MMM yyyy");
   return `${format(range.from, "d MMM")} – ${format(to, "d MMM yyyy")}`;
@@ -128,11 +128,13 @@ export function DateRangeFilter({
   onChange,
   className,
   align = "end",
+  emptyLabel = "All Data",
 }: {
   value: DashboardDateRange;
   onChange: (value: DashboardDateRange) => void;
   className?: string;
   align?: "start" | "center" | "end";
+  emptyLabel?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [month, setMonth] = React.useState<Date>(() => value?.from ?? new Date());
@@ -178,7 +180,7 @@ export function DateRangeFilter({
         >
           <span className="flex min-w-0 items-center gap-2">
             <CalendarIcon className="size-4 shrink-0 text-slate-soft" />
-            <span className="truncate">{formatRangeLabel(value)}</span>
+            <span className="truncate">{formatRangeLabel(value, emptyLabel)}</span>
           </span>
           <ChevronDown className="size-3.5 shrink-0 text-slate-soft" />
         </Button>

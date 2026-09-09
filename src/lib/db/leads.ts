@@ -1,4 +1,5 @@
 import { query, getPool } from "@/lib/db";
+import { createdAtIstClause } from "@/lib/db/ist-calendar";
 import { getDefaultStatusCode } from "@/lib/db/masters";
 import { pickAutoAssignUserForWebsiteWithClient } from "@/lib/db/lead-auto-assign";
 import { ensureLeadWebhookSchema } from "@/lib/db/ensure-lead-webhook-schema";
@@ -167,6 +168,9 @@ export type ListLeadsFilters = {
   source?: string[];
   assigned_to?: string[];
   website?: string[];
+  /** Inclusive IST calendar day for Created on. */
+  created_from?: string | null;
+  created_to?: string | null;
 };
 
 export type LeadsListStats = {
@@ -379,6 +383,13 @@ function buildLeadsFilterClauses(filters: ListLeadsFilters): {
     params.push(filters.website);
     clauses.push(`l.website = ANY($${params.length}::text[])`);
   }
+  const created = createdAtIstClause(
+    "l",
+    filters.created_from ?? null,
+    filters.created_to ?? null,
+    params
+  );
+  if (created) clauses.push(created);
 
   return { clauses, params };
 }

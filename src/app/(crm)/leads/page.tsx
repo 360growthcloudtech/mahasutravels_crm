@@ -66,6 +66,11 @@ import { useSession } from "@/lib/session-context";
 import { useHasPermission } from "@/lib/use-has-permission";
 import { formatDisplayDate } from "@/components/crm/date-picker";
 import {
+  DateRangeFilter,
+  type DashboardDateRange,
+  rangeToISO,
+} from "@/components/crm/date-range-filter";
+import {
   PagePagination,
 } from "@/components/crm/list-pagination";
 import {
@@ -201,6 +206,7 @@ export default function LeadsPage() {
   /** Agent filter stores assignee user ids, plus `"unassigned"`. */
   const [agentFilter, setAgentFilter] = React.useState<string[]>([]);
   const [websiteFilter, setWebsiteFilter] = React.useState<string[]>([]);
+  const [createdRange, setCreatedRange] = React.useState<DashboardDateRange>(null);
   const [page, setPage] = React.useState(1);
   const [pageLeads, setPageLeads] = React.useState<Lead[]>([]);
   const [listLoading, setListLoading] = React.useState(true);
@@ -243,12 +249,14 @@ export default function LeadsPage() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  const createdBounds = rangeToISO(createdRange);
   const filterKey = [
     debouncedQuery,
     statusFilter.join(","),
     sourceFilter.join(","),
     agentFilter.join(","),
     websiteFilter.join(","),
+    createdBounds ? `${createdBounds.from}:${createdBounds.to}` : "",
   ].join("|");
 
   React.useEffect(() => {
@@ -264,6 +272,8 @@ export default function LeadsPage() {
         source: sourceFilter.length ? sourceFilter : undefined,
         website: websiteFilter.length ? websiteFilter : undefined,
         assigned_to: !isEmployee && agentFilter.length ? agentFilter : undefined,
+        created_from: createdBounds?.from,
+        created_to: createdBounds?.to,
         page,
         pageSize: LEADS_PAGE_SIZE,
       });
@@ -288,6 +298,8 @@ export default function LeadsPage() {
     websiteFilter,
     agentFilter,
     isEmployee,
+    createdBounds?.from,
+    createdBounds?.to,
     page,
     state.leadItineraries,
     toast,
@@ -476,7 +488,8 @@ export default function LeadsPage() {
     statusFilter.length > 0 ||
     sourceFilter.length > 0 ||
     agentFilter.length > 0 ||
-    websiteFilter.length > 0;
+    websiteFilter.length > 0 ||
+    createdRange != null;
 
   const exportInitialFilters = React.useMemo(
     () => ({
@@ -485,8 +498,9 @@ export default function LeadsPage() {
       source: sourceFilter,
       website: websiteFilter,
       assigned_to: agentFilter,
+      createdRange,
     }),
-    [query, statusFilter, sourceFilter, websiteFilter, agentFilter]
+    [query, statusFilter, sourceFilter, websiteFilter, agentFilter, createdRange]
   );
 
   const visible = pageLeads;
@@ -634,6 +648,13 @@ export default function LeadsPage() {
                     : assignees.find((a) => a.id === id)?.name ?? id
                 }
               />
+              <DateRangeFilter
+                value={createdRange}
+                onChange={setCreatedRange}
+                align="start"
+                emptyLabel="Created on"
+                className="h-8 sm:min-w-[10.5rem]"
+              />
               {hasFilters && (
                 <Button
                   variant="ghost"
@@ -645,6 +666,7 @@ export default function LeadsPage() {
                     setSourceFilter([]);
                     setAgentFilter([]);
                     setWebsiteFilter([]);
+                    setCreatedRange(null);
                   }}
                 >
                   <X className="size-3.5" /> Clear filters

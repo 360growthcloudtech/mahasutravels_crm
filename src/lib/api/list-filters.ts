@@ -24,12 +24,17 @@ export function parseLeadsListFilters(
       ? [session.sub]
       : csvParam(searchParams.get("assigned_to"));
 
+  const createdFrom = searchParams.get("created_from")?.trim() || null;
+  const createdTo = searchParams.get("created_to")?.trim() || null;
+
   return {
     search: searchParams.get("search") ?? undefined,
     status: csvParam(searchParams.get("status")),
     source: csvParam(searchParams.get("source")),
     assigned_to: assignedTo,
     website: csvParam(searchParams.get("website")),
+    created_from: createdFrom && isDateOnly(createdFrom) ? createdFrom : null,
+    created_to: createdTo && isDateOnly(createdTo) ? createdTo : null,
   };
 }
 
@@ -56,7 +61,9 @@ export function hasLeadsExportFilters(searchParams: URLSearchParams): boolean {
       searchParams.get("status")?.trim() ||
       searchParams.get("source")?.trim() ||
       searchParams.get("website")?.trim() ||
-      searchParams.get("assigned_to")?.trim()
+      searchParams.get("assigned_to")?.trim() ||
+      searchParams.get("created_from")?.trim() ||
+      searchParams.get("created_to")?.trim()
   );
 }
 

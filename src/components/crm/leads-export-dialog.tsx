@@ -18,6 +18,11 @@ import {
   useExportDialogFilters,
 } from "@/components/crm/export-filter-checklist";
 import type { LeadsExportQuery } from "@/lib/leads-api";
+import {
+  DateRangeFilter,
+  type DashboardDateRange,
+  rangeToISO,
+} from "@/components/crm/date-range-filter";
 
 export type LeadsExportDialogFilters = {
   search: string;
@@ -25,6 +30,7 @@ export type LeadsExportDialogFilters = {
   source: string[];
   website: string[];
   assigned_to: string[];
+  createdRange: DashboardDateRange;
 };
 
 type LeadsExportDialogProps = {
@@ -52,6 +58,7 @@ const emptyFilters: LeadsExportDialogFilters = {
   source: [],
   website: [],
   assigned_to: [],
+  createdRange: null,
 };
 
 export function LeadsExportDialog({
@@ -79,16 +86,20 @@ export function LeadsExportDialog({
     filters.status.length > 0 ||
     filters.source.length > 0 ||
     filters.website.length > 0 ||
-    filters.assigned_to.length > 0;
+    filters.assigned_to.length > 0 ||
+    filters.createdRange != null;
 
   async function handleExport() {
     try {
+      const bounds = rangeToISO(filters.createdRange);
       const count = await onExport({
         search: filters.search.trim() || undefined,
         status: filters.status.length ? filters.status : undefined,
         source: filters.source.length ? filters.source : undefined,
         website: filters.website.length ? filters.website : undefined,
         assigned_to: filters.assigned_to.length ? filters.assigned_to : undefined,
+        created_from: bounds?.from,
+        created_to: bounds?.to,
       });
       onSuccess?.(count, hasExportFilters);
       onOpenChange(false);
@@ -158,6 +169,16 @@ export function LeadsExportDialog({
               />
             </Field>
           ) : null}
+
+          <Field label="Created on" hint="Filters by the Created column">
+            <DateRangeFilter
+              value={filters.createdRange}
+              onChange={(createdRange) => setFilters((f) => ({ ...f, createdRange }))}
+              align="start"
+              emptyLabel="Created on"
+              className="h-9 w-full sm:w-full"
+            />
+          </Field>
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
