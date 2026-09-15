@@ -1439,7 +1439,7 @@ export function getRevenueTrendForSource(source?: string | null) {
 }
 
 export const sourceSplit = [
-  { source: "Google Ads", value: 38, color: "#f5a524" },
+  { source: "Google Ads", value: 38, color: "var(--marigold)" },
   { source: "Meta Ads", value: 27, color: "#8b5cf6" },
   { source: "Website", value: 22, color: "#0d9488" },
   { source: "Manual", value: 13, color: "#64748b" },

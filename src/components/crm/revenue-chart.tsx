@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 const SOURCE_SERIES = [
-  { key: "Google Ads", color: "#f5a524" },
+  { key: "Google Ads", color: "var(--marigold)" },
   { key: "Meta Ads", color: "#8b5cf6" },
   { key: "Website", color: "#0d9488" },
   { key: "Manual", color: "#64748b" },
@@ -37,7 +37,7 @@ interface RevenueChartProps {
 
 export function RevenueChart({
   data = [],
-  color = "#f5a524",
+  color = "var(--marigold)",
   sourceName,
 }: RevenueChartProps) {
   const showAllSources = !sourceName;

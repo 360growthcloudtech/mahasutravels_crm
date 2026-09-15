@@ -63,7 +63,7 @@ export default function LoginPage() {
           className="pointer-events-none absolute inset-0 opacity-[0.18]"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 18% 20%, #f5a524 0, transparent 32%), radial-gradient(circle at 88% 78%, #0c8f8f 0, transparent 36%)",
+              "radial-gradient(circle at 18% 20%, #2a9875 0, transparent 32%), radial-gradient(circle at 88% 78%, #0c8f8f 0, transparent 36%)",
           }}
         />
         <div className="pointer-events-none absolute inset-y-0 left-10 w-px bg-[repeating-linear-gradient(to_bottom,#2a3150_0_6px,transparent_6px_14px)]" />

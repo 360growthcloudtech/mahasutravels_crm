@@ -177,16 +177,16 @@ export default function ProposalPage() {
             <p className="mt-4 text-sm leading-relaxed text-white/65">{quote.intro_text}</p>
           </div>
 
-          <div className="relative mt-6 inline-flex rounded-[18px] border border-marigold/40 bg-marigold px-4 py-3 text-[#12172b]">
+          <div className="relative mt-6 inline-flex rounded-[18px] border border-marigold/40 bg-marigold px-4 py-3 text-white">
             <div>
-              <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#7a4c05]/80">
+              <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-white/80">
                 Package total
               </p>
               <p className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
                 ₹{quote.amount.toLocaleString("en-IN")}
               </p>
               {quote.amount_note ? (
-                <p className="mt-1 max-w-xs text-[11px] text-[#7a4c05]/90">{quote.amount_note}</p>
+                <p className="mt-1 max-w-xs text-[11px] text-white/85">{quote.amount_note}</p>
               ) : null}
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function ProposalPage() {
                 className="overflow-hidden rounded-2xl border border-[#eadfcb] bg-white"
               >
                 <div className="flex flex-wrap items-center gap-2 border-b border-[#eadfcb] bg-[#101628] px-4 py-2.5 text-white">
-                  <span className="rounded-full bg-marigold px-2.5 py-0.5 font-mono-data text-[10px] font-semibold uppercase tracking-wide text-[#12172b]">
+                  <span className="rounded-full bg-marigold px-2.5 py-0.5 font-mono-data text-[10px] font-semibold uppercase tracking-wide text-white">
                     Day {String(stop.day).padStart(2, "0")}
                   </span>
                   {stop.date ? (
@@ -253,7 +253,7 @@ export default function ProposalPage() {
                 <div className="space-y-3 px-4 py-3.5">
                   <div className="flex flex-wrap gap-2 text-xs">
                     {stop.distance ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#f3eadc] px-2.5 py-1 text-[#7a4c05]">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-marigold-soft px-2.5 py-1 text-marigold-ink">
                         <MapPin className="size-3" /> {stop.distance}
                       </span>
                     ) : null}
@@ -402,7 +402,7 @@ export default function ProposalPage() {
           <p className="mt-2 text-xs leading-relaxed text-[#5c5346]">{QUOTE_PDF_BOOKING_INTRO}</p>
           <div className="mt-4 overflow-hidden rounded-2xl border border-[#eadfcb] bg-white">
             <table className="w-full text-left text-sm">
-              <thead className="bg-marigold/90 text-[10px] uppercase tracking-[0.12em] text-[#7a4c05]">
+              <thead className="bg-marigold/90 text-[10px] uppercase tracking-[0.12em] text-white">
                 <tr>
                   <th className="px-3 py-2.5 font-semibold">Payment item</th>
                   <th className="px-3 py-2.5 font-semibold">Percentage</th>
@@ -412,10 +412,10 @@ export default function ProposalPage() {
               <tbody>
                 {QUOTE_PDF_PAYMENT_SCHEDULE.map((row) => (
                   <tr key={row.item} className="border-t border-[#eadfcb]">
-                    <td className="bg-[#fdf1da]/60 px-3 py-2.5 font-medium text-[#7a4c05]">
+                    <td className="bg-marigold-soft/60 px-3 py-2.5 font-medium text-marigold-ink">
                       {row.item}
                     </td>
-                    <td className="bg-[#fdf1da]/60 px-3 py-2.5 font-semibold text-[#12172b]">
+                    <td className="bg-marigold-soft/60 px-3 py-2.5 font-semibold text-[#12172b]">
                       {row.percentage}
                     </td>
                     <td className="px-3 py-2.5 text-[#5c5346]">{row.when}</td>
@@ -506,7 +506,7 @@ export default function ProposalPage() {
               <br />
               Address: {QUOTE_PDF_CLOSING.address}
             </p>
-            <p className="mt-4 text-center font-mono-data text-[10px] uppercase tracking-[0.14em] text-[#7a4c05]">
+            <p className="mt-4 text-center font-mono-data text-[10px] uppercase tracking-[0.14em] text-marigold-ink">
               {QUOTE_PDF_CLOSING.thankYou}
             </p>
           </div>

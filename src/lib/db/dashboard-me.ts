@@ -63,7 +63,7 @@ export type EmployeeDashboardPayload = {
 };
 
 const FIXED_SOURCE_SPLIT: Array<{ code: string; label: string; color: string }> = [
-  { code: "google_ads", label: "Google Ads", color: "#f5a524" },
+  { code: "google_ads", label: "Google Ads", color: "var(--marigold)" },
   { code: "meta_ads", label: "Meta Ads", color: "#8b5cf6" },
   { code: "website", label: "Website", color: "#0d9488" },
   { code: "manual", label: "Manual", color: "#64748b" },

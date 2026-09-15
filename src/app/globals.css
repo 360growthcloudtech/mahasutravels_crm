@@ -13,24 +13,25 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Mahasu Travels CRM — "Dispatch" design system */
-  --ink: #12172b;
-  --ink-soft: #1b2138;
-  --ink-line: #2a3150;
-  --paper: #f5f6f9;
+  /* Mahasu Travels CRM — brand green from logo (#2a9875) */
+  --ink: #10241c;
+  --ink-soft: #16352a;
+  --ink-line: #244a3c;
+  --paper: #f4f7f5;
   --card: #ffffff;
-  --border: #e3e6ee;
-  --border-soft: #edeff4;
+  --border: #dde6e1;
+  --border-soft: #eaf0ed;
 
-  --ink-text: #12172b;
-  --slate: #5b6478;
-  --slate-soft: #8991a3;
-  --wash: #f8f9fc;
+  --ink-text: #10241c;
+  --slate: #5a6b64;
+  --slate-soft: #84948d;
+  --wash: #f7faf8;
 
-  --marigold: #f5a524;
-  --marigold-ink: #7a4c05;
-  --marigold-soft: #fdf1da;
-  --teal: #0c8f8f;
+  /* Brand accent (token name kept as marigold for existing class usage) */
+  --marigold: #2a9875;
+  --marigold-ink: #0f5c45;
+  --marigold-soft: #e5f6ef;
+  --teal: #1a8a8a;
   --teal-soft: #e0f5f3;
   --signal: #e0522f;
   --signal-soft: #fbe6df;
@@ -46,9 +47,9 @@
   --popover-foreground: var(--ink-text);
   --primary: var(--ink);
   --primary-foreground: #ffffff;
-  --secondary: #eef0f4;
+  --secondary: #e8efeb;
   --secondary-foreground: var(--ink-text);
-  --muted: #eef0f4;
+  --muted: #e8efeb;
   --muted-foreground: var(--slate);
   --accent: var(--marigold-soft);
   --accent-foreground: var(--marigold-ink);
@@ -61,6 +62,10 @@
 .dark {
   color-scheme: dark;
 
+  /* Keep the previous navy dark theme (light mode only uses logo green). */
+  --ink: #12172b;
+  --ink-soft: #1b2138;
+  --ink-line: #2a3150;
   --paper: #0e1220;
   --card: #171c2e;
   --border: #2a3150;
@@ -71,6 +76,7 @@
   --slate: #9aa3b8;
   --slate-soft: #7a8398;
 
+  --marigold: #f5a524;
   --marigold-ink: #ffc14a;
   --marigold-soft: #3a2f16;
   --teal: #3cb8b8;
@@ -242,31 +248,33 @@
 .proposal-print {
   color-scheme: light;
   color: #12172b;
-  --ink: #12172b;
-  --ink-soft: #1b2138;
-  --ink-text: #12172b;
-  --slate: #5b6478;
-  --slate-soft: #8991a3;
-  --marigold-ink: #7a4c05;
-  --marigold-soft: #fdf1da;
-  --teal: #0c8f8f;
+  --ink: #10241c;
+  --ink-soft: #16352a;
+  --ink-text: #10241c;
+  --slate: #5a6b64;
+  --slate-soft: #84948d;
+  --marigold: #2a9875;
+  --marigold-ink: #0f5c45;
+  --marigold-soft: #e5f6ef;
+  --teal: #1a8a8a;
   --teal-soft: #e0f5f3;
-  --foreground: #12172b;
-  --muted-foreground: #5b6478;
+  --foreground: #10241c;
+  --muted-foreground: #5a6b64;
   --card: #ffffff;
-  --border: #d9cbb3;
-  --secondary: #f3eadc;
-  --secondary-foreground: #12172b;
-  --color-ink: #12172b;
-  --color-ink-soft: #1b2138;
-  --color-ink-text: #12172b;
-  --color-slate: #5b6478;
-  --color-slate-soft: #8991a3;
-  --color-marigold-ink: #7a4c05;
-  --color-marigold-soft: #fdf1da;
-  --color-teal: #0c8f8f;
+  --border: #c9d9d0;
+  --secondary: #e8efeb;
+  --secondary-foreground: #10241c;
+  --color-ink: #10241c;
+  --color-ink-soft: #16352a;
+  --color-ink-text: #10241c;
+  --color-slate: #5a6b64;
+  --color-slate-soft: #84948d;
+  --color-marigold: #2a9875;
+  --color-marigold-ink: #0f5c45;
+  --color-marigold-soft: #e5f6ef;
+  --color-teal: #1a8a8a;
   --color-teal-soft: #e0f5f3;
-  --color-foreground: #12172b;
+  --color-foreground: #10241c;
   --color-muted-foreground: #5b6478;
   --color-card: #ffffff;
   --color-border: #d9cbb3;

@@ -175,9 +175,9 @@ export default function InvoicePage() {
           </div>
 
           <div className="relative mt-6 flex flex-wrap gap-3">
-            <div className="inline-flex rounded-[18px] border border-marigold/40 bg-marigold px-4 py-3 text-[#12172b]">
+            <div className="inline-flex rounded-[18px] border border-marigold/40 bg-marigold px-4 py-3 text-white">
               <div>
-                <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#7a4c05]/80">
+                <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-white/80">
                   Total amount
                 </p>
                 <p className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
