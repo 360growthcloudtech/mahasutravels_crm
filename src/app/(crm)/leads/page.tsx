@@ -740,7 +740,7 @@ export default function LeadsPage() {
               columnDefs={columnDefs}
               fetchPage={fetchGridPage}
               toolbarKey={filterKey}
-              storageKey="crm.ag.leads.v1"
+              storageKey="crm.ag.leads.v2"
               context={gridActions}
               onGridApi={(api) => {
                 gridApiRef.current = api;

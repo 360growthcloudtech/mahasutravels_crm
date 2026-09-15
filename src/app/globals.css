@@ -367,6 +367,13 @@
   white-space: nowrap;
 }
 
+/* Actions column: keep icon buttons (incl. ⋯ Edit/Delete) from being clipped */
+.crm-ag-grid .crm-ag-actions-cell,
+.crm-ag-grid .crm-ag-actions-cell .ag-cell-wrapper,
+.crm-ag-grid .crm-ag-actions-cell .ag-cell-value {
+  overflow: visible;
+}
+
 /* Pagination bar: vertically centered with space above and below */
 .crm-ag-grid .ag-paging-panel {
   display: flex;

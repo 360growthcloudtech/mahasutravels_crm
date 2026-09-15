@@ -440,7 +440,10 @@ export function buildLeadsColumnDefs(): ColDef<Lead>[] {
       lockVisible: true,
       sortable: false,
       filter: false,
-      width: 176,
+      // History + optional comment/quote/booking + ⋯ (Edit/Delete) — avoid clipping the menu.
+      width: 220,
+      minWidth: 200,
+      cellClass: "crm-ag-actions-cell",
       cellRenderer: ActionsCell,
     },
   ];
