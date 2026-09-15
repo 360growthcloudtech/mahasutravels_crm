@@ -81,7 +81,8 @@ export function memberRowFromUser(
 
 export function memberFromRow(row: SettingsMemberRow): Member {
   return {
-    id: row.localMemberId ?? row.id,
+    // Prefer API/user UUID so edits hit /api/users/:id (not local MB-* seed ids).
+    id: row.id,
     name: row.name,
     email: row.email,
     phone: row.phone ?? "",

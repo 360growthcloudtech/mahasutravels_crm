@@ -71,12 +71,12 @@ import {
   allPermissionKeys,
 } from "@/lib/data";
 import {
+  createUserApi,
   fetchUsers,
   fetchUsersPage,
   fetchPermissionsCatalog,
   fetchPermissionsPage,
-  updateUserAutoAssignWebsites,
-  updateUserPermissionKeys,
+  updateUserApi,
   type UserApi,
 } from "@/lib/users-api";
 import { InfoGrid, InfoItem, RecordCard } from "@/components/crm/record-card";
@@ -439,15 +439,6 @@ export default function SettingsPage() {
     }));
   }
 
-  function togglePermission(key: string) {
-    setForm((f) => ({
-      ...f,
-      permissionKeys: f.permissionKeys.includes(key)
-        ? f.permissionKeys.filter((k) => k !== key)
-        : [...f.permissionKeys, key],
-    }));
-  }
-
   function toggleModulePermissions(module: string, keys: string[], grant: boolean) {
     setForm((f) => {
       const without = f.permissionKeys.filter((k) => !keys.includes(k));
@@ -463,7 +454,7 @@ export default function SettingsPage() {
       toast({ variant: "error", title: "Name and email are required" });
       return;
     }
-    if (!form.password.trim()) {
+    if (!editingMember && !form.password.trim()) {
       toast({ variant: "error", title: "Password is required" });
       return;
     }
@@ -475,35 +466,65 @@ export default function SettingsPage() {
 
     setSavingMember(true);
     try {
-      const dbUser = dbUsers.find(
-        (u) => u.email.toLowerCase() === form.email.trim().toLowerCase()
-      );
-      if (dbUser) {
-        const updated = await updateUserAutoAssignWebsites(
-          dbUser.id,
-          payload.autoAssignWebsites
-        );
-        await updateUserPermissionKeys(dbUser.id, payload.permissionKeys);
-        if (session?.memberId === dbUser.id) {
+      if (editingMember) {
+        const apiUserId =
+          dbUsers.find((u) => u.email.toLowerCase() === form.email.trim().toLowerCase())
+            ?.id ??
+          dbUsers.find((u) => u.id === editingMember.id)?.id ??
+          (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            editingMember.id
+          )
+            ? editingMember.id
+            : null);
+
+        if (!apiUserId) {
+          throw new Error("Could not find the login user to update.");
+        }
+
+        const { user: updated, permission_keys } = await updateUserApi(apiUserId, {
+          name: payload.name.trim(),
+          email: payload.email.trim(),
+          password: payload.password.trim() || undefined,
+          role: payload.role,
+          status: payload.status,
+          phone: payload.phone,
+          department: payload.department,
+          autoAssignWebsites: payload.autoAssignWebsites,
+          permissionKeys: payload.permissionKeys,
+        });
+        if (session?.memberId === updated.id) {
           await refreshSession();
         }
-        setDbUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-      } else if (payload.autoAssignWebsites.length > 0) {
-        toast({
-          variant: "error",
-          title: "No matching login user",
-          description:
-            "Auto-assign website only saves for members that exist as CRM login users (same email).",
+        setDbUsers((prev) => {
+          const exists = prev.some((u) => u.id === updated.id);
+          if (!exists) return [...prev, { ...updated, permission_keys }];
+          return prev.map((u) =>
+            u.id === updated.id ? { ...updated, permission_keys } : u
+          );
         });
-        setSavingMember(false);
-        return;
-      }
 
-      if (editingMember) {
-        updateMember(editingMember.id, payload);
+        updateMember(editingMember.id, {
+          ...payload,
+          password: payload.password.trim() || editingMember.password,
+        });
         toast({ variant: "success", title: "Member updated", description: form.name });
       } else {
-        addMember(payload);
+        const { user: created, permission_keys } = await createUserApi({
+          name: payload.name.trim(),
+          email: payload.email.trim(),
+          password: payload.password.trim(),
+          role: payload.role,
+          status: payload.status,
+          phone: payload.phone,
+          department: payload.department,
+          autoAssignWebsites: payload.autoAssignWebsites,
+          permissionKeys: payload.permissionKeys,
+        });
+        setDbUsers((prev) => [{ ...created, permission_keys }, ...prev]);
+        addMember({
+          ...payload,
+          // Keep local store in sync; grid reads from API.
+        });
         toast({ variant: "success", title: "Member invited", description: form.name });
       }
       setMemberOpen(false);
@@ -988,16 +1009,16 @@ export default function SettingsPage() {
                       onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                     />
                   </Field>
-                  <Field label="Password">
+                  <Field label={editingMember ? "Password (optional)" : "Password"}>
                     <div className="relative">
                       <Input
                         type={showPassword ? "text" : "password"}
                         name="password"
-                        autoComplete={editingMember ? "current-password" : "new-password"}
+                        autoComplete={editingMember ? "new-password" : "new-password"}
                         value={form.password}
                         onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                         className="pr-10"
-                        placeholder={editingMember ? "••••••••" : "Set a password"}
+                        placeholder={editingMember ? "Leave blank to keep current" : "Set a password"}
                       />
                       <button
                         type="button"
@@ -1209,7 +1230,17 @@ export default function SettingsPage() {
                               >
                                 <Checkbox
                                   checked={form.permissionKeys.includes(p.key)}
-                                  onCheckedChange={() => togglePermission(p.key)}
+                                  onCheckedChange={(v) => {
+                                    const on = v === true;
+                                    setForm((f) => ({
+                                      ...f,
+                                      permissionKeys: on
+                                        ? f.permissionKeys.includes(p.key)
+                                          ? f.permissionKeys
+                                          : [...f.permissionKeys, p.key]
+                                        : f.permissionKeys.filter((k) => k !== p.key),
+                                    }));
+                                  }}
                                   className="mt-0.5"
                                 />
                                 <span>

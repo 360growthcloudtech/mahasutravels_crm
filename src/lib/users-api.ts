@@ -169,6 +169,82 @@ export async function fetchPermissionsPage(
   };
 }
 
+export async function createUserApi(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  status?: string;
+  phone?: string;
+  department?: string;
+  autoAssignWebsites?: string[];
+  permissionKeys?: string[];
+}): Promise<{ user: UserApi; permission_keys: string[] }> {
+  const res = await fetch("/api/users", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: input.name,
+      email: input.email,
+      password: input.password,
+      role: input.role,
+      status: input.status ?? "Active",
+      phone: input.phone ?? "",
+      department: input.department ?? "",
+      auto_assign_websites: input.autoAssignWebsites ?? [],
+      permission_keys: input.permissionKeys ?? [],
+    }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to create user");
+  }
+  const data = (await res.json()) as { user: UserApi; permission_keys?: string[] };
+  return { user: data.user, permission_keys: data.permission_keys ?? [] };
+}
+
+export async function updateUserApi(
+  id: string,
+  input: {
+    name?: string;
+    email?: string;
+    password?: string;
+    role?: string;
+    status?: string;
+    phone?: string;
+    department?: string;
+    autoAssignWebsites?: string[];
+    permissionKeys?: string[];
+  }
+): Promise<{ user: UserApi; permission_keys: string[] }> {
+  const body: Record<string, unknown> = {};
+  if (input.name !== undefined) body.name = input.name;
+  if (input.email !== undefined) body.email = input.email;
+  if (input.password !== undefined && input.password.trim()) body.password = input.password;
+  if (input.role !== undefined) body.role = input.role;
+  if (input.status !== undefined) body.status = input.status;
+  if (input.phone !== undefined) body.phone = input.phone;
+  if (input.department !== undefined) body.department = input.department;
+  if (input.autoAssignWebsites !== undefined) {
+    body.auto_assign_websites = input.autoAssignWebsites;
+  }
+  if (input.permissionKeys !== undefined) body.permission_keys = input.permissionKeys;
+
+  const res = await fetch(`/api/users/${id}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to update user");
+  }
+  const data = (await res.json()) as { user: UserApi; permission_keys?: string[] };
+  return { user: data.user, permission_keys: data.permission_keys ?? [] };
+}
+
 export async function updateUserAutoAssignWebsites(
   id: string,
   autoAssignWebsites: string[]

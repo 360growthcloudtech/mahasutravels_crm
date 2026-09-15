@@ -325,3 +325,122 @@ export async function setUserAutoAssignWebsites(
   const updated = await findUserById(userId);
   return updated ? mapPublicUser(updated) : null;
 }
+
+const ALLOWED_ROLES = new Set(["Super Admin", "Admin", "Employee"]);
+const ALLOWED_STATUSES = new Set(["Active", "Inactive"]);
+
+export type CreateUserInput = {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  status?: string;
+  phone?: string;
+  department?: string;
+};
+
+export type UpdateUserProfileInput = {
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: string;
+  status?: string;
+  phone?: string;
+  department?: string;
+};
+
+/** Create a CRM login user (invite member). */
+export async function createUser(input: CreateUserInput): Promise<PublicUser> {
+  await ensureLeadWebhookSchema();
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  const password = input.password;
+  const role = input.role.trim();
+  const status = (input.status ?? "Active").trim() || "Active";
+  const phone = (input.phone ?? "").trim();
+  const department = (input.department ?? "").trim();
+
+  if (!name) throw new Error("Name is required");
+  if (!email || !email.includes("@")) throw new Error("Valid email is required");
+  if (!password || password.length < 6) throw new Error("Password must be at least 6 characters");
+  if (!ALLOWED_ROLES.has(role)) throw new Error("Invalid role");
+  if (!ALLOWED_STATUSES.has(status)) throw new Error("Invalid status");
+
+  const existing = await findUserByEmail(email);
+  if (existing) throw new Error("A user with this email already exists");
+
+  const bcrypt = (await import("bcryptjs")).default;
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  const { rows } = await query<UserRow>(
+    `INSERT INTO users (name, email, password_hash, role, status, phone, department)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, name, email, password_hash, role, status`,
+    [name, email, passwordHash, role, status, phone || null, department || null]
+  );
+  const created = rows[0];
+  if (!created) throw new Error("Failed to create user");
+  return mapPublicUser({ ...created, auto_assign_websites: [] });
+}
+
+/** Update profile fields for an existing user. */
+export async function updateUserProfile(
+  id: string,
+  input: UpdateUserProfileInput
+): Promise<PublicUser | null> {
+  await ensureLeadWebhookSchema();
+  const existing = await findUserById(id);
+  if (!existing) return null;
+
+  const name = input.name !== undefined ? input.name.trim() : existing.name;
+  const email =
+    input.email !== undefined ? input.email.trim().toLowerCase() : existing.email;
+  const role = input.role !== undefined ? input.role.trim() : existing.role;
+  const status = input.status !== undefined ? input.status.trim() : existing.status;
+  const phone = input.phone !== undefined ? input.phone.trim() : undefined;
+  const department = input.department !== undefined ? input.department.trim() : undefined;
+
+  if (!name) throw new Error("Name is required");
+  if (!email || !email.includes("@")) throw new Error("Valid email is required");
+  if (!ALLOWED_ROLES.has(role)) throw new Error("Invalid role");
+  if (!ALLOWED_STATUSES.has(status)) throw new Error("Invalid status");
+
+  if (email !== existing.email.toLowerCase()) {
+    const clash = await findUserByEmail(email);
+    if (clash && clash.id !== id) throw new Error("A user with this email already exists");
+  }
+
+  const sets: string[] = [
+    `name = $2`,
+    `email = $3`,
+    `role = $4`,
+    `status = $5`,
+  ];
+  const params: unknown[] = [id, name, email, role, status];
+
+  if (phone !== undefined) {
+    params.push(phone || null);
+    sets.push(`phone = $${params.length}`);
+  }
+  if (department !== undefined) {
+    params.push(department || null);
+    sets.push(`department = $${params.length}`);
+  }
+  if (input.password && input.password.trim().length > 0) {
+    if (input.password.trim().length < 6) {
+      throw new Error("Password must be at least 6 characters");
+    }
+    const bcrypt = (await import("bcryptjs")).default;
+    const passwordHash = await bcrypt.hash(input.password.trim(), 12);
+    params.push(passwordHash);
+    sets.push(`password_hash = $${params.length}`);
+  }
+
+  await query(
+    `UPDATE users SET ${sets.join(", ")} WHERE id = $1`,
+    params
+  );
+
+  const updated = await findUserById(id);
+  return updated ? mapPublicUser(updated) : null;
+}

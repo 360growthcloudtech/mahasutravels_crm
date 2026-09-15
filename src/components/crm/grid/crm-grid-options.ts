@@ -82,6 +82,7 @@ export function crmBaseGridOptions<TData>(): Partial<GridOptions<TData>> {
     suppressCellFocus: true,
     enableCellTextSelection: true,
     ensureDomOrder: true,
+    alwaysShowHorizontalScroll: true,
     rowHeight: 56,
     headerHeight: 40,
     defaultColDef: crmDefaultColDef,
