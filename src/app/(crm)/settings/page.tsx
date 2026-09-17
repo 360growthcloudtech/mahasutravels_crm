@@ -72,6 +72,7 @@ import {
 } from "@/lib/data";
 import {
   createUserApi,
+  deleteUserApi,
   fetchUsers,
   fetchUsersPage,
   fetchPermissionsCatalog,
@@ -245,6 +246,7 @@ export default function SettingsPage() {
   const [form, setForm] = React.useState(emptyMember());
   const [showPassword, setShowPassword] = React.useState(false);
   const [deleteMemberTarget, setDeleteMemberTarget] = React.useState<Member | null>(null);
+  const [deletingMember, setDeletingMember] = React.useState(false);
   const [permFormOpen, setPermFormOpen] = React.useState(false);
   const [editingPerm, setEditingPerm] = React.useState<SystemPermission | null>(null);
   const [permForm, setPermForm] = React.useState({
@@ -1345,24 +1347,59 @@ export default function SettingsPage() {
 
       <ConfirmDialog
         open={!!deleteMemberTarget}
-        onOpenChange={(open) => !open && setDeleteMemberTarget(null)}
+        onOpenChange={(open) => {
+          if (!open && !deletingMember) setDeleteMemberTarget(null);
+        }}
         title="Remove member?"
         description={
           deleteMemberTarget
-            ? `${deleteMemberTarget.name} will lose CRM access. This cannot be undone in the demo.`
+            ? `${deleteMemberTarget.name} will lose CRM access. Assigned leads stay in the system (unassigned). This cannot be undone.`
             : ""
         }
-        onConfirm={() => {
+        confirming={deletingMember}
+        closeOnConfirm={false}
+        onConfirm={async () => {
           if (!deleteMemberTarget) return;
-          deleteMember(deleteMemberTarget.id);
-          toast({
-            variant: "info",
-            title: "Member removed",
-            description: deleteMemberTarget.name,
-          });
-          setDeleteMemberTarget(null);
-          membersGridApiRef.current?.refreshInfiniteCache();
-          if (!isDesktop) void loadMembersPage();
+          setDeletingMember(true);
+          try {
+            const apiUserId =
+              dbUsers.find(
+                (u) => u.email.toLowerCase() === deleteMemberTarget.email.toLowerCase()
+              )?.id ??
+              (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                deleteMemberTarget.id
+              )
+                ? deleteMemberTarget.id
+                : null);
+
+            if (!apiUserId) {
+              throw new Error("Could not find the login user to delete.");
+            }
+            if (session?.memberId === apiUserId) {
+              throw new Error("You cannot delete your own account while signed in.");
+            }
+
+            await deleteUserApi(apiUserId);
+            deleteMember(deleteMemberTarget.id);
+            setDbUsers((prev) => prev.filter((u) => u.id !== apiUserId));
+            toast({
+              variant: "info",
+              title: "Member removed",
+              description: deleteMemberTarget.name,
+            });
+            setDeleteMemberTarget(null);
+            membersGridApiRef.current?.refreshInfiniteCache();
+            if (!isDesktop) void loadMembersPage();
+            void reloadSettings();
+          } catch (error) {
+            toast({
+              variant: "error",
+              title: "Could not delete member",
+              description: error instanceof Error ? error.message : "Please try again.",
+            });
+          } finally {
+            setDeletingMember(false);
+          }
         }}
       />
 

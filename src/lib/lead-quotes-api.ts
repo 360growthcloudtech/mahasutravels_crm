@@ -85,7 +85,12 @@ export async function fetchProposalQuote(
     id: string;
     lead_no: string;
     name: string;
-    assigned_to: { id: string; name: string } | null;
+    assigned_to: {
+      id: string;
+      name: string;
+      phone: string | null;
+      department: string | null;
+    } | null;
   };
   quote: LeadQuoteDto | null;
 }> {
@@ -100,7 +105,12 @@ export async function fetchProposalQuote(
       id: string;
       lead_no: string;
       name: string;
-      assigned_to: { id: string; name: string } | null;
+      assigned_to: {
+        id: string;
+        name: string;
+        phone: string | null;
+        department: string | null;
+      } | null;
     };
     quote: LeadQuoteDto | null;
   };

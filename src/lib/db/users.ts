@@ -138,6 +138,38 @@ export async function findUserById(id: string): Promise<(UserRow & { auto_assign
   return withWebsites;
 }
 
+/** Public contact fields for quotation / proposal closing signatures. */
+export type UserQuoteProfile = {
+  id: string;
+  name: string;
+  phone: string | null;
+  department: string | null;
+};
+
+export async function findUserQuoteProfile(id: string): Promise<UserQuoteProfile | null> {
+  await ensureLeadWebhookSchema();
+  const { rows } = await query<{
+    id: string;
+    name: string;
+    phone: string | null;
+    department: string | null;
+  }>(
+    `SELECT id, name, phone, department
+     FROM users
+     WHERE id = $1
+     LIMIT 1`,
+    [id]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone?.trim() || null,
+    department: row.department?.trim() || null,
+  };
+}
+
 export async function listActiveUsers(): Promise<PublicUser[]> {
   await ensureLeadWebhookSchema();
   const { rows } = await query<UserRow>(
@@ -443,4 +475,11 @@ export async function updateUserProfile(
 
   const updated = await findUserById(id);
   return updated ? mapPublicUser(updated) : null;
+}
+
+/** Permanently remove a CRM login user. Related grants cascade in DB. */
+export async function deleteUser(id: string): Promise<boolean> {
+  await ensureLeadWebhookSchema();
+  const { rowCount } = await query(`DELETE FROM users WHERE id = $1`, [id]);
+  return (rowCount ?? 0) > 0;
 }

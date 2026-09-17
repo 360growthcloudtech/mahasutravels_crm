@@ -281,6 +281,17 @@ export async function updateUserPermissionKeys(
   return data.permission_keys ?? [];
 }
 
+export async function deleteUserApi(id: string): Promise<void> {
+  const res = await fetch(`/api/users/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(data?.error ?? "Failed to delete user");
+  }
+}
+
 export function userFromApi(u: PublicUser | UserApi): UserApi {
   return {
     id: u.id,

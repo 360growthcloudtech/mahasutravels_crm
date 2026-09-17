@@ -24,6 +24,7 @@ import {
   QUOTE_PDF_IMPORTANT_NOTES,
   QUOTE_PDF_PAYMENT_METHODS,
   QUOTE_PDF_PAYMENT_SCHEDULE,
+  formatQuoteCloserName,
 } from "@/lib/quote-defaults";
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -47,7 +48,12 @@ export default function ProposalPage() {
   const [leadMeta, setLeadMeta] = React.useState<{
     lead_no: string;
     name: string;
-    assigned_to: { id: string; name: string } | null;
+    assigned_to: {
+      id: string;
+      name: string;
+      phone: string | null;
+      department: string | null;
+    } | null;
   } | null>(null);
 
   React.useEffect(() => {
@@ -103,6 +109,11 @@ export default function ProposalPage() {
       ? ` · ${quote.kids} Kid${quote.kids === 1 ? "" : "s"}${quote.kids_note ? ` (${quote.kids_note})` : ""}`
       : ""
   }`;
+
+  const closerName = formatQuoteCloserName(leadMeta.assigned_to);
+  const closerMobiles = leadMeta.assigned_to?.phone
+    ? [leadMeta.assigned_to.phone]
+    : QUOTE_PDF_CLOSING.mobiles;
 
   return (
     <div className="proposal-print min-h-screen bg-[#e8dfcf] text-[#12172b] print:bg-white">
@@ -494,9 +505,9 @@ export default function ProposalPage() {
             <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#9a8668]">
               {QUOTE_PDF_CLOSING.regards}
             </p>
-            <p className="mt-2 font-display text-lg font-semibold">{QUOTE_PDF_CLOSING.name}</p>
+            <p className="mt-2 font-display text-lg font-semibold">{closerName}</p>
             <p className="mt-1 text-xs text-[#5c5346]">
-              Mob. No. {QUOTE_PDF_CLOSING.mobiles.join(", ")}
+              Mob. No. {closerMobiles.join(", ")}
             </p>
             <p className="mt-1 text-xs text-[#5c5346]">{QUOTE_PDF_CLOSING.emergency}</p>
             <p className="mt-3 text-xs text-[#5c5346]">

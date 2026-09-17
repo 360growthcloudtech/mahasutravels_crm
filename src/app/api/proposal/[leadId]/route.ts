@@ -5,6 +5,7 @@ import {
   findLatestDraftLeadQuote,
   findLatestSentLeadQuote,
 } from "@/lib/db/lead-quotes";
+import { findUserQuoteProfile } from "@/lib/db/users";
 import { formatLeadNo } from "@/lib/lead-utils";
 
 export const runtime = "nodejs";
@@ -34,14 +35,29 @@ export async function GET(
     quote = await findLatestDraftLeadQuote(leadId);
   }
 
+  const assignee = lead.assigned_to
+    ? await findUserQuoteProfile(lead.assigned_to)
+    : null;
+
   return NextResponse.json({
     lead: {
       id: lead.id,
       lead_no: formatLeadNo(lead.lead_no),
       name: lead.name,
-      assigned_to:
-        lead.assigned_to && lead.assigned_to_name
-          ? { id: lead.assigned_to, name: lead.assigned_to_name }
+      assigned_to: assignee
+        ? {
+            id: assignee.id,
+            name: assignee.name,
+            phone: assignee.phone,
+            department: assignee.department,
+          }
+        : lead.assigned_to && lead.assigned_to_name
+          ? {
+              id: lead.assigned_to,
+              name: lead.assigned_to_name,
+              phone: null,
+              department: null,
+            }
           : null,
     },
     quote,

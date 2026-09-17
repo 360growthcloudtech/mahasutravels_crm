@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { AgGridReact } from "ag-grid-react";
 import type {
   ColDef,
@@ -10,6 +11,7 @@ import type {
   GridReadyEvent,
   IDatasource,
 } from "ag-grid-community";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   createGridDatasource,
@@ -62,6 +64,178 @@ function useIsDark(): boolean {
   return dark;
 }
 
+function getHorizontalScrollers(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  const bar = root.querySelector<HTMLElement>(".ag-body-horizontal-scroll-viewport");
+  const center = root.querySelector<HTMLElement>(".ag-center-cols-viewport");
+  return [bar, center].filter((el): el is HTMLElement => Boolean(el));
+}
+
+/** Always-visible L/R arrows pinned inside AG Grid's horizontal scrollbar strip. */
+function CrmGridScrollArrows({
+  hostRef,
+  ready,
+}: {
+  hostRef: React.RefObject<HTMLDivElement | null>;
+  ready: boolean;
+}) {
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+  const [arrowHost, setArrowHost] = React.useState<HTMLElement | null>(null);
+
+  const updateScrollState = React.useCallback(() => {
+    const els = getHorizontalScrollers(hostRef.current);
+    const el =
+      els.find((node) => node.classList.contains("ag-body-horizontal-scroll-viewport")) ??
+      els[0];
+    if (!el) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+    const max = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(max > 2 && el.scrollLeft > 2);
+    setCanScrollRight(max > 2 && max - el.scrollLeft > 2);
+  }, [hostRef]);
+
+  React.useEffect(() => {
+    if (!ready) return;
+    const root = hostRef.current;
+    if (!root) return;
+
+    const attached = new Set<HTMLElement>();
+    let ro: ResizeObserver | null = null;
+    let currentBar: HTMLElement | null = null;
+
+    const detach = () => {
+      for (const el of attached) {
+        el.removeEventListener("scroll", updateScrollState);
+      }
+      attached.clear();
+      ro?.disconnect();
+      ro = null;
+    };
+
+    const ensureArrowHost = (bar: HTMLElement) => {
+      let host = bar.querySelector<HTMLElement>(":scope > .crm-ag-hscroll-arrows");
+      if (!host) {
+        host = document.createElement("div");
+        host.className = "crm-ag-hscroll-arrows";
+        bar.appendChild(host);
+      }
+      setArrowHost((prev) => (prev === host ? prev : host));
+      return host;
+    };
+
+    const attach = () => {
+      const bar = root.querySelector<HTMLElement>(".ag-body-horizontal-scroll");
+      const next = getHorizontalScrollers(root);
+
+      if (!bar) {
+        currentBar = null;
+        setArrowHost(null);
+        detach();
+        updateScrollState();
+        return;
+      }
+
+      ensureArrowHost(bar);
+
+      if (bar !== currentBar) {
+        currentBar = bar;
+        detach();
+        ro = new ResizeObserver(updateScrollState);
+        ro.observe(bar);
+        ro.observe(root);
+        for (const el of next) {
+          el.addEventListener("scroll", updateScrollState, { passive: true });
+          ro.observe(el);
+          attached.add(el);
+        }
+      } else {
+        // Bar still present — keep scroll listeners, but re-bind any new viewport nodes.
+        for (const el of next) {
+          if (attached.has(el)) continue;
+          el.addEventListener("scroll", updateScrollState, { passive: true });
+          ro?.observe(el);
+          attached.add(el);
+        }
+      }
+
+      updateScrollState();
+    };
+
+    attach();
+    const mo = new MutationObserver((mutations) => {
+      // Ignore our own arrow host mutations to avoid feedback loops.
+      const selfOnly = mutations.every((m) => {
+        const nodes = [...m.addedNodes, ...m.removedNodes];
+        return (
+          nodes.length > 0 &&
+          nodes.every(
+            (n) =>
+              n instanceof HTMLElement &&
+              (n.classList.contains("crm-ag-hscroll-arrows") ||
+                n.classList.contains("crm-ag-hscroll-arrow") ||
+                n.closest?.(".crm-ag-hscroll-arrows"))
+          )
+        );
+      });
+      if (selfOnly) return;
+      attach();
+    });
+    mo.observe(root, { childList: true, subtree: true });
+    window.addEventListener("resize", updateScrollState);
+    const timer = window.setTimeout(attach, 80);
+
+    return () => {
+      window.clearTimeout(timer);
+      mo.disconnect();
+      window.removeEventListener("resize", updateScrollState);
+      detach();
+      setArrowHost(null);
+    };
+  }, [hostRef, ready, updateScrollState]);
+
+  function scrollByDir(dir: -1 | 1) {
+    const els = getHorizontalScrollers(hostRef.current);
+    if (!els.length) return;
+    const primary =
+      els.find((node) => node.classList.contains("ag-body-horizontal-scroll-viewport")) ??
+      els[0];
+    const amount = Math.max(240, Math.round(primary.clientWidth * 0.55));
+    for (const el of els) {
+      el.scrollBy({ left: dir * amount, behavior: "smooth" });
+    }
+  }
+
+  if (!arrowHost) return null;
+
+  return createPortal(
+    <>
+      <button
+        type="button"
+        aria-label="Scroll grid left"
+        disabled={!canScrollLeft}
+        className="crm-ag-hscroll-arrow crm-ag-hscroll-arrow-left"
+        onClick={() => scrollByDir(-1)}
+      >
+        <ChevronLeft className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        aria-label="Scroll grid right"
+        disabled={!canScrollRight}
+        className="crm-ag-hscroll-arrow crm-ag-hscroll-arrow-right"
+        onClick={() => scrollByDir(1)}
+      >
+        <ChevronRight className="size-3.5" />
+      </button>
+    </>,
+    arrowHost
+  );
+}
+
 export type CrmGridProps<T extends { id: string }> = {
   columnDefs: ColDef<T>[];
   fetchPage: (request: GridPageRequest) => Promise<GridPageResult<T> & Record<string, unknown>>;
@@ -100,6 +274,7 @@ export function CrmGrid<T extends { id: string }>({
   onColumnFiltersChange,
 }: CrmGridProps<T>) {
   const dark = useIsDark();
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
   const apiRef = React.useRef<GridApi<T> | null>(null);
   const fetchPageRef = React.useRef(fetchPage);
   const onErrorRef = React.useRef(onError);
@@ -111,6 +286,7 @@ export function CrmGrid<T extends { id: string }>({
   const datasourceRef = React.useRef<IDatasource | null>(null);
   const readyRef = React.useRef(false);
   const toolbarKeyRef = React.useRef(toolbarKey);
+  const [gridReady, setGridReady] = React.useState(false);
 
   fetchPageRef.current = fetchPage;
   onErrorRef.current = onError;
@@ -162,6 +338,7 @@ export function CrmGrid<T extends { id: string }>({
     (event: GridReadyEvent<T>) => {
       apiRef.current = event.api;
       readyRef.current = true;
+      setGridReady(true);
       onGridApiRef.current?.(event.api);
       if (storageKey) {
         const stored = readLayout(storageKey);
@@ -197,6 +374,7 @@ export function CrmGrid<T extends { id: string }>({
   React.useEffect(() => {
     return () => {
       readyRef.current = false;
+      setGridReady(false);
       onColumnFiltersChangeRef.current?.(false);
       onGridApiRef.current?.(null);
       apiRef.current = null;
@@ -212,11 +390,13 @@ export function CrmGrid<T extends { id: string }>({
 
   return (
     <div
+      ref={hostRef}
       className={cn(
         "crm-ag-grid absolute inset-0 overflow-hidden rounded-lg border border-border-soft bg-card",
         className
       )}
     >
+      <CrmGridScrollArrows hostRef={hostRef} ready={gridReady} />
       <AgGridReact<T>
         theme={crmGridTheme(dark)}
         columnDefs={columnDefs}

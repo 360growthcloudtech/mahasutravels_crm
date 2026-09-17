@@ -382,7 +382,8 @@
   overflow: visible;
 }
 
-/* Keep horizontal scrollbar visible always (incl. macOS overlay / Apple scrollbars) */
+/* Keep horizontal scrollbar visible always (incl. macOS overlay / Apple scrollbars).
+   Extra height + side padding leaves room for always-on left/right scroll arrows. */
 .crm-ag-grid .ag-body-horizontal-scroll {
   display: flex !important;
   flex: none !important;
@@ -390,13 +391,18 @@
   left: auto !important;
   right: auto !important;
   bottom: auto !important;
+  align-items: center !important;
   width: 100% !important;
-  height: 14px !important;
-  min-height: 14px !important;
-  max-height: 14px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  padding: 0 36px !important;
+  box-sizing: border-box !important;
   opacity: 1 !important;
   visibility: visible !important;
   z-index: 3;
+  background: var(--card);
+  border-top: 1px solid var(--border-soft);
 }
 .crm-ag-grid .ag-body-horizontal-scroll.ag-scrollbar-invisible,
 .crm-ag-grid .ag-body-horizontal-scroll.ag-apple-scrollbar {
@@ -427,6 +433,46 @@
 }
 .crm-ag-grid .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb:hover {
   background: color-mix(in oklab, var(--slate) 85%, transparent);
+}
+
+/* Always-visible L/R arrows in the red-circle corner slots of the h-scroll strip */
+.crm-ag-grid .crm-ag-hscroll-arrows {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.crm-ag-grid .crm-ag-hscroll-arrow {
+  position: absolute;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--foreground) 12%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+.crm-ag-grid .crm-ag-hscroll-arrow:hover:not(:disabled) {
+  background: var(--secondary);
+}
+.crm-ag-grid .crm-ag-hscroll-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.crm-ag-grid .crm-ag-hscroll-arrow-left {
+  left: 4px;
+}
+.crm-ag-grid .crm-ag-hscroll-arrow-right {
+  right: 4px;
 }
 
 /* Pagination bar: vertically centered with space above and below */

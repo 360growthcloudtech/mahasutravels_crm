@@ -152,7 +152,8 @@ export const QUOTE_PDF_AMENDMENT_POLICY = [
 
 export const QUOTE_PDF_CLOSING = {
   regards: "THANKS & REGARDS,",
-  name: "Amit Thakur (Sr. Sales Executive)",
+  /** Fallback when lead has no assigned employee. */
+  name: "Mahasu Travels Team",
   mobiles: ["+91 8219031654", "9805378073"],
   emergency:
     "Emergency Contacts: Mr. Sanjeev Kumar (M. D.) 8894424550 / 9816248301 / 8894446040",
@@ -162,6 +163,17 @@ export const QUOTE_PDF_CLOSING = {
     "Lakhanpal Building, Near Tara Devi Railway Station, Shimla- 171010. H. P. India.",
   thankYou: 'THANK YOU FOR CONSULTING "HIMACHAL TAXI TRIP" FOR YOUR TRIP',
 } as const;
+
+/** Closing signature line from the lead's assigned employee (name + optional department). */
+export function formatQuoteCloserName(assignee?: {
+  name?: string | null;
+  department?: string | null;
+} | null): string {
+  const name = assignee?.name?.trim();
+  if (!name) return QUOTE_PDF_CLOSING.name;
+  const dept = assignee?.department?.trim();
+  return dept ? `${name} (${dept})` : name;
+}
 
 function addDaysIso(iso: string, offset: number): string {
   const d = new Date(`${iso}T12:00:00`);

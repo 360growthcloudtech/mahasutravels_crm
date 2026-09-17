@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { forbidUnlessPermission, requireSession } from "@/lib/api-auth";
-import { findUserById, setUserAutoAssignWebsites, updateUserProfile } from "@/lib/db/users";
+import {
+  deleteUser,
+  findUserById,
+  setUserAutoAssignWebsites,
+  updateUserProfile,
+} from "@/lib/db/users";
 import { resolveWebsiteDomain } from "@/lib/db/masters";
 import {
   listUserPermissionKeys,
@@ -160,4 +165,37 @@ export async function PATCH(
   }
 
   return NextResponse.json({ user, permission_keys: permissionKeys });
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const session = await requireSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = forbidUnlessPermission(session, "roles.and.permissions.delete");
+  if (denied) return denied;
+
+  const { id } = await context.params;
+  if (id === session.sub) {
+    return NextResponse.json(
+      { error: "You cannot delete your own account while signed in." },
+      { status: 400 }
+    );
+  }
+
+  const existing = await findUserById(id);
+  if (!existing) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  try {
+    const ok = await deleteUser(id);
+    if (!ok) return NextResponse.json({ error: "User not found" }, { status: 404 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to delete user" },
+      { status: 400 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
 }
