@@ -85,9 +85,11 @@ export async function fetchProposalQuote(
     id: string;
     lead_no: string;
     name: string;
+    website: string | null;
     assigned_to: {
       id: string;
       name: string;
+      email: string | null;
       phone: string | null;
       department: string | null;
     } | null;
@@ -105,9 +107,11 @@ export async function fetchProposalQuote(
       id: string;
       lead_no: string;
       name: string;
+      website: string | null;
       assigned_to: {
         id: string;
         name: string;
+        email: string | null;
         phone: string | null;
         department: string | null;
       } | null;

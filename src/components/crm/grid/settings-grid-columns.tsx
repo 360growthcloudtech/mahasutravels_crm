@@ -72,8 +72,8 @@ export function memberRowFromUser(
   );
   return {
     ...user,
-    phone: local?.phone,
-    department: local?.department,
+    phone: user.phone || local?.phone || "",
+    department: user.department || local?.department || "",
     permissionKeys: user.permission_keys ?? local?.permissionKeys,
     localMemberId: local?.id,
   };

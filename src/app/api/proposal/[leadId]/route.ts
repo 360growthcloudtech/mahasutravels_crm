@@ -44,10 +44,12 @@ export async function GET(
       id: lead.id,
       lead_no: formatLeadNo(lead.lead_no),
       name: lead.name,
+      website: lead.website,
       assigned_to: assignee
         ? {
             id: assignee.id,
             name: assignee.name,
+            email: assignee.email,
             phone: assignee.phone,
             department: assignee.department,
           }
@@ -55,6 +57,7 @@ export async function GET(
           ? {
               id: lead.assigned_to,
               name: lead.assigned_to_name,
+              email: null,
               phone: null,
               department: null,
             }

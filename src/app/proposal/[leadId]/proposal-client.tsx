@@ -25,6 +25,8 @@ import {
   QUOTE_PDF_PAYMENT_METHODS,
   QUOTE_PDF_PAYMENT_SCHEDULE,
   formatQuoteCloserName,
+  formatQuoteUpiDetail,
+  resolveQuoteWebsiteContact,
 } from "@/lib/quote-defaults";
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -48,9 +50,11 @@ export default function ProposalPage() {
   const [leadMeta, setLeadMeta] = React.useState<{
     lead_no: string;
     name: string;
+    website: string | null;
     assigned_to: {
       id: string;
       name: string;
+      email: string | null;
       phone: string | null;
       department: string | null;
     } | null;
@@ -111,9 +115,11 @@ export default function ProposalPage() {
   }`;
 
   const closerName = formatQuoteCloserName(leadMeta.assigned_to);
-  const closerMobiles = leadMeta.assigned_to?.phone
-    ? [leadMeta.assigned_to.phone]
-    : QUOTE_PDF_CLOSING.mobiles;
+  const brand = resolveQuoteWebsiteContact(leadMeta.website);
+  const closerMobiles = leadMeta.assigned_to?.phone?.trim()
+    ? [leadMeta.assigned_to.phone.trim()]
+    : brand.mobiles;
+  const closerEmail = leadMeta.assigned_to?.email?.trim() || brand.email;
 
   return (
     <div className="proposal-print min-h-screen bg-[#e8dfcf] text-[#12172b] print:bg-white">
@@ -173,9 +179,10 @@ export default function ProposalPage() {
             <div className="space-y-1 text-xs text-white/75 sm:text-right">
               <p className="inline-flex items-center gap-1.5">
                 <Phone className="size-3.5 text-marigold" />
-                {quote.company_contact_phone || "+91 98170 00000"}
+                {quote.company_contact_phone?.trim() ||
+                  QUOTE_PDF_PAYMENT_METHODS.upiMobile}
               </p>
-              <p>{quote.company_contact_name || "Booking desk"}</p>
+              <p>{quote.company_contact_name?.trim() || QUOTE_PDF_PAYMENT_METHODS.upiName}</p>
             </div>
           </div>
 
@@ -380,7 +387,8 @@ export default function ProposalPage() {
             <div className="mt-4 flex flex-wrap gap-3 border-t border-dashed border-white/15 pt-4 text-xs text-white/70">
               <span className="inline-flex items-center gap-1.5">
                 <Phone className="size-3.5 text-marigold" />
-                {quote.company_contact_phone}
+                {quote.company_contact_phone?.trim() ||
+                  QUOTE_PDF_PAYMENT_METHODS.upiMobile}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Mail className="size-3.5 text-marigold" />
@@ -445,7 +453,7 @@ export default function ProposalPage() {
                 {QUOTE_PDF_PAYMENT_METHODS.upiTitle}
               </p>
               <p className="mt-2 text-sm font-medium text-[#12172b]">
-                {QUOTE_PDF_PAYMENT_METHODS.upiDetail}
+                {formatQuoteUpiDetail(quote)}
               </p>
             </div>
             <div className="rounded-2xl border border-[#eadfcb] bg-white p-3">
@@ -462,9 +470,18 @@ export default function ProposalPage() {
               <p className="font-mono-data text-[10px] uppercase tracking-[0.12em] text-[#9a8668]">
                 UPI scanner
               </p>
-              <p className="mt-2 text-xs leading-relaxed text-[#5c5346]">
-                {QUOTE_PDF_PAYMENT_METHODS.scannerNote}
-              </p>
+              <div className="mt-2 flex flex-col items-center gap-2">
+                <Image
+                  src={brand.qrSrc}
+                  alt="UPI payment QR code"
+                  width={128}
+                  height={128}
+                  className="size-28 rounded-md border border-[#eadfcb] bg-white object-contain p-1"
+                />
+                <p className="text-center text-[10px] leading-relaxed text-[#5c5346]">
+                  {QUOTE_PDF_PAYMENT_METHODS.scannerNote}
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -499,26 +516,39 @@ export default function ProposalPage() {
           </ul>
         </section>
 
-        {/* Closing — static */}
+        {/* Closing — employee + website-source contact */}
         <section className="proposal-break px-6 pb-8 sm:px-8">
           <div className="rounded-2xl border border-[#eadfcb] bg-[#f3eadc]/70 px-5 py-5 text-sm text-[#12172b]">
-            <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#9a8668]">
-              {QUOTE_PDF_CLOSING.regards}
-            </p>
-            <p className="mt-2 font-display text-lg font-semibold">{closerName}</p>
-            <p className="mt-1 text-xs text-[#5c5346]">
-              Mob. No. {closerMobiles.join(", ")}
-            </p>
-            <p className="mt-1 text-xs text-[#5c5346]">{QUOTE_PDF_CLOSING.emergency}</p>
-            <p className="mt-3 text-xs text-[#5c5346]">
-              Mail ID: {QUOTE_PDF_CLOSING.email}
-              <br />
-              Website: {QUOTE_PDF_CLOSING.website}
-              <br />
-              Address: {QUOTE_PDF_CLOSING.address}
-            </p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="font-mono-data text-[10px] uppercase tracking-[0.16em] text-[#9a8668]">
+                  {QUOTE_PDF_CLOSING.regards}
+                </p>
+                <p className="mt-2 font-display text-lg font-semibold">{closerName}</p>
+                <p className="mt-1 text-xs text-[#5c5346]">
+                  Mob. No. {closerMobiles.join(", ")}
+                </p>
+                <p className="mt-1 text-xs text-[#5c5346]">{QUOTE_PDF_CLOSING.emergency}</p>
+                <p className="mt-3 text-xs text-[#5c5346]">
+                  Mail ID: {closerEmail}
+                  <br />
+                  Website: {brand.website}
+                  <br />
+                  Address: {QUOTE_PDF_CLOSING.address}
+                </p>
+              </div>
+              <div className="mx-auto shrink-0 sm:mx-0">
+                <Image
+                  src={brand.qrSrc}
+                  alt={`${brand.label} payment QR`}
+                  width={112}
+                  height={112}
+                  className="size-28 rounded-md border border-[#eadfcb] bg-white object-contain p-1"
+                />
+              </div>
+            </div>
             <p className="mt-4 text-center font-mono-data text-[10px] uppercase tracking-[0.14em] text-marigold-ink">
-              {QUOTE_PDF_CLOSING.thankYou}
+              {brand.thankYou}
             </p>
           </div>
         </section>

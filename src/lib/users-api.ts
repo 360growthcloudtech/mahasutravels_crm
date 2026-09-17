@@ -6,6 +6,8 @@ export type UserApi = {
   email: string;
   role: string;
   status: string;
+  phone: string;
+  department: string;
   auto_assign_websites: string[];
   permission_count?: number;
   permission_keys?: string[];
@@ -299,6 +301,8 @@ export function userFromApi(u: PublicUser | UserApi): UserApi {
     email: u.email,
     role: u.role,
     status: "status" in u && u.status ? u.status : "Active",
+    phone: "phone" in u && typeof u.phone === "string" ? u.phone : "",
+    department: "department" in u && typeof u.department === "string" ? u.department : "",
     auto_assign_websites: u.auto_assign_websites ?? [],
     permission_count: "permission_count" in u ? u.permission_count : undefined,
     permission_keys: "permission_keys" in u ? u.permission_keys : undefined,

@@ -69,6 +69,8 @@ export async function PATCH(
     email: existing.email,
     role: existing.role,
     status: existing.status,
+    phone: existing.phone?.trim() || "",
+    department: existing.department?.trim() || "",
     auto_assign_websites: existing.auto_assign_websites,
   };
 
@@ -91,6 +93,8 @@ export async function PATCH(
         email: updated.email,
         role: updated.role,
         status: updated.status,
+        phone: updated.phone,
+        department: updated.department,
         auto_assign_websites: updated.auto_assign_websites,
       };
     } catch (error) {

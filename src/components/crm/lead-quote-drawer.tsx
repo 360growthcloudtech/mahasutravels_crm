@@ -726,19 +726,25 @@ export function LeadQuoteDrawer({
                     />
                   </Field>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Field label="Company contact name">
+                    <Field label="Paytm / UPI name">
                       <Input
                         value={form.company_contact_name}
                         onChange={(e) => patchForm({ company_contact_name: e.target.value })}
+                        placeholder="Sanjeev Kumar"
                       />
                     </Field>
-                    <Field label="Company contact phone">
+                    <Field label="Paytm / UPI mobile number">
                       <Input
                         value={form.company_contact_phone}
                         onChange={(e) => patchForm({ company_contact_phone: e.target.value })}
+                        placeholder="9418800107"
                       />
                     </Field>
                   </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Shown on the quotation under Paytm / GooglePay / PhonePe. Leave blank to use
+                    Sanjeev Kumar — 9418800107.
+                  </p>
                   <Field label="Inclusions (one per line)">
                     <Textarea
                       rows={4}

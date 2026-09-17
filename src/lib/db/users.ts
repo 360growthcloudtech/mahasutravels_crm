@@ -32,6 +32,8 @@ export type UserRow = {
   password_hash: string;
   role: string;
   status: string;
+  phone?: string | null;
+  department?: string | null;
 };
 
 export type PublicUser = {
@@ -40,6 +42,8 @@ export type PublicUser = {
   email: string;
   role: string;
   status: string;
+  phone: string;
+  department: string;
   auto_assign_websites: string[];
   permission_count?: number;
   permission_keys?: string[];
@@ -72,6 +76,8 @@ function mapPublicUser(row: {
   email: string;
   role: string;
   status: string;
+  phone?: string | null;
+  department?: string | null;
   auto_assign_websites?: string[] | null;
 }): PublicUser {
   return {
@@ -80,6 +86,8 @@ function mapPublicUser(row: {
     email: row.email,
     role: row.role,
     status: row.status,
+    phone: row.phone?.trim() || "",
+    department: row.department?.trim() || "",
     auto_assign_websites: normalizeWebsiteList(row.auto_assign_websites),
   };
 }
@@ -111,7 +119,7 @@ async function attachAutoAssignWebsites<T extends { id: string }>(
 export async function findUserByEmail(email: string): Promise<(UserRow & { auto_assign_websites: string[] }) | null> {
   await ensureLeadWebhookSchema();
   const { rows } = await query<UserRow>(
-    `SELECT id, name, email, password_hash, role, status
+    `SELECT id, name, email, password_hash, role, status, phone, department
      FROM users
      WHERE lower(email) = lower($1)
      LIMIT 1`,
@@ -126,7 +134,7 @@ export async function findUserByEmail(email: string): Promise<(UserRow & { auto_
 export async function findUserById(id: string): Promise<(UserRow & { auto_assign_websites: string[] }) | null> {
   await ensureLeadWebhookSchema();
   const { rows } = await query<UserRow>(
-    `SELECT id, name, email, password_hash, role, status
+    `SELECT id, name, email, password_hash, role, status, phone, department
      FROM users
      WHERE id = $1
      LIMIT 1`,
@@ -142,6 +150,7 @@ export async function findUserById(id: string): Promise<(UserRow & { auto_assign
 export type UserQuoteProfile = {
   id: string;
   name: string;
+  email: string | null;
   phone: string | null;
   department: string | null;
 };
@@ -151,10 +160,11 @@ export async function findUserQuoteProfile(id: string): Promise<UserQuoteProfile
   const { rows } = await query<{
     id: string;
     name: string;
+    email: string | null;
     phone: string | null;
     department: string | null;
   }>(
-    `SELECT id, name, phone, department
+    `SELECT id, name, email, phone, department
      FROM users
      WHERE id = $1
      LIMIT 1`,
@@ -165,6 +175,7 @@ export async function findUserQuoteProfile(id: string): Promise<UserQuoteProfile
   return {
     id: row.id,
     name: row.name,
+    email: row.email?.trim() || null,
     phone: row.phone?.trim() || null,
     department: row.department?.trim() || null,
   };
@@ -173,7 +184,7 @@ export async function findUserQuoteProfile(id: string): Promise<UserQuoteProfile
 export async function listActiveUsers(): Promise<PublicUser[]> {
   await ensureLeadWebhookSchema();
   const { rows } = await query<UserRow>(
-    `SELECT id, name, email, role, status
+    `SELECT id, name, email, role, status, phone, department
      FROM users
      WHERE status = 'Active'
      ORDER BY name ASC`
@@ -186,7 +197,7 @@ export async function listActiveUsers(): Promise<PublicUser[]> {
 export async function listUsers(): Promise<PublicUser[]> {
   await ensureLeadWebhookSchema();
   const { rows } = await query<UserRow>(
-    `SELECT id, name, email, role, status
+    `SELECT id, name, email, role, status, phone, department
      FROM users
      ORDER BY name ASC`
   );
@@ -263,6 +274,8 @@ export async function listUsersPage(
        u.email,
        u.role,
        u.status,
+       u.phone,
+       u.department,
        COALESCE(pc.cnt, 0)::int AS permission_count
      FROM users u
      LEFT JOIN (
@@ -407,7 +420,7 @@ export async function createUser(input: CreateUserInput): Promise<PublicUser> {
   const { rows } = await query<UserRow>(
     `INSERT INTO users (name, email, password_hash, role, status, phone, department)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, name, email, password_hash, role, status`,
+     RETURNING id, name, email, password_hash, role, status, phone, department`,
     [name, email, passwordHash, role, status, phone || null, department || null]
   );
   const created = rows[0];

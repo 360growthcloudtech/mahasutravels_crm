@@ -67,8 +67,8 @@ export const DEFAULT_QUOTE_GREETING = "Dear Sir / Ma'am,";
 export const DEFAULT_QUOTE_INTRO =
   "Greetings from Mahasu Travels. Thank you for your enquiry. Please find below a complete tour package prepared for your travel dates. For any changes, reach our desk anytime.";
 
-export const DEFAULT_COMPANY_CONTACT_NAME = "Mahasu Travels Desk";
-export const DEFAULT_COMPANY_CONTACT_PHONE = "+91 98170 00000";
+export const DEFAULT_COMPANY_CONTACT_NAME = "Sanjeev Kumar";
+export const DEFAULT_COMPANY_CONTACT_PHONE = "9418800107";
 
 export const DEFAULT_EXCLUSIONS = [
   "Personal expenses & tips",
@@ -114,7 +114,9 @@ export const QUOTE_PDF_PAYMENT_SCHEDULE = [
 
 export const QUOTE_PDF_PAYMENT_METHODS = {
   upiTitle: "Paytm / GooglePay / PhonePe",
-  upiDetail: "Sanjeev Kumar — 9418800107",
+  /** Fallback when quote UPI fields are blank. */
+  upiName: DEFAULT_COMPANY_CONTACT_NAME,
+  upiMobile: DEFAULT_COMPANY_CONTACT_PHONE,
   bankTitle: "CANARA BANK (Current A/C)",
   bankLines: [
     "Name: Wonderland Himachal",
@@ -126,6 +128,17 @@ export const QUOTE_PDF_PAYMENT_METHODS = {
   ],
   scannerNote: "UPI scanner — share QR on confirmation / WhatsApp",
 } as const;
+
+export function formatQuoteUpiDetail(quote?: {
+  company_contact_name?: string | null;
+  company_contact_phone?: string | null;
+} | null): string {
+  const name =
+    quote?.company_contact_name?.trim() || QUOTE_PDF_PAYMENT_METHODS.upiName;
+  const mobile =
+    quote?.company_contact_phone?.trim() || QUOTE_PDF_PAYMENT_METHODS.upiMobile;
+  return `${name} — ${mobile}`;
+}
 
 export const QUOTE_PDF_CANCELLATION_POLICY = [
   "There is no contract between the company and the client until the company has received the initial deposit amount of the specified tour package. Payment must be received in accordance with the procedures of Payment Policy.",
@@ -162,7 +175,108 @@ export const QUOTE_PDF_CLOSING = {
   address:
     "Lakhanpal Building, Near Tara Devi Railway Station, Shimla- 171010. H. P. India.",
   thankYou: 'THANK YOU FOR CONSULTING "HIMACHAL TAXI TRIP" FOR YOUR TRIP',
+  /** Shared UPI / payment QR shown on quotations. */
+  qrSrc: "/qr.png",
 } as const;
+
+export type QuoteWebsiteContact = {
+  domain: string | null;
+  label: string;
+  website: string;
+  email: string;
+  mobiles: readonly string[];
+  thankYou: string;
+  qrSrc: string;
+};
+
+type QuoteWebsiteBrand = {
+  label: string;
+  website: string;
+  email: string;
+  mobiles: readonly string[];
+  thankYouBrand: string;
+};
+
+const QUOTE_WEBSITE_BRANDS: Record<string, QuoteWebsiteBrand> = {
+  "himachaltaxitrip.com": {
+    label: "Himachal Taxi Trip",
+    website: "www.himachaltaxitrip.com",
+    email: "himachaltaxitripshimla@gmail.com",
+    mobiles: QUOTE_PDF_CLOSING.mobiles,
+    thankYouBrand: "HIMACHAL TAXI TRIP",
+  },
+  "mahasutravels.com": {
+    label: "Mahasu Travels",
+    website: "www.mahasutravels.com",
+    email: "info@mahasutravels.com",
+    mobiles: QUOTE_PDF_CLOSING.mobiles,
+    thankYouBrand: "MAHASU TRAVELS",
+  },
+  "himachaltouristcabs.com": {
+    label: "Himachal Tourist Cabs",
+    website: "www.himachaltouristcabs.com",
+    email: "info@himachaltouristcabs.com",
+    mobiles: QUOTE_PDF_CLOSING.mobiles,
+    thankYouBrand: "HIMACHAL TOURIST CABS",
+  },
+  "himachaltourismcab.com": {
+    label: "Himachal Tourism Cab",
+    website: "www.himachaltourismcab.com",
+    email: "info@himachaltourismcab.com",
+    mobiles: QUOTE_PDF_CLOSING.mobiles,
+    thankYouBrand: "HIMACHAL TOURISM CAB",
+  },
+};
+
+function normalizeQuoteWebsiteDomain(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "");
+}
+
+/** Mob / mail / website / thank-you line from the lead's website source. */
+export function resolveQuoteWebsiteContact(
+  website?: string | null
+): QuoteWebsiteContact {
+  const domain = website ? normalizeQuoteWebsiteDomain(website) : "";
+  const brand = domain ? QUOTE_WEBSITE_BRANDS[domain] : undefined;
+  if (brand) {
+    return {
+      domain,
+      label: brand.label,
+      website: brand.website,
+      email: brand.email,
+      mobiles: brand.mobiles,
+      thankYou: `THANK YOU FOR CONSULTING "${brand.thankYouBrand}" FOR YOUR TRIP`,
+      qrSrc: QUOTE_PDF_CLOSING.qrSrc,
+    };
+  }
+  if (domain) {
+    const bare = domain.replace(/\.(com|in|net|org)$/i, "").replace(/[.-]/g, " ");
+    const label = bare.replace(/\b\w/g, (c) => c.toUpperCase());
+    return {
+      domain,
+      label,
+      website: `www.${domain}`,
+      email: `info@${domain}`,
+      mobiles: QUOTE_PDF_CLOSING.mobiles,
+      thankYou: `THANK YOU FOR CONSULTING "${label.toUpperCase()}" FOR YOUR TRIP`,
+      qrSrc: QUOTE_PDF_CLOSING.qrSrc,
+    };
+  }
+  return {
+    domain: null,
+    label: "Himachal Taxi Trip",
+    website: QUOTE_PDF_CLOSING.website,
+    email: QUOTE_PDF_CLOSING.email,
+    mobiles: QUOTE_PDF_CLOSING.mobiles,
+    thankYou: QUOTE_PDF_CLOSING.thankYou,
+    qrSrc: QUOTE_PDF_CLOSING.qrSrc,
+  };
+}
 
 /** Closing signature line from the lead's assigned employee (name + optional department). */
 export function formatQuoteCloserName(assignee?: {
